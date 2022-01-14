@@ -11,7 +11,6 @@ use stm32f0xx_hal as hal;
 use hal::{prelude::*, usb};
 use embedded_hal::digital::v2::InputPin;
 use usb_device::prelude::UsbDevice;
-// use usbd_hid::descriptor::generator_prelude::*;
 use usbd_hid::hid_class::HIDClass;
 use usbd_dfu_rt::DfuRuntimeClass;
 
@@ -22,10 +21,17 @@ use utils::InfallibleResult;
 
 pub struct Usb {
     dev: UsbDevice<'static, usb::UsbBusType>,
-    keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
-    mouse: HIDClass<'static, usb::UsbBusType>,
+    serial: usbd_serial::SerialPort<'static, usb::UsbBusType>,
+    // keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
+    // mouse: HIDClass<'static, usb::UsbBusType>,
     // this does not need to be share but it should be cleaner to have it here
     // dfu: DfuRuntimeClass<DfuBootloader>,
+}
+
+impl Usb {
+    pub fn poll(&mut self) -> bool {
+        self.dev.poll(&mut [&mut self.serial])
+    }
 }
 
 const NCOLS: usize = 6;
@@ -185,15 +191,16 @@ impl Spi2Tx {
 
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
 mod app {
-    use super::{hal, Spi2Tx, BoardSide};
+    use super::{hal, Spi2Tx, BoardSide, Usb};
     use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
+    use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
 
     #[shared]
     struct Shared {
         // time_ms: u32,
         // leds: Leds,
-        // usb: Usb,
+        usb: Usb,
         // do_reboot: bool,
     }
 
@@ -207,7 +214,9 @@ mod app {
         // uart_rx: serial::Rx<hal::pac::USART1>,
     }
 
-    #[init]
+    #[init(local = [
+        usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
+    ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
         let mut dev = cx.device;
@@ -291,7 +300,79 @@ mod app {
             pin_dp: gpioa.pa12,
             pin_dm: gpioa.pa11
         };
+        *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
+        let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        (Shared {}, Local {}, init::Monotonics())
+        // USB classes
+        let usb_serial = usbd_serial::SerialPort::new(usb_bus);
+
+        // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
+        // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
+        let generic_keyboard = UsbVidPid(0x16c0, 0x27db);
+        let usb_dev = UsbDeviceBuilder::new(&usb_bus, generic_keyboard)
+            .manufacturer("inscrib.io")
+            .product(match board_side {
+                BoardSide::Left => "ghanima keyboard (L)",
+                BoardSide::Right => "ghanima keyboard (R)"
+            })
+            .serial_number(env!("CARGO_PKG_VERSION"))
+            .composite_with_iads()
+            .build();
+
+        (Shared {
+            usb: Usb { dev: usb_dev, serial: usb_serial }
+        }, Local {}, init::Monotonics())
+    }
+
+    /// USB poll
+    ///
+    /// On an USB interrput we need to handle all classes and receive/send proper data.
+    /// This is always a response to USB host polling because host initializes all transactions.
+    #[task(binds = USB, shared = [usb])]
+    fn usb_poll(mut cx: usb_poll::Context) {
+        cx.shared.usb.lock(|usb| {
+            // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
+            // If there was data packet to any class this will return true.
+            let _was_packet = usb.poll();
+
+            // debugging
+            if _was_packet {
+                let mut buf = [0u8; 64];
+
+                match usb.serial.read(&mut buf) {
+                    Ok(count) if count > 0 => {
+                        // toggle case
+                        for c in buf[..count].iter_mut() {
+                            if c.is_ascii_uppercase() {
+                                c.make_ascii_lowercase();
+                            } else {
+                                c.make_ascii_uppercase();
+                            }
+                        }
+
+                        // send back
+                        let mut write_offset = 0;
+                        while write_offset < count {
+                            match usb.serial.write(&buf[write_offset..count]) {
+                                Ok(len) if len > 0 => write_offset += len,
+                                _ => {},
+                            }
+                        }
+                    },
+                    _ => {},
+                }
+            }
+        });
+    }
+
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        loop {
+            if cfg!(feature = "idle_sleep") {
+                rtic::export::wfi();
+            } else {
+                rtic::export::nop();
+            }
+        }
     }
 }

@@ -16,24 +16,24 @@ cortex-m-rtic = "1.0"
 stm32f0 = "0.14"
 stm32f0xx-hal = { version = "0.18", features = ["stm32f072", "stm32-usbd"] }
 
-# TODO: use official version when 0.2 is released
-keyberon = { git = "https://github.com/TeXitoi/keyberon.git", rev = "58ac73cfcd09659bf31ee405ff9f5e23b0edc527" }
-
 nb = "1.0"
 panic-halt = "0.2"
 embedded-hal = "0.2"
 
-usbd-dfu-rt = "0.1"
 usb-device = "0.2"
 usbd-hid = "0.5"
+usbd-dfu-rt = "0.1"
+usbd-serial = "0.1"
+
+# TODO: use official version when 0.2 is released
+keyberon = { git = "https://github.com/TeXitoi/keyberon.git", rev = "58ac73cfcd09659bf31ee405ff9f5e23b0edc527" }
 
 generic-array = "0.14"
 fixed = "1.11"
 bitfield = "0.13"
 heapless = "0.7"
-
-postcard = "0.7"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
+postcard = "0.7"
 
 [[bin]]
 name = "ghanima"
