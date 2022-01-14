@@ -16,6 +16,7 @@ use usbd_dfu_rt::DfuRuntimeClass;
 
 use keyberon;
 
+mod reboot;
 mod utils;
 use utils::InfallibleResult;
 
@@ -25,12 +26,12 @@ pub struct Usb {
     // keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
     // mouse: HIDClass<'static, usb::UsbBusType>,
     // this does not need to be share but it should be cleaner to have it here
-    // dfu: DfuRuntimeClass<DfuBootloader>,
+    dfu: DfuRuntimeClass<reboot::DfuBootloader>,
 }
 
 impl Usb {
     pub fn poll(&mut self) -> bool {
-        self.dev.poll(&mut [&mut self.serial])
+        self.dev.poll(&mut [&mut self.serial, &mut self.dfu])
     }
 }
 
@@ -305,6 +306,7 @@ mod app {
 
         // USB classes
         let usb_serial = usbd_serial::SerialPort::new(usb_bus);
+        let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, crate::reboot::DfuBootloader);
 
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
         // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
@@ -320,7 +322,11 @@ mod app {
             .build();
 
         (Shared {
-            usb: Usb { dev: usb_dev, serial: usb_serial }
+            usb: Usb {
+                dev: usb_dev,
+                serial: usb_serial,
+                dfu: usb_dfu,
+            },
         }, Local {}, init::Monotonics())
     }
 
