@@ -14,21 +14,40 @@ use stm32f0xx_hal as hal;
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
 mod app {
     use super::hal;
-    use crate::{spi::Spi2Tx, usb::Usb, board::BoardSide};
+    use crate::{spi, usb::Usb, board::BoardSide};
+    use ghanima::{Ws2812, BitBuffer};
     use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
+    use core::fmt::Write as _;
+
+    #[derive(Debug, Default)]
+    pub struct Counters {
+        usb: u32,
+        idle: u32,
+        tick: u32,
+        dma: u32,
+        send: u32,
+    }
 
     #[shared]
     struct Shared {
         usb: Usb,
+        time_ms: u32,
+        ws2812: Ws2812,
+        spi_tx: spi::SpiTransfer<&'static mut [u8]>,
+        counters: Counters,
     }
 
     #[local]
-    struct Local {}
+    struct Local {
+        timer: hal::timers::Timer<hal::pac::TIM15>,
+    }
 
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
+        ws2812: Ws2812 = Ws2812::new(),
+        led_buf: BitBuffer = BitBuffer::ZERO,
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -64,8 +83,9 @@ mod app {
         // TODO: configure debug pins, verify that SWD works by default
 
         // Determine board side
-        let board_side_pin = ifree(|cs| gpiob.pb13.into_floating_input(cs));
-        let board_side = BoardSide::get(board_side_pin);
+        // let board_side_pin = ifree(|cs| gpiob.pb13.into_floating_input(cs));
+        // let board_side = BoardSide::get(board_side_pin);
+        let board_side = BoardSide::Left;
 
         // Keyboard matrix
         let cols = ifree(|cs| [
@@ -105,7 +125,8 @@ mod app {
         // SPI (tx only) for RGB data
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
-        let spi = Spi2Tx::new(dev.SPI2, rgb_tx);
+        let spi = spi::SpiTx::new(dev.SPI2, dev.DMA1, rgb_tx, 3.mhz(), &mut rcc);
+        let spi_tx = spi.with_buf(cx.local.led_buf.as_raw_mut_slice());
 
         // USB
         let usb = hal::usb::Peripheral {
@@ -118,6 +139,7 @@ mod app {
 
         // USB classes
         let usb_serial = usbd_serial::SerialPort::new(usb_bus);
+        // let usb_cdc = usbd_serial::CdcAcmClass::new(usb_bus, 64);
         let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, crate::reboot::DfuBootloader);
 
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
@@ -133,43 +155,141 @@ mod app {
             .composite_with_iads()
             .build();
 
+        // configure periodic timer
+        let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
+        timer.listen(hal::timers::Event::TimeOut);
+
         let shared = Shared {
             usb: Usb {
                 dev: usb_dev,
                 serial: usb_serial,
+                // cdc: usb_cdc,
                 dfu: usb_dfu,
             },
+            time_ms: 0,
+            ws2812: Ws2812::new(),
+            spi_tx,
+            counters: Default::default(),
         };
 
-        (shared, Local {}, init::Monotonics())
+        let local = Local {
+            timer,
+        };
+
+        (shared, local, init::Monotonics())
+    }
+
+    #[task(shared = [ws2812, spi_tx, counters, usb])]
+    fn send_ws2812(mut cx: send_ws2812::Context) {
+        cx.shared.counters.lock(|c| c.send += 1);
+        (cx.shared.ws2812,cx.shared.spi_tx).lock(|ws2812, spi_tx| {
+            // fill the buffer; when this task is started dma must already be finished
+            ws2812.serialize(spi_tx.take().unwrap());
+            // start the transfer
+            spi_tx.start();
+        });
+    }
+
+    #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx, counters, usb])]
+    fn dma_complete(mut cx: dma_complete::Context) {
+        cx.shared.spi_tx.lock(|spi_tx| {
+            if !spi_tx.finish().unwrap() {
+                panic!("Interrupt from unexpected channel");
+            }
+        });
+        cx.shared.counters.lock(|c| c.dma += 1);
+    }
+
+    #[task(binds = TIM15, priority = 3, shared = [time_ms, ws2812, counters, usb, spi_tx], local = [timer])]
+    fn tick(mut cx: tick::Context) {
+        // Clears interrupt flag
+        if cx.local.timer.wait().is_ok() {
+            cx.shared.counters.lock(|c| c.tick += 1);
+            (cx.shared.time_ms, cx.shared.counters).lock(|t, counters| {
+                *t += 1;
+
+                if *t % 211 == 0 {
+                    cx.shared.usb.lock(|usb| writeln!(usb.serial, "{:?}\r", counters).ok());
+                }
+
+                if *t % 100 == 0 {
+                    cx.shared.ws2812.lock(|ws2812| {
+                        for led in ws2812.leds.iter_mut() {
+                            led.r = ((*t / 100) % 30).max(3) as u8;
+                        }
+                    });
+                    send_ws2812::spawn().unwrap();
+                }
+            });
+        }
     }
 
     /// USB poll
     ///
     /// On an USB interrput we need to handle all classes and receive/send proper data.
     /// This is always a response to USB host polling because host initializes all transactions.
-    #[task(binds = USB, shared = [usb])]
+    #[task(binds = USB, priority = 2, shared = [usb, time_ms, ws2812, counters])]
     fn usb_poll(mut cx: usb_poll::Context) {
         cx.shared.usb.lock(|usb| {
             // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
             // If there was data packet to any class this will return true.
             let _was_packet = usb.poll();
 
+            cx.shared.counters.lock(|c| c.usb += 1);
+
+            usb.serial.flush().ok();
+
             // debugging
             if _was_packet {
+                let mut send = false;
+                let mut num = 0;
+
                 usb.serial_loopback(|c| {
+                    if char::from(*c).is_digit(10) {
+                        send = true;
+                        num = char::from(*c).to_digit(10).unwrap();
+                    }
                     if c.is_ascii_uppercase() {
                         c.make_ascii_lowercase();
                     } else {
                         c.make_ascii_uppercase();
                     }
                 });
+
+                if send {
+                    let spi = unsafe { &*hal::pac::SPI2::ptr() };
+                    let dma = unsafe { &*hal::pac::DMA1::ptr() };
+                    match num {
+                        0 => cx.shared.counters.lock(|c| writeln!(usb.serial, "\r\n{:?}\r", c).unwrap()),
+                        1 => writeln!(usb.serial, "\r\nSPI2.CR1 = 0b{:016b}\r", spi.cr1.read().bits()).unwrap(),
+                        2 => writeln!(usb.serial, "\r\nSPI2.CR2 = 0b{:016b}\r", spi.cr2.read().bits()).unwrap(),
+                        3 => writeln!(usb.serial, "\r\nSPI2.SR = 0b{:016b}\r", spi.sr.read().bits()).unwrap(),
+                        4 => writeln!(usb.serial, "\r\nDMA1.CH5.CR = 0b{:015b}\r", dma.ch5.cr.read().bits()).unwrap(),
+                        5 => writeln!(usb.serial, "\r\nDMA1.ISR = 0b{:027b}\r", dma.isr.read().bits()).unwrap(),
+                        6 => writeln!(usb.serial, "\r\nDMA1.CH5.PAR = 0x{:08x}\r", dma.ch5.par.read().bits()).unwrap(),
+                        7 => writeln!(usb.serial, "\r\nDMA1.CH5.MAR = 0x{:08x}\r", dma.ch5.mar.read().bits()).unwrap(),
+                        // 8 => writeln!(usb.serial, "\r\nDMA1.CH5.NDTR = {}\r", dma.ch5.ndtr.read().bits()).unwrap(),
+                        8 => {
+                            writeln!(usb.serial, "\r\nCR1=0b{:016b} CR2=0b{:016b} SR=0b{:016b} CHCR=0b{:015b} ISR=0b{:027b}\r",
+                                     spi.cr1.read().bits(), spi.cr2.read().bits(), spi.sr.read().bits(),
+                                     dma.ch5.cr.read().bits(), dma.isr.read().bits()
+                                     ).unwrap()
+                        },
+                        9 => {
+                            writeln!(usb.serial, "\r\nRGB = {:?}\r", cx.shared.ws2812.lock(|w| (w.leds[0].r, w.leds[0].g, w.leds[0].b))).unwrap();
+                        },
+                        _ => {},
+                    }
+                }
+
             }
+
         });
     }
 
-    #[idle]
-    fn idle(_cx: idle::Context) -> ! {
+    #[idle(shared = [counters])]
+    fn idle(mut _cx: idle::Context) -> ! {
+        _cx.shared.counters.lock(|c| c.idle += 1);
         loop {
             if cfg!(feature = "idle_sleep") {
                 rtic::export::wfi();
