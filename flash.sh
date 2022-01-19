@@ -51,6 +51,7 @@ target_name='ghanima'
 
 stm32dfu_id='0483:df11'
 keyboard_id='16c0:27db'
+stlink_id='0483:3748'
 
 target_bin="target/$target_name.bin"
 cargo_flags="$opt"
@@ -94,6 +95,10 @@ lsusb_string() {
     lsusb -d "$1" -v | grep "$2" | tr -s ' ' | cut -d ' ' -f 4-
 }
 
+find_stlink() {
+    lsusb -d "$stlink_id" > /dev/null
+}
+
 find_keyboard() {
     lsusb -d "$keyboard_id" > /dev/null
 }
@@ -118,7 +123,7 @@ detach_keyboard() {
     dfu-util --detach --device $keyboard_id
 }
 
-flash_firmware() {
+flash_firmware_dfu() {
     local firmware
     firmware="$(get_firmware)"
 
@@ -140,12 +145,22 @@ flash_firmware() {
         --reset
 }
 
-if find_keyboard; then
+flash_firmware_openocd() {
+    local firmware
+    firmware="$(get_firmware)"
+
+    openocd -f remote/openocd.cfg -c "program $target_bin verify reset exit 0x08000000"
+}
+
+if find_stlink; then
+    info "Found ST-LINK. Flashing using OpenOCD ..."
+    flash_firmware_openocd
+elif find_keyboard; then
     detach_keyboard
-    flash_firmware
+    flash_firmware_dfu
 elif find_bootloader; then
     info "No keyboard found but found an STM32 DFU Bootloader ..."
-    flash_firmware
+    flash_firmware_dfu
 else
     die "No keyboard, nor bootloader found"
 fi
