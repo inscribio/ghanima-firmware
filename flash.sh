@@ -76,7 +76,7 @@ get_firmware() {
     if [[ ${prebuilt:-0} = 0 ]]; then
         info "Building firmware ..." 1>&2
         # build firmware
-        cargo build "$cargo_flags" 1>&2
+        cargo build "$cargo_flags" 1>&2 || die "Failed to build firmware"
         # convert to binary
         cargo objcopy "$cargo_flags" --bin "$target_name" -- -O binary "$target_bin" 1>&2
         echo "$target_bin"
