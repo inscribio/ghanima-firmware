@@ -15,7 +15,7 @@ use stm32f0xx_hal as hal;
 mod app {
     use super::hal;
     use crate::{spi, usb::Usb, board::BoardSide};
-    use ghanima::{Ws2812, BitBuffer};
+    use ghanima::ws2812b;
     use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
@@ -34,7 +34,7 @@ mod app {
     struct Shared {
         usb: Usb,
         time_ms: u32,
-        ws2812: Ws2812,
+        ws2812: ws2812b::Leds,
         spi_tx: spi::SpiTransfer<&'static mut [u8]>,
         counters: Counters,
     }
@@ -46,8 +46,7 @@ mod app {
 
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
-        ws2812: Ws2812 = Ws2812::new(),
-        led_buf: BitBuffer = BitBuffer::ZERO,
+        led_buf: ws2812b::Buffer = ws2812b::BUFFER_ZERO,
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -126,7 +125,7 @@ mod app {
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
         let spi = spi::SpiTx::new(dev.SPI2, dev.DMA1, rgb_tx, 3.mhz(), &mut rcc);
-        let spi_tx = spi.with_buf(cx.local.led_buf.as_raw_mut_slice());
+        let spi_tx = spi.with_buf(&mut cx.local.led_buf[..]);
 
         // USB
         let usb = hal::usb::Peripheral {
@@ -167,7 +166,7 @@ mod app {
                 dfu: usb_dfu,
             },
             time_ms: 0,
-            ws2812: Ws2812::new(),
+            ws2812: ws2812b::Leds::new(),
             spi_tx,
             counters: Default::default(),
         };
