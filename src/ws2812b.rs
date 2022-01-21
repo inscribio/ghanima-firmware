@@ -96,6 +96,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn const_led_bits() {
+        assert_eq!(led_bits(LEDS_COUNT), 2688);
+    }
+
+    #[test]
+    fn const_all_bits() {
+        let reset_bits = match (RESET_BEFORE, RESET_AFTER) {
+            (true, true) => 1680,
+            (false, true) | (true, false) => 840,
+            (false, false) => 0,
+        };
+        assert_eq!(all_bits(LEDS_COUNT), 2688 + reset_bits);
+    }
+
+    #[test]
+    fn const_buf_size() {
+        let bytes = match (RESET_BEFORE, RESET_AFTER) {
+            (true, true) => 546,  // bits: 1680 + 2688 = 4368
+            (false, true) | (true, false) => 441,  // bits: 840 + 2688 = 3528
+            (false, false) => 336,  // bits: 2688
+        };
+        assert_eq!(BUFFER_SIZE, bytes);
+    }
+
+    #[test]
     fn serialize_one() {
         let leds = [RGB8::new(0xff, 0xaa, 0x31)];
         let mut buf = [0u8; 3 * 8 / 2];
