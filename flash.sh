@@ -79,7 +79,7 @@ get_firmware() {
         # build firmware
         cargo build "$cargo_flags" 1>&2 || die "Failed to build firmware"
         # convert to binary
-        cargo objcopy "$cargo_flags" --bin "$target_name" -- -O binary "$target_bin" 1>&2
+        cargo objcopy "$cargo_flags" --bin "$target_name" -- -O binary "$target_bin" 1>&2 || die "Objcopy failed"
         echo "$target_bin"
     else
         info "Using prebuilt firmware: $prebuilt ..." 1>&2
@@ -116,11 +116,11 @@ detach_keyboard() {
     info "Found keyboard: $imanufacturer | $iproduct | $iserial"
 
     # check before detaching to avoid loosing keyboard unnecesarily
-    check_firmware
+    check_firmware || die "Firmware check failed"
 
     # detach to bootloader
     info "Detaching keyboard to bootloader ..."
-    dfu-util --detach --device $keyboard_id
+    dfu-util --detach --device $keyboard_id  # || die "Detaching to bootloader failed"
 }
 
 flash_firmware_dfu() {
@@ -138,18 +138,23 @@ flash_firmware_dfu() {
     find_bootloader || die "Could not find DFU bootloader device"
 
     info "Flashing device ..."
-    dfu-util --device $stm32dfu_id \
+    dfu-util \
+        --device $stm32dfu_id \
         --alt 0 \
         --dfuse-address "0x08000000:$dfu_modifiers" \
         --download "$firmware" \
-        --reset
+        --reset \
+        # || die "Flashing via DFU failed"
 }
 
 flash_firmware_openocd() {
     local firmware
     firmware="$(get_firmware)"
 
-    openocd -f remote/openocd.cfg -c "program $target_bin verify reset exit 0x08000000"
+    openocd \
+        -f remote/openocd.cfg \
+        -c "program $target_bin verify reset exit 0x08000000" \
+        || die "Flashing via OpenOCD failed"
 }
 
 if find_stlink; then
