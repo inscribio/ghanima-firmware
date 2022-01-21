@@ -169,53 +169,46 @@ mod app {
         (shared, local, init::Monotonics())
     }
 
-    #[task(shared = [ws2812, spi_tx])]
+    #[task(shared = [ws2812, spi_tx, dbg_pin])]
     fn send_ws2812(mut cx: send_ws2812::Context) {
         (cx.shared.ws2812,cx.shared.spi_tx).lock(|ws2812, spi_tx| {
             // fill the buffer; when this task is started dma must already be finished
+            cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
             // TODO: try to use .serialize()
             ws2812.serialize_to_slice(spi_tx.take().unwrap());
+            cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
             // start the transfer
             spi_tx.start();
+            cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
         });
     }
 
-    #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx])]
+    #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg_pin])]
     fn dma_complete(mut cx: dma_complete::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
             if !spi_tx.finish().unwrap() {
                 panic!("Interrupt from unexpected channel");
             }
         });
+        cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
     }
 
-    fn gamma_correction(pixel: u8) -> u8 {
-        // https://docs.rs/smart-leds/0.3.0/src/smart_leds/lib.rs.html#43-45
-        const GAMMA: [u8; 256] = [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4,
-            4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11,
-            12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22,
-            22, 23, 24, 24, 25, 25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36, 37,
-            38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50, 51, 52, 54, 55, 56, 57, 58,
-            59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85,
-            86, 87, 89, 90, 92, 93, 95, 96, 98, 99, 101, 102, 104, 105, 107, 109, 110, 112, 114,
-            115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142, 144,
-            146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175, 177, 180,
-            182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213, 215, 218, 220,
-            223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255,
-        ];
-        GAMMA[pixel as usize]
-    }
-
-    #[task(binds = TIM15, priority = 2, shared = [dbg_pin], local = [timer, t: usize = 0])]
+    #[task(binds = TIM15, priority = 2, shared = [ws2812, dbg_pin], local = [timer, t: usize = 0])]
     fn tick(mut cx: tick::Context) {
+        // cx.shared.dbg_pin.lock(|pin| pin.toggle().infallible());
         *cx.local.t += 1;
 
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
-            let period_ms = 50;
+            let period_ms = 10;
+
             if *cx.local.t % period_ms == 0 {
+                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
+                cx.shared.ws2812.lock(|ws2812| {
+                    ws2812.set_test_pattern(*cx.local.t / period_ms, 180);
+                });
+                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+
                 send_ws2812::spawn().unwrap();
             }
         }
