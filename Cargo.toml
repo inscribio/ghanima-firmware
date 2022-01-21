@@ -34,7 +34,6 @@ static_assertions = "1.1"
 generic-array = "0.14"
 # fixed = "1.11"
 bitfield = "0.13"
-bitvec = { version = "1.0", default-features = false, features = ["atomic"] }
 heapless = "0.7"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 postcard = "0.7"

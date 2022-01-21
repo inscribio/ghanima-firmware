@@ -1,5 +1,4 @@
 use static_assertions as sa;
-use bitvec::{BitArr, order::Msb0, view::BitView, slice::BitSlice, bits, array::BitArray, bitarr};
 use rgb::{RGB8, ComponentSlice};
 
 // SPI frequency: 3 MHz; Bit time: 333 ns
@@ -33,10 +32,14 @@ const fn all_bits(leds_count: usize) -> usize {
     RESET_BITS_BEFORE + led_bits(leds_count) + RESET_BITS_AFTER
 }
 
-pub const BUFFER_SIZE: usize = bitvec::mem::elts::<u8>(all_bits(LEDS_COUNT));
+const fn bytes_for_bits(bits: usize) -> usize {
+    (bits + 7) / 8
+}
+
+pub const BUFFER_SIZE: usize = bytes_for_bits(all_bits(LEDS_COUNT));
 pub type Buffer = [u8; BUFFER_SIZE];
 pub const BUFFER_ZERO: Buffer = [0u8; BUFFER_SIZE];
-const SERIAL_SIZE: usize = bitvec::mem::elts::<u8>(SERIAL_BITS);
+const SERIAL_SIZE: usize = bytes_for_bits(SERIAL_BITS);
 
 pub struct Leds {
     pub leds: [RGB8; LEDS_COUNT],
@@ -63,29 +66,48 @@ impl Leds {
     const ONE: [u8; SERIAL_SIZE] = Self::serial_bits(T1H_BITS);
     const ZERO: [u8; SERIAL_SIZE] = Self::serial_bits(T0H_BITS);
 
-    fn serialize_colors(colors: &[RGB8], buf: &mut BitSlice<u8, Msb0>) {
-        let mut chunks = unsafe {
-            buf[RESET_BITS_BEFORE..RESET_BITS_BEFORE+led_bits(colors.len())]
-                .chunks_exact_mut(SERIAL_BITS)
-                .remove_alias()
-        };
-
-        for rgb in colors {
-            let grb = [rgb.g, rgb.r, rgb.b];
-            for bit in grb.view_bits::<Msb0>() {
-                let chunk = chunks.next().unwrap();
-                chunk.copy_from_bitslice(if *bit {
-                    &Self::ONE.view_bits()[..SERIAL_BITS]
-                } else {
-                    &Self::ZERO.view_bits()[..SERIAL_BITS]
-                });
-            }
+    const fn serial_mask(bit_value: bool, first_half: bool) -> u8 {
+        // This is a specialized implementation
+        sa::const_assert_eq!(SERIAL_BITS, 4);
+        match (bit_value, first_half) {
+            (false, true)  => Self::ZERO[0],
+            (false, false) => Self::ZERO[0] >> 4,
+            (true,  true)  => Self::ONE[0],
+            (true,  false) => Self::ONE[0] >> 4,
         }
     }
 
-    // buf must be large enough (underlying buffer of BitBuffer)
-    pub fn serialize(&mut self, buf: &mut [u8]) {
-        Self::serialize_colors(&self.leds, buf.view_bits_mut())
+    fn serialize_colors(colors: &[RGB8], buf: &mut [u8]) {
+        let mut i = 0;
+        let bit_msb = |byte: u8, i: usize| (byte & (1 << (7 - i))) != 0;
+        for rgb in colors {
+            let mut serialize_byte = |c: u8| {
+                for j in 0..4 {
+                    let n1 = Self::serial_mask(bit_msb(c, 2*j), true);
+                    let n2 = Self::serial_mask(bit_msb(c, 2*j + 1), false);
+                    buf[i] = n1 | n2;
+                    i += 1;
+                }
+            };
+            serialize_byte(rgb.g);
+            serialize_byte(rgb.r);
+            serialize_byte(rgb.b);
+        }
+    }
+
+    // Serialize all RGB values to given buffer
+    pub fn serialize(&mut self, buf: &mut [u8; BUFFER_SIZE]) {
+        self.serialize_to_slice(&mut buf[..])
+    }
+
+    // Serialize all RGB values to given buffer
+    //
+    // # Panics
+    //
+    // If the buffer is not large enough - it must be at least BUFFER_SIZE bytes.
+    pub fn serialize_to_slice(&mut self, buf: &mut [u8]) {
+        let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.leds.len()))/8];
+        Self::serialize_colors(&self.leds, data);
     }
 }
 
@@ -124,45 +146,31 @@ mod tests {
     fn serialize_one() {
         let leds = [RGB8::new(0xff, 0xaa, 0x31)];
         let mut buf = [0u8; 3 * 8 / 2];
-        Leds::serialize_colors(&leds, buf.view_bits_mut::<Msb0>());
-        assert_eq!(buf, [
+        Leds::serialize_colors(&leds, &mut buf);
+        let expected = [
             // green: 0xaa = 0b10101010
             0b1100_1000, 0b1100_1000, 0b1100_1000, 0b1100_1000,
             // red: 0xff = 0b11111111
             0b1100_1100, 0b1100_1100, 0b1100_1100, 0b1100_1100,
             // blue: 0x31 = 0b00110001
             0b1000_1000, 0b1100_1100, 0b1000_1000, 0b1000_1100,
-        ]);
+        ];
+        assert_eq!(buf, expected, "\n  {:02x?}\n  vs\n  {:02x?}\n", buf, expected);
     }
 
     #[test]
     fn serialize_multiple() {
         let leds = [RGB8::new(0xff, 0xaa, 0x31), RGB8::new(0xaa, 0x31, 0xff)];
         let mut buf = [0u8; (3 * 8 / 2) * 2];
-        Leds::serialize_colors(&leds, buf.view_bits_mut::<Msb0>());
-        assert_eq!(buf, [
+        Leds::serialize_colors(&leds, &mut buf);
+        let expected = [
             0b1100_1000, 0b1100_1000, 0b1100_1000, 0b1100_1000, // 0xaa
             0b1100_1100, 0b1100_1100, 0b1100_1100, 0b1100_1100, // 0xff
             0b1000_1000, 0b1100_1100, 0b1000_1000, 0b1000_1100, // 0x31
             0b1000_1000, 0b1100_1100, 0b1000_1000, 0b1000_1100, // 0x31
             0b1100_1000, 0b1100_1000, 0b1100_1000, 0b1100_1000, // 0xaa
             0b1100_1100, 0b1100_1100, 0b1100_1100, 0b1100_1100, // 0xff
-        ]);
+        ];
+        assert_eq!(buf, expected, "\n  {:02x?}\n  vs\n  {:02x?}\n", buf, expected);
     }
-
-    // #[test]
-    // fn serialize_all() {
-    //     let mut ws2812 = Ws2812::new();
-    //     for led in ws2812.leds.iter_mut() {
-    //         *led = RGB8::new(30, 20, 10);
-    //     }
-    //     ws2812.serialize();
-    //     let s = ws2812.buffer()
-    //         .view_bits::<Msb0>()
-    //         .iter()
-    //         .map(|b| format!("{}", *b as usize))
-    //         .collect::<Vec<_>>()
-    //         .join("");
-    //     println!("s = {}", s);
-    // }
 }

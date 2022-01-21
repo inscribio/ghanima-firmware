@@ -173,7 +173,8 @@ mod app {
     fn send_ws2812(mut cx: send_ws2812::Context) {
         (cx.shared.ws2812,cx.shared.spi_tx).lock(|ws2812, spi_tx| {
             // fill the buffer; when this task is started dma must already be finished
-            ws2812.serialize(spi_tx.take().unwrap());
+            // TODO: try to use .serialize()
+            ws2812.serialize_to_slice(spi_tx.take().unwrap());
             // start the transfer
             spi_tx.start();
         });
@@ -207,13 +208,16 @@ mod app {
         GAMMA[pixel as usize]
     }
 
-    #[task(binds = TIM15, priority = 2, shared = [dbg_pin], local = [timer])]
+    #[task(binds = TIM15, priority = 2, shared = [dbg_pin], local = [timer, t: usize = 0])]
     fn tick(mut cx: tick::Context) {
-        cx.shared.dbg_pin.lock(|pin| pin.toggle().infallible());
+        *cx.local.t += 1;
 
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
-            send_ws2812::spawn().unwrap();
+            let period_ms = 50;
+            if *cx.local.t % period_ms == 0 {
+                send_ws2812::spawn().unwrap();
+            }
         }
     }
 
