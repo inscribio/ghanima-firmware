@@ -17,7 +17,6 @@ stm32f0 = "0.14"
 stm32f0xx-hal = { version = "0.18", features = ["stm32f072", "stm32-usbd"] }
 
 nb = "1.0"
-panic-halt = "0.2"
 embedded-hal = "0.2"
 embedded-dma = "0.1"
 
@@ -39,7 +38,9 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 postcard = "0.7"
 rgb = "0.8"
 
-# defmt = "0.3"
+panic-probe = "0.3"
+defmt = "0.3"
+defmt-rtt = "0.3"
 
 [[bin]]
 name = "ghanima"

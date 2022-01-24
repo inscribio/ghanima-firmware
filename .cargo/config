@@ -3,7 +3,9 @@ rustflags = [
   # Requires flip-link (cargo install flip-link)
   "-C", "linker=flip-link",
   "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=-Tdefmt.x",
 ]
+runner = "probe-run --chip STM32F072C8Tx"
 
 [build]
 target = "thumbv6m-none-eabi"    # Cortex-M0 and Cortex-M0+

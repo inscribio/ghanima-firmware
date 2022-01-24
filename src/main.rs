@@ -7,7 +7,8 @@ mod spi;
 mod usb;
 mod utils;
 
-use panic_halt as _;
+use panic_probe as _;
+use defmt_rtt as _;
 use stm32f0 as _;
 use stm32f0xx_hal as hal;
 
@@ -69,7 +70,13 @@ mod app {
         let gpiob = dev.GPIOB.split(&mut rcc);
         let gpioc = dev.GPIOC.split(&mut rcc);
 
-        // TODO: configure debug pins, verify that SWD works by default
+        let mut dbg_pin = ifree(|cs| gpioa.pa9.into_push_pull_output(cs)).downgrade();
+        for _ in 0..3 {
+            dbg_pin.set_high().infallible();
+            cortex_m::asm::delay(48);
+            dbg_pin.set_low().infallible();
+            cortex_m::asm::delay(48);
+        }
 
         // Determine board side
         // let board_side_pin = ifree(|cs| gpiob.pb13.into_floating_input(cs));
@@ -94,14 +101,12 @@ mod app {
         ]);
 
         // UARTs
-        let board_tx = ifree(|cs| gpioa.pa9.into_alternate_af1(cs));
+        // let board_tx = ifree(|cs| gpioa.pa9.into_alternate_af1(cs));
         let board_rx = ifree(|cs| gpioa.pa10.into_alternate_af1(cs));
         let debug_tx = ifree(|cs| gpioa.pa2.into_alternate_af1(cs));
         let debug_rx = ifree(|cs| gpioa.pa3.into_alternate_af1(cs));
         // let board_serial = Serial::usart1(dev.USART1, (board_tx, board_rx), 115_200.bps(), &mut rcc);
         let debug_serial = Serial::usart2(dev.USART2, (debug_tx, debug_rx), 115_200.bps(), &mut rcc);
-
-        let dbg_pin = ifree(|cs| board_tx.into_push_pull_output(cs)).downgrade();
 
         // ADC
         // Dedicated 14 MHz clock source is used. Conversion time is:
@@ -154,6 +159,10 @@ mod app {
         let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
         timer.listen(hal::timers::Event::TimeOut);
 
+        dbg_pin.set_high().infallible();
+        defmt::info!("Liftoff!");
+        dbg_pin.set_low().infallible();
+
         let shared = Shared {
             usb: Usb {
                 dev: usb_dev,
@@ -191,7 +200,7 @@ mod app {
     fn dma_complete(mut cx: dma_complete::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
             if !spi_tx.finish().unwrap() {
-                panic!("Interrupt from unexpected channel");
+                defmt::panic!("Interrupt from unexpected channel");
             }
         });
         cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
@@ -209,8 +218,12 @@ mod app {
             if *cx.local.t % period_ms == 0 {
                 cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
                 cx.shared.ws2812.lock(|ws2812| {
-                    ws2812.set_test_pattern(*cx.local.t / period_ms, 180);
+                    ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
                 });
+                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+
+                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
+                defmt::info!("Sending at {=u32} ms", *cx.local.t as u32);
                 cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
 
                 send_ws2812::spawn().unwrap();
