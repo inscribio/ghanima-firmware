@@ -3,13 +3,15 @@ use cortex_m::interrupt;
 use crate::hal;
 use crate::utils::InfallibleResult;
 use hal::{gpio::{Analog, gpioa}, adc};
+use micromath::F32Ext;
 
 // TODO: later in the code we're using dedicated methods
-type GpioX = gpioa::PA0<Analog>;
-type GpioY = gpioa::PA1<Analog>;
+type GpioX = gpioa::PA1<Analog>;
+type GpioY = gpioa::PA0<Analog>;
 
 pub struct Joystick {
     adc: hal::adc::Adc,
+    zero: (u16, u16),
     x: GpioX,
     y: GpioY,
 }
@@ -23,14 +25,42 @@ impl Joystick {
         adc.set_precision(adc::AdcPrecision::B_12);
         adc.set_sample_time(adc::AdcSampleTime::T_239);
 
-        Self { adc, x, y }
+        let mut joy = Self { adc, x, y, zero: (0, 0) };
+        joy.calibrate_zero();
+
+        joy
     }
 
-    pub fn read(&mut self) -> (u16, u16) {
+    fn read_raw(&mut self) -> (u16, u16) {
         // Current HAL implementation cannot return any error.
         let x = self.adc.read(&mut self.x).unwrap();
         let y = self.adc.read(&mut self.y).unwrap();
         (x, y)
+    }
+
+    /// Re-calibrate joystick zero position
+    // TODO: hard-code to avoid issues if starting with joystick in non-zero
+    pub fn calibrate_zero(&mut self) {
+        self.zero = self.read_raw();
+    }
+
+    pub fn read_xy(&mut self) -> (i16, i16) {
+        let (x, y) = self.read_raw();
+        let x = x as i16 - self.zero.0 as i16;
+        let y = y as i16 - self.zero.1 as i16;
+        // by default x grows to the left, y grows down
+        (-x, -y)
+    }
+
+    // On left side:
+    //   x: larger left, lower right
+    //   y: larger up, lower down
+    pub fn read_polar(&mut self) -> (f32, f32) {
+        let (x, y) = self.read_xy();
+        let (x, y) = (x as f32, y as f32);
+        let r = (x.powi(2) + y.powi(2)).sqrt();
+        let a = y.atan2_norm(x);
+        (r, a)
     }
 
     /// Try to detect if the joystick is connected
@@ -69,6 +99,6 @@ impl Joystick {
         gpioa.pupdr.modify(|_, w| f(w));
         cortex_m::asm::delay(delay);
         gpioa.moder.modify(|_, w| w.moder0().analog().moder1().analog());
-        self.read()
+        self.read_raw()
     }
 }
