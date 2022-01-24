@@ -2,6 +2,7 @@
 #![no_std]
 
 mod board;
+mod joystick;
 mod reboot;
 mod spi;
 mod usb;
@@ -15,7 +16,7 @@ use stm32f0xx_hal as hal;
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
 mod app {
     use super::hal;
-    use crate::{spi, usb::Usb, board::BoardSide, utils::InfallibleResult};
+    use crate::{spi, joystick, usb::Usb, board::BoardSide, utils::InfallibleResult};
     use ghanima::ws2812b;
     use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
@@ -27,7 +28,8 @@ mod app {
         usb: Usb,
         ws2812: ws2812b::Leds,
         spi_tx: spi::SpiTransfer<&'static mut [u8]>,
-        dbg_pin: hal::gpio::Pin<hal::gpio::Output<hal::gpio::PushPull>>
+        dbg_pin: hal::gpio::Pin<hal::gpio::Output<hal::gpio::PushPull>>,
+        joy: joystick::Joystick,
     }
 
     #[local]
@@ -109,14 +111,9 @@ mod app {
         let debug_serial = Serial::usart2(dev.USART2, (debug_tx, debug_rx), 115_200.bps(), &mut rcc);
 
         // ADC
-        // Dedicated 14 MHz clock source is used. Conversion time is:
-        // t_conv = (239.5 + 12.5) * (1/14e6) ~= 18 us
         let joy_x = ifree(|cs| gpioa.pa0.into_analog(cs));
         let joy_y = ifree(|cs| gpioa.pa1.into_analog(cs));
-        let mut joy_adc = adc::Adc::new(dev.ADC, &mut rcc);
-        joy_adc.set_align(adc::AdcAlign::Right);
-        joy_adc.set_precision(adc::AdcPrecision::B_12);
-        joy_adc.set_sample_time(adc::AdcSampleTime::T_239);
+        let mut joy = joystick::Joystick::new(dev.ADC, (joy_x, joy_y), &mut rcc);
 
         // SPI (tx only) for RGB data
         // HAL provides only a blocking interface, so we must configure everything on our own
@@ -163,6 +160,10 @@ mod app {
         defmt::info!("Liftoff!");
         dbg_pin.set_low().infallible();
 
+        if !joy.detect() {
+            defmt::warn!("Joystick not detected");
+        }
+
         let shared = Shared {
             usb: Usb {
                 dev: usb_dev,
@@ -173,6 +174,7 @@ mod app {
             ws2812,
             spi_tx,
             dbg_pin,
+            joy,
         };
 
         let local = Local {
@@ -206,7 +208,11 @@ mod app {
         cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
     }
 
-    #[task(binds = TIM15, priority = 2, shared = [ws2812, dbg_pin], local = [timer, t: usize = 0])]
+    #[task(
+        binds = TIM15, priority = 2,
+        shared = [ws2812, dbg_pin, joy, usb],
+        local = [timer, t: usize = 0]
+    )]
     fn tick(mut cx: tick::Context) {
         // cx.shared.dbg_pin.lock(|pin| pin.toggle().infallible());
         *cx.local.t += 1;
@@ -216,14 +222,21 @@ mod app {
             let period_ms = 10;
 
             if *cx.local.t % period_ms == 0 {
-                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
-                cx.shared.ws2812.lock(|ws2812| {
-                    ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
-                });
-                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
 
                 cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
-                defmt::info!("Sending at {=u32} ms", *cx.local.t as u32);
+                let (x, _y) = cx.shared.joy.lock(|j| j.read());
+                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+
+                let (min, max) = (800, 3200);
+                let brightness = |v: u16| {
+                    (((v as u32).min(max).max(min) - min) * 255 / (max - min)) as u8
+                };
+
+                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
+                cx.shared.ws2812.lock(|ws2812| {
+                    // ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
+                    ws2812.set_test_pattern(*cx.local.t / period_ms, brightness(x));
+                });
                 cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
 
                 send_ws2812::spawn().unwrap();
