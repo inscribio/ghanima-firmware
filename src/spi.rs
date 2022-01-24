@@ -1,7 +1,7 @@
 use core::sync::atomic;
 
 use embedded_dma::StaticReadBuffer;
-use stm32f0xx_hal as hal;
+use crate::hal;
 
 /// TX only, asynchronious SPI implementation
 ///

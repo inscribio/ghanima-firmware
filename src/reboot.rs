@@ -1,7 +1,6 @@
 use core::mem::MaybeUninit;
 
-use stm32f0xx_hal as hal;
-use hal::usb;
+use crate::hal::{self, usb};
 use cortex_m::{peripheral::SCB, asm::bootload};
 use usbd_dfu_rt::DfuRuntimeOps;
 

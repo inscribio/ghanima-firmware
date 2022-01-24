@@ -1,6 +1,4 @@
-use stm32f0xx_hal as hal;
-
-use hal::usb;
+use crate::hal::{self, usb};
 use usb_device::device::UsbDevice;
 use usbd_dfu_rt::DfuRuntimeClass;
 
