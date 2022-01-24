@@ -117,7 +117,11 @@ mod app {
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
         let spi = spi::SpiTx::new(dev.SPI2, dev.DMA1, rgb_tx, 3.mhz(), &mut rcc);
-        let spi_tx = spi.with_buf(&mut cx.local.led_buf[..]);
+        let mut spi_tx = spi.with_buf(&mut cx.local.led_buf[..]);
+        let mut ws2812 = ws2812b::Leds::new();
+        // Send a first transfer with all leds disabled ASAP
+        ws2812.serialize_to_slice(spi_tx.take().unwrap());
+        spi_tx.start();
 
         // USB
         let usb = hal::usb::Peripheral {
@@ -157,7 +161,7 @@ mod app {
                 // cdc: usb_cdc,
                 dfu: usb_dfu,
             },
-            ws2812: ws2812b::Leds::new(),
+            ws2812,
             spi_tx,
             dbg_pin,
         };
