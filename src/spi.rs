@@ -144,9 +144,21 @@ where
         let (_, len) = unsafe { self.buf.read_buffer() };
         self.tx.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
+        // Wait for any data from previous transfer that has not been transmitted yet
+        // Maybe it's not even needed, because DMA should just wait for space in FIFO,
+        // but in practice SPI will most likely be ready anyway, so leave it for now.
+        self.wait_spi();
+
         // Enable channel, then trigger DMA request
         self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
         self.tx.spi.cr2.modify(|_, w| w.txdmaen().enabled());
+    }
+
+    // This may be needed if we ever want to disable SPI peripheral
+    fn wait_spi(&self) {
+        // Wait until all data has been transmitted
+        while !self.tx.spi.sr.read().ftlvl().is_empty() {}
+        while self.tx.spi.sr.read().bsy().is_busy() {}
     }
 
     pub fn finish(&mut self) -> Result<bool, ()> {
@@ -167,11 +179,6 @@ where
             // TODO: error handling
             return Err(());
         }
-
-        // Wait until all data has been transmitted
-        // TODO: could we avoid that by never disabling SPI? (it should keep consuming FIFO)
-        while !self.tx.spi.sr.read().ftlvl().is_empty() {}
-        while self.tx.spi.sr.read().bsy().is_busy() {}
 
         // "Subsequent reads and writes cannot be moved ahead of preceding reads"
         atomic::compiler_fence(atomic::Ordering::Acquire);
