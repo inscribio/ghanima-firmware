@@ -46,6 +46,10 @@ while (( $# > 0 )); do
     shift
 done
 
+# work from repository root
+HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+cd "$HERE/.."
+
 opt='--release'
 target_name='ghanima'
 
