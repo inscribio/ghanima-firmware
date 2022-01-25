@@ -2,6 +2,7 @@
 #![no_std]
 
 mod board;
+mod dma;
 mod joystick;
 mod reboot;
 mod spi;
@@ -16,7 +17,7 @@ use stm32f0xx_hal as hal;
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
 mod app {
     use super::hal;
-    use crate::{spi, joystick, usb::Usb, board::BoardSide, utils::InfallibleResult};
+    use crate::{spi, joystick, dma::DmaSplit, usb::Usb, board::BoardSide, utils::InfallibleResult};
     use ghanima::ws2812b;
     use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
@@ -80,6 +81,9 @@ mod app {
             cortex_m::asm::delay(48);
         }
 
+        // DMA
+        let dma = dev.DMA1.split(&mut rcc);
+
         // Determine board side
         // let board_side_pin = ifree(|cs| gpiob.pb13.into_floating_input(cs));
         // let board_side = BoardSide::get(board_side_pin);
@@ -118,7 +122,7 @@ mod app {
         // SPI (tx only) for RGB data
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
-        let spi = spi::SpiTx::new(dev.SPI2, dev.DMA1, rgb_tx, 3.mhz(), &mut rcc);
+        let spi = spi::SpiTx::new(dev.SPI2, dma.ch5, rgb_tx, 3.mhz(), &mut rcc);
         let mut spi_tx = spi.with_buf(&mut cx.local.led_buf[..]);
         let mut ws2812 = ws2812b::Leds::new();
         // Send a first transfer with all leds disabled ASAP

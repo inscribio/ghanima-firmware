@@ -3,24 +3,21 @@ use core::sync::atomic;
 use embedded_dma::StaticReadBuffer;
 use crate::hal;
 
+type DmaChannel = crate::dma::DmaChannel<5>;
+
 /// TX only, asynchronious SPI implementation
 ///
 /// Implementation that uses SPI2 to just send arbitrary data.
 /// MISO/SCK pins are not used.
 pub struct SpiTx {
     spi: hal::pac::SPI2,
-    dma: hal::pac::DMA1, // TODO: own only DMA1.ch5 and take DMA1.ifcr/isr as method arguments
+    dma: DmaChannel,
 }
 
 impl SpiTx {
-    // FIXME: channel is hardcoded when using IFCR/ISR
-    fn dma_channel(&self) -> &hal::pac::dma1::CH {
-        &self.dma.ch5
-    }
-
     pub fn new<MOSIPIN, F>(
         spi: hal::pac::SPI2,
-        dma: hal::pac::DMA1,
+        dma: DmaChannel,
         _mosi: MOSIPIN,
         freq: F,
         rcc: &mut hal::rcc::Rcc,
@@ -40,11 +37,11 @@ impl SpiTx {
         // Enable DMA clock
         rcc_regs.ahbenr.modify(|_, w| w.dmaen().enabled());
 
-        let s = Self { spi, dma };
+        let mut s = Self { spi, dma };
 
         // Disable SPI & DMA
         s.spi.cr1.modify(|_, w| w.spe().disabled());
-        s.dma_channel().cr.modify(|_, w| w.en().disabled());
+        s.dma.ch().cr.modify(|_, w| w.en().disabled());
 
         // Calculate baud rate, be exact.
         let (pclk, f) = (rcc.clocks.pclk().0, freq.into().0);
@@ -86,7 +83,7 @@ impl SpiTx {
                 .txdmaen().disabled()  // enabled later to trigger transfer
         });
 
-        s.dma_channel().cr.write(|w| {
+        s.dma.ch().cr.write(|w| {
             w
                 .dir().from_memory()
                 .mem2mem().disabled()
@@ -125,15 +122,13 @@ impl<BUF> SpiTransfer<BUF>
 where
     BUF: StaticReadBuffer<Word = u8>
 {
-    pub fn init(spi: SpiTx, buf: BUF) -> Self {
-        let dma_ch = spi.dma_channel();
-
+    pub fn init(mut spi: SpiTx, buf: BUF) -> Self {
         // Configure channel
         let (src, len) = unsafe { buf.read_buffer() };
         let dst = spi.spi.dr.as_ptr() as u32;
-        dma_ch.mar.write(|w| unsafe { w.ma().bits(src as u32) });
-        dma_ch.par.write(|w| unsafe { w.pa().bits(dst) });
-        dma_ch.ndtr.write(|w| w.ndt().bits(len as u16));
+        spi.dma.ch().mar.write(|w| unsafe { w.ma().bits(src as u32) });
+        spi.dma.ch().par.write(|w| unsafe { w.pa().bits(dst) });
+        spi.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
         Self { tx: spi, buf, ready: true }
     }
@@ -147,30 +142,28 @@ where
 
         // reload buffer length
         let (_, len) = unsafe { self.buf.read_buffer() };
-        self.tx.dma_channel().ndtr.write(|w| w.ndt().bits(len as u16));
+        self.tx.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
         // Enable channel, then trigger DMA request
-        self.tx.dma_channel().cr.modify(|_, w| w.en().enabled());
+        self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
         self.tx.spi.cr2.modify(|_, w| w.txdmaen().enabled());
     }
 
     pub fn finish(&mut self) -> Result<bool, ()> {
-        let isr = self.tx.dma.isr.read();
-        if isr.gif5().is_no_event() {
+        let isr = self.tx.dma.isr();
+        if !isr.any() {
             // not an interrupt from our channel
             return Ok(false);
         }
 
-        let is_err = isr.teif5().is_error();
-
         // Clear all interrupt flags
-        self.tx.dma.ifcr.write(|w| w.cgif5().set_bit());
+        self.tx.dma.ifcr(|w| w.all());
 
         // Disable DMA request and channel
         self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
-        self.tx.dma_channel().cr.modify(|_, w| w.en().disabled());
+        self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        if is_err {
+        if isr.error() {
             // TODO: error handling
             return Err(());
         }
