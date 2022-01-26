@@ -1,6 +1,8 @@
-use crate::hal::{self, usb};
 use usb_device::device::UsbDevice;
 use usbd_dfu_rt::DfuRuntimeClass;
+
+use crate::hal::usb;
+use crate::hal_ext::reboot;
 
 pub struct Usb {
     pub dev: UsbDevice<'static, usb::UsbBusType>,
@@ -9,7 +11,7 @@ pub struct Usb {
     // pub keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
     // pub mouse: HIDClass<'static, usb::UsbBusType>,
     // this does not need to be share but it should be cleaner to have it here
-    pub dfu: DfuRuntimeClass<crate::reboot::DfuBootloader>,
+    pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
 }
 
 impl Usb {

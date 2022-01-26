@@ -1,5 +1,5 @@
 use static_assertions as sa;
-use rgb::{RGB8, ComponentSlice};
+use rgb::RGB8;
 
 // SPI frequency: 3 MHz; Bit time: 333 ns
 const SPI_FREQ: usize = 3_000_000;

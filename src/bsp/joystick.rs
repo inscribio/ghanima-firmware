@@ -1,9 +1,8 @@
-use embedded_hal::{digital::v2::InputPin, adc::OneShot};
-use cortex_m::interrupt;
-use crate::hal;
-use crate::utils::InfallibleResult;
-use hal::{gpio::{Analog, gpioa}, adc};
+use embedded_hal::adc::OneShot;
 use micromath::F32Ext;
+
+use crate::hal;
+use hal::{gpio::{Analog, gpioa}, adc};
 
 // TODO: later in the code we're using dedicated methods
 type GpioX = gpioa::PA1<Analog>;

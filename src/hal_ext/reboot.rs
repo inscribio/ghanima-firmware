@@ -1,8 +1,8 @@
 use core::mem::MaybeUninit;
-
-use crate::hal::{self, usb};
 use cortex_m::{peripheral::SCB, asm::bootload};
 use usbd_dfu_rt::DfuRuntimeOps;
+
+use crate::hal::usb;
 
 const MAGIC_JUMP_BOOTLOADER: u32 = 0xdeadbeef;
 const SYSTEM_MEMORY_BASE: u32 = 0x1fffc800;

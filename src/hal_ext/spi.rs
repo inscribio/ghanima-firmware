@@ -1,9 +1,9 @@
 use core::sync::atomic;
-
 use embedded_dma::StaticReadBuffer;
+
 use crate::hal;
 
-type DmaChannel = crate::dma::DmaChannel<5>;
+type DmaChannel = super::dma::DmaChannel<5>;
 
 /// TX only, asynchronious SPI implementation
 ///

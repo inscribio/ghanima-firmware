@@ -9,6 +9,18 @@ default = []
 idle_sleep = []
 crystal = []
 
+[[bin]]
+name = "ghanima"
+test = false
+bench = false
+
+[profile.dev]
+opt-level = 2
+
+[profile.release]
+debug = true  # symbols don't increase the size on flash
+lto = true
+
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
@@ -42,15 +54,3 @@ panic-probe = "0.3"
 defmt = "0.3"
 defmt-rtt = "0.3"
 micromath = "2.0"
-
-[[bin]]
-name = "ghanima"
-test = false
-bench = false
-
-[profile.dev]
-opt-level = 2
-
-[profile.release]
-debug = true  # symbols don't increase the size on flash
-lto = true

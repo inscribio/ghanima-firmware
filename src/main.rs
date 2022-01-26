@@ -1,28 +1,23 @@
 #![no_main]
 #![no_std]
 
-mod board;
-mod dma;
-mod joystick;
-mod reboot;
-mod spi;
-mod usb;
-mod utils;
-
 use panic_probe as _;
 use defmt_rtt as _;
 use stm32f0 as _;
 use stm32f0xx_hal as hal;
+use ghanima as lib;
 
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
 mod app {
-    use super::hal;
-    use crate::{spi, joystick, dma::DmaSplit, usb::Usb, board::BoardSide, utils::InfallibleResult};
-    use ghanima::ws2812b;
-    use hal::{prelude::*, serial::Serial, adc};
     use cortex_m::interrupt::free as ifree;
+    use super::hal;
+    use hal::{prelude::*, serial::Serial};
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
-    use core::fmt::Write as _;
+
+    use super::lib;
+    use lib::bsp::{joystick, ws2812b, usb::Usb, sides::BoardSide};
+    use lib::hal_ext::{spi, dma::DmaSplit, reboot};
+    use lib::utils::InfallibleResult;
 
     #[shared]
     struct Shared {
@@ -141,7 +136,7 @@ mod app {
         // USB classes
         let usb_serial = usbd_serial::SerialPort::new(usb_bus);
         // let usb_cdc = usbd_serial::CdcAcmClass::new(usb_bus, 64);
-        let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, crate::reboot::DfuBootloader);
+        let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, reboot::DfuBootloader);
 
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
         // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
