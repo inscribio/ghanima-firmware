@@ -15,7 +15,7 @@ mod app {
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
 
     use super::lib;
-    use lib::bsp::{joystick, ws2812b, usb::Usb, sides::BoardSide};
+    use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{spi, dma::DmaSplit, reboot};
     use lib::utils::InfallibleResult;
 
@@ -24,7 +24,7 @@ mod app {
         usb: Usb,
         ws2812: ws2812b::Leds,
         spi_tx: spi::SpiTransfer<&'static mut [u8]>,
-        dbg_pin: hal::gpio::Pin<hal::gpio::Output<hal::gpio::PushPull>>,
+        dbg: debug::DebugPins,
         joy: joystick::Joystick,
     }
 
@@ -68,14 +68,6 @@ mod app {
         let gpiob = dev.GPIOB.split(&mut rcc);
         let gpioc = dev.GPIOC.split(&mut rcc);
 
-        let mut dbg_pin = ifree(|cs| gpioa.pa9.into_push_pull_output(cs)).downgrade();
-        for _ in 0..3 {
-            dbg_pin.set_high().infallible();
-            cortex_m::asm::delay(48);
-            dbg_pin.set_low().infallible();
-            cortex_m::asm::delay(48);
-        }
-
         // DMA
         let dma = dev.DMA1.split(&mut rcc);
 
@@ -102,12 +94,12 @@ mod app {
         ]);
 
         // UARTs
-        // let board_tx = ifree(|cs| gpioa.pa9.into_alternate_af1(cs));
+        let board_tx = ifree(|cs| gpioa.pa9.into_alternate_af1(cs));
         let board_rx = ifree(|cs| gpioa.pa10.into_alternate_af1(cs));
         let debug_tx = ifree(|cs| gpioa.pa2.into_alternate_af1(cs));
         let debug_rx = ifree(|cs| gpioa.pa3.into_alternate_af1(cs));
-        // let board_serial = Serial::usart1(dev.USART1, (board_tx, board_rx), 115_200.bps(), &mut rcc);
-        let debug_serial = Serial::usart2(dev.USART2, (debug_tx, debug_rx), 115_200.bps(), &mut rcc);
+        let serial = Serial::usart1(dev.USART1, (board_tx, board_rx), 115_200.bps(), &mut rcc);
+        let mut dbg = debug::DebugPins::new(dev.USART2, (debug_tx, debug_rx), &mut rcc);
 
         // ADC
         let joy_x = ifree(|cs| gpioa.pa0.into_analog(cs));
@@ -155,9 +147,9 @@ mod app {
         let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
         timer.listen(hal::timers::Event::TimeOut);
 
-        dbg_pin.set_high().infallible();
-        defmt::info!("Liftoff!");
-        dbg_pin.set_low().infallible();
+        dbg.with_tx_high(|| {
+            defmt::info!("Liftoff!");
+        });
 
         if !joy.detect() {
             defmt::warn!("Joystick not detected");
@@ -172,7 +164,7 @@ mod app {
             },
             ws2812,
             spi_tx,
-            dbg_pin,
+            dbg,
             joy,
         };
 
@@ -183,37 +175,44 @@ mod app {
         (shared, local, init::Monotonics())
     }
 
-    #[task(shared = [ws2812, spi_tx, dbg_pin])]
+    #[task(shared = [ws2812, spi_tx, dbg])]
     fn send_ws2812(mut cx: send_ws2812::Context) {
-        (cx.shared.ws2812,cx.shared.spi_tx).lock(|ws2812, spi_tx| {
+        let send_ws2812::SharedResources {
+            ws2812,
+            spi_tx,
+            dbg
+        } = cx.shared;
+
+        (ws2812, spi_tx, dbg).lock(|ws2812, spi_tx, dbg| {
             // fill the buffer; when this task is started dma must already be finished
-            cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
             // TODO: try to use .serialize()
-            ws2812.serialize_to_slice(spi_tx.take().unwrap());
-            cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+            dbg.with_rx_high(|| {
+                ws2812.serialize_to_slice(spi_tx.take().unwrap());
+            });
+
             // start the transfer
             spi_tx.start();
-            cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
+            dbg.set_tx(true);
         });
     }
 
-    #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg_pin])]
+    #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
     fn dma_complete(mut cx: dma_complete::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
             if !spi_tx.finish().unwrap() {
                 defmt::panic!("Interrupt from unexpected channel");
             }
         });
-        cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+        cx.shared.dbg.lock(|d| d.set_tx(false));
     }
 
     #[task(
         binds = TIM15, priority = 2,
-        shared = [ws2812, dbg_pin, joy, usb],
+        shared = [ws2812, dbg, joy, usb],
         local = [timer, t: usize = 0]
     )]
     fn tick(mut cx: tick::Context) {
-        // cx.shared.dbg_pin.lock(|pin| pin.toggle().infallible());
+        // cx.shared.dbg.lock(|pin| pin.toggle().infallible());
         *cx.local.t += 1;
 
         // Clears interrupt flag
@@ -221,28 +220,29 @@ mod app {
             let period_ms = 10;
 
             if *cx.local.t % period_ms == 0 {
+                cx.shared.dbg.lock(|dbg| {
 
-                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
-                // let (x, y) = cx.shared.joy.lock(|j| j.read_xy());
-                let (r, angle) = cx.shared.joy.lock(|j| j.read_polar());
-                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+                    let (r, angle) = dbg.with_tx_high(|| {
+                        cx.shared.joy.lock(|j| j.read_polar())
+                    });
 
-                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
-                let brightness = if r > 300.0 {
-                    ((angle / 4.0).min(1.0).max(0.0) * 255 as f32) as u8
-                } else {
-                    0
-                };
-                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
+                    let brightness = dbg.with_rx_high(|| {
+                        if r > 300.0 {
+                            ((angle / 4.0).min(1.0).max(0.0) * 255 as f32) as u8
+                        } else {
+                            0
+                        }
+                    });
 
-                defmt::info!("brightness = {=u8}", brightness);
+                    // defmt::info!("brightness = {=u8}", brightness);
 
-                cx.shared.dbg_pin.lock(|pin| pin.set_high().infallible());
-                cx.shared.ws2812.lock(|ws2812| {
-                    // ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
-                    ws2812.set_test_pattern(*cx.local.t / period_ms, brightness);
+                    dbg.with_tx_high(|| {
+                        cx.shared.ws2812.lock(|ws2812| {
+                            // ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
+                            ws2812.set_test_pattern(*cx.local.t / period_ms, brightness);
+                        });
+                    });
                 });
-                cx.shared.dbg_pin.lock(|pin| pin.set_low().infallible());
 
                 send_ws2812::spawn().unwrap();
             }
