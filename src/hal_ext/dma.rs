@@ -134,3 +134,40 @@ impl InterruptClear {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_register_offsets() {
+        // offset to ISR.GIFx bit
+        assert_eq!(DmaChannel::<1>::OFFSET, 0);
+        assert_eq!(DmaChannel::<2>::OFFSET, 4);
+        assert_eq!(DmaChannel::<7>::OFFSET, 24);
+    }
+
+    #[test]
+    fn channel_register_mask() {
+        assert_eq!(DmaChannel::<1>::MASK << DmaChannel::<1>::OFFSET, 0b0000_0000_0000_0000_0000_0000_0000_1111);
+        assert_eq!(DmaChannel::<2>::MASK << DmaChannel::<2>::OFFSET, 0b0000_0000_0000_0000_0000_0000_1111_0000);
+        assert_eq!(DmaChannel::<7>::MASK << DmaChannel::<7>::OFFSET, 0b0000_1111_0000_0000_0000_0000_0000_0000);
+    }
+
+    #[test]
+    fn interrupt_status() {
+        assert_eq!(InterruptStatus(0b0000).any(), false);
+        assert_eq!(InterruptStatus(0b0000).half_complete(), false);
+        assert_eq!(InterruptStatus(0b0001).any(), true);
+        assert_eq!(InterruptStatus(0b0001).half_complete(), false);
+        assert_eq!(InterruptStatus(0b0100).any(), false);
+        assert_eq!(InterruptStatus(0b0100).half_complete(), true);
+    }
+
+    #[test]
+    fn interrupt_clear() {
+        assert_eq!(InterruptClear(0).0, 0b0000);
+        assert_eq!(InterruptClear(0).complete().half_complete().0, 0b0110);
+        assert_eq!(InterruptClear(0).error().all().0, 0b1001);
+    }
+}

@@ -43,20 +43,8 @@ impl SpiTx {
         s.spi.cr1.modify(|_, w| w.spe().disabled());
         s.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        // Calculate baud rate, be exact.
-        let (pclk, f) = (rcc.clocks.pclk().0, freq.into().0);
-        let br = match (pclk / f, pclk % f) {
-            (_, rem) if rem != 0 => panic!("Unreachable SPI frequency"),
-            (2, _) => 0b000,
-            (4, _) => 0b001,
-            (8, _) => 0b010,
-            (16, _) => 0b011,
-            (32, _) => 0b100,
-            (64, _) => 0b101,
-            (128, _) => 0b110,
-            (256, _) => 0b111,
-            _ => panic!("SPI clock divider not available"),
-        };
+        // Calculate baud rate
+        let br = Self::get_baudrate_divisor(rcc.clocks.pclk().0, freq.into().0);
 
         // Ignore CPHA/CPOL as we don't even use clock
         s.spi.cr1.write(|w|  {
@@ -102,6 +90,22 @@ impl SpiTx {
 
         // Do NOT enable SPI (see RM0091; SPI functional description; Communication using DMA)
         s
+    }
+
+    fn get_baudrate_divisor(pclk: u32, freq: u32) -> u8 {
+        // Be exact, else panic
+        match (pclk / freq, pclk % freq) {
+            (_, rem) if rem != 0 => panic!("Unreachable SPI frequency"),
+            (2, _) => 0b000,
+            (4, _) => 0b001,
+            (8, _) => 0b010,
+            (16, _) => 0b011,
+            (32, _) => 0b100,
+            (64, _) => 0b101,
+            (128, _) => 0b110,
+            (256, _) => 0b111,
+            _ => panic!("SPI clock divider not available"),
+        }
     }
 
     pub fn with_buf<BUF>(self, buf: BUF) -> SpiTransfer<BUF>
@@ -195,3 +199,31 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn baudrate_exact() {
+        let br = SpiTx::get_baudrate_divisor;
+        assert_eq!(br(48_000_000, 3_000_000), 0b011); // fPCLK/16
+        assert_eq!(br(48_000_000, 1_500_000), 0b100); // fPCLK/32
+        assert_eq!(br(24_000_000, 3_000_000), 0b010); // fPCLK/8
+        assert_eq!(br(24_000_000, 12_000_000), 0b000); // fPCLK/2
+    }
+
+
+    #[test]
+    #[should_panic(expected = "SPI clock divider not available")]
+    fn baudrate_approx() {
+        SpiTx::get_baudrate_divisor(48_000_000, 2_000_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unreachable")]
+    fn baudrate_unreachable() {
+        SpiTx::get_baudrate_divisor(48_000_000, 3_500_000);
+    }
+}
+
