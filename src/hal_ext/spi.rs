@@ -126,7 +126,7 @@ impl<BUF> SpiTransfer<BUF>
 where
     BUF: StaticReadBuffer<Word = u8>
 {
-    pub fn init(mut spi: SpiTx, buf: BUF) -> Self {
+    fn init(mut spi: SpiTx, buf: BUF) -> Self {
         // Configure channel
         let (src, len) = unsafe { buf.read_buffer() };
         let dst = spi.spi.dr.as_ptr() as u32;
