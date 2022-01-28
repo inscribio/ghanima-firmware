@@ -16,7 +16,7 @@ mod app {
 
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{spi, dma::DmaSplit, reboot};
+    use lib::hal_ext::{spi, uart, dma::DmaSplit, reboot};
     use lib::utils::InfallibleResult;
 
     #[shared]
@@ -26,6 +26,8 @@ mod app {
         spi_tx: spi::SpiTransfer<&'static mut [u8]>,
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
+        serial_tx: uart::Tx,
+        serial_rx: uart::Rx<&'static mut [u8]>,
     }
 
     #[local]
@@ -36,6 +38,8 @@ mod app {
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: ws2812b::Buffer = ws2812b::BUFFER_ZERO,
+        serial_tx_buf: [u8; 64] = [0; 64],
+        serial_rx_buf: [u8; 128] = [0; 128],
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -98,7 +102,14 @@ mod app {
         let board_rx = ifree(|cs| gpioa.pa10.into_alternate_af1(cs));
         let debug_tx = ifree(|cs| gpioa.pa2.into_alternate_af1(cs));
         let debug_rx = ifree(|cs| gpioa.pa3.into_alternate_af1(cs));
-        let serial = Serial::usart1(dev.USART1, (board_tx, board_rx), 115_200.bps(), &mut rcc);
+        let (serial_tx, serial_rx) = uart::Uart::new(
+            dev.USART1,
+            (board_tx, board_rx),
+            (dma.ch2, dma.ch3),
+            (&mut cx.local.serial_tx_buf[..], &mut cx.local.serial_rx_buf[..]),
+            115_200.bps(),
+            &mut rcc,
+        ).split();
         let mut dbg = debug::DebugPins::new(dev.USART2, (debug_tx, debug_rx), &mut rcc);
 
         // ADC
@@ -114,7 +125,7 @@ mod app {
         let mut ws2812 = ws2812b::Leds::new();
         // Send a first transfer with all leds disabled ASAP
         ws2812.serialize_to_slice(spi_tx.take().unwrap());
-        spi_tx.start();
+        spi_tx.start().unwrap();
 
         // USB
         let usb = hal::usb::Peripheral {
@@ -166,6 +177,8 @@ mod app {
             spi_tx,
             dbg,
             joy,
+            serial_tx,
+            serial_rx,
         };
 
         let local = Local {
@@ -191,8 +204,9 @@ mod app {
             });
 
             // start the transfer
-            spi_tx.start();
-            dbg.set_tx(true);
+            if spi_tx.start().is_ok() {
+                dbg.set_tx(true);
+            }
         });
     }
 
@@ -206,9 +220,39 @@ mod app {
         cx.shared.dbg.lock(|d| d.set_tx(false));
     }
 
+    #[task(binds = DMA1_CH2_3, priority = 3, shared = [serial_tx, serial_rx])]
+    fn dma_complete_123(mut cx: dma_complete_123::Context) {
+        cx.shared.serial_rx.lock(|rx| {
+            rx.on_transfer_complete().unwrap();
+        });
+        cx.shared.serial_tx.lock(|tx| {
+            tx.finish().unwrap();
+        });
+    }
+
+    #[task(binds = USART1, priority = 3, shared = [serial_rx], local = [
+           empty_count: usize = 0,
+    ])]
+    fn uart_interrupt(mut cx: uart_interrupt::Context) {
+        cx.shared.serial_rx.lock(|rx| {
+            if let Some(d) = rx.on_uart_interrupt() {
+                if d.data1.len() == 0 && d.data2.len() == 0 {
+                    *cx.local.empty_count += 1;
+                } else {
+                    defmt::info!("RX: '{=str}' + '{=str}', lost {=usize}, empty_count = {=usize}",
+                        core::str::from_utf8(d.data1).unwrap_or("<WRONG_UTF8>"),
+                        core::str::from_utf8(d.data2).unwrap_or("<WRONG_UTF8>"),
+                        d.overwritten,
+                        *cx.local.empty_count,
+                    );
+                }
+            }
+        });
+    }
+
     #[task(
         binds = TIM15, priority = 2,
-        shared = [ws2812, dbg, joy, usb],
+        shared = [ws2812, dbg, joy, usb, serial_tx],
         local = [timer, t: usize = 0]
     )]
     fn tick(mut cx: tick::Context) {
@@ -245,6 +289,14 @@ mod app {
                 });
 
                 send_ws2812::spawn().unwrap();
+            }
+
+            if *cx.local.t % 333 == 0 {
+                cx.shared.serial_tx.lock(|s| {
+                    let msg = "Hello world";
+                    // defmt::info!("Transmitting ...");
+                    s.transmit(msg.as_bytes()).unwrap();
+                });
             }
         }
     }

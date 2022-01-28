@@ -1,4 +1,4 @@
-use core::sync::atomic;
+use core::{sync::atomic, convert::Infallible};
 use embedded_dma::StaticReadBuffer;
 
 use crate::hal;
@@ -80,7 +80,7 @@ impl SpiTx {
                 .pinc().disabled()
                 .msize().bits8()
                 .psize().bits8()
-                .pl().medium()  // TODO: decide on priority
+                .pl().high()  // TODO: decide on priority
                 .htie().disabled()
                 .teie().enabled()
                 .tcie().enabled()
@@ -137,8 +137,10 @@ where
         Self { tx: spi, buf, ready: true }
     }
 
-    pub fn start(&mut self) {
-        assert_eq!(self.ready, true);
+    pub fn start(&mut self) -> nb::Result<(), Infallible> {
+        if !self.ready {
+            return Err(nb::Error::WouldBlock);
+        }
         self.ready = false;
 
         // "Preceding reads and writes cannot be moved past subsequent writes"
@@ -156,6 +158,8 @@ where
         // Enable channel, then trigger DMA request
         self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
         self.tx.spi.cr2.modify(|_, w| w.txdmaen().enabled());
+
+        Ok(())
     }
 
     // This may be needed if we ever want to disable SPI peripheral

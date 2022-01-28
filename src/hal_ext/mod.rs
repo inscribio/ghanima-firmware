@@ -6,3 +6,6 @@
 pub mod dma;
 pub mod reboot;
 pub mod spi;
+pub mod uart;
+
+mod circ_buf;
