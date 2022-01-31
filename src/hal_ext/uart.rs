@@ -54,9 +54,9 @@ pub struct Rx<BUF> {
 /// TODO: safety - it is possible that DMA will overwrite data if we are not
 /// able to copy it fast enough
 pub struct RxData<'a> {
-    pub data1: &'a [u8],  // main slice
-    pub data2: &'a [u8],  // 2nd slice with data after buffer wrap
-    pub overwritten: usize,
+    data1: &'a [u8],  // main slice
+    data2: &'a [u8],  // 2nd slice with data after buffer wrap
+    overwritten: usize,
 }
 
 impl<BUF> Uart<BUF>
@@ -279,5 +279,56 @@ where
         } else {
             Ok(true)
         }
+    }
+}
+
+impl<'a> RxData<'a> {
+    pub fn data(&self) -> (&'a [u8], &'a [u8]) {
+        (self.data1, self.data2)
+    }
+
+    pub fn lost(&self) -> usize {
+        self.overwritten
+    }
+
+    pub fn safety_margin(&self) -> usize {
+        todo!()
+    }
+
+    pub fn iter_all(&self) -> impl Iterator<Item = &'a u8> {
+        self.data1.iter().chain(self.data2.iter())
+    }
+
+    pub fn len(&self) -> usize {
+        self.data1.len() + self.data2.len()
+    }
+}
+
+impl<'a> core::ops::Index<usize> for RxData<'a> {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index < self.data1.len() {
+            &self.data1[index]
+        } else {
+            &self.data2[index - self.data1.len()]
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rx_data_index() {
+        let (buf1, buf2) = ([1, 2, 3, 4, 5], [6, 7, 8, 9]);
+        let rx_data = RxData { data1: &buf1, data2: &buf2, overwritten: 0 };
+        assert_eq!(rx_data[0], 1);
+        assert_eq!(rx_data[3], 4);
+        assert_eq!(rx_data[4], 5);
+        assert_eq!(rx_data[5], 6);
+        assert_eq!(rx_data[6], 7);
+        assert_eq!(rx_data[8], 9);
     }
 }

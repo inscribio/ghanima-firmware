@@ -11,28 +11,28 @@ use ghanima as lib;
 mod app {
     use cortex_m::interrupt::free as ifree;
     use super::hal;
-    use hal::{prelude::*, serial::Serial};
+    use hal::prelude::*;
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
 
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{spi, uart, dma::DmaSplit, reboot};
-    use lib::utils::InfallibleResult;
 
     #[shared]
     struct Shared {
         usb: Usb,
-        ws2812: ws2812b::Leds,
-        spi_tx: spi::SpiTransfer<&'static mut [u8]>,
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
+        spi_tx: spi::SpiTransfer<&'static mut [u8]>,
         serial_tx: uart::Tx,
         serial_rx: uart::Rx<&'static mut [u8]>,
+        board_side: BoardSide,
     }
 
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
+        ws2812: ws2812b::Leds,
     }
 
     #[init(local = [
@@ -76,9 +76,8 @@ mod app {
         let dma = dev.DMA1.split(&mut rcc);
 
         // Determine board side
-        // let board_side_pin = ifree(|cs| gpiob.pb13.into_floating_input(cs));
-        // let board_side = BoardSide::get(board_side_pin);
-        let board_side = BoardSide::Left;
+        let board_side = ifree(|cs| gpiob.pb13.into_floating_input(cs));
+        let board_side = BoardSide::get(board_side);
 
         // Keyboard matrix
         let cols = ifree(|cs| [
@@ -170,48 +169,70 @@ mod app {
             usb: Usb {
                 dev: usb_dev,
                 serial: usb_serial,
-                // cdc: usb_cdc,
                 dfu: usb_dfu,
             },
-            ws2812,
             spi_tx,
             dbg,
             joy,
             serial_tx,
             serial_rx,
+            board_side,
         };
 
         let local = Local {
             timer,
+            ws2812,
         };
 
         (shared, local, init::Monotonics())
     }
 
-    #[task(shared = [ws2812, spi_tx, dbg])]
-    fn send_ws2812(mut cx: send_ws2812::Context) {
-        let send_ws2812::SharedResources {
-            ws2812,
+    #[task(shared = [spi_tx, joy, dbg], local = [ws2812])]
+    fn update_leds(cx: update_leds::Context, t: usize) {
+        let update_leds::SharedResources {
             spi_tx,
-            dbg
+            mut joy,
+            mut dbg
         } = cx.shared;
+        let ws2812 = cx.local.ws2812;
 
-        (ws2812, spi_tx, dbg).lock(|ws2812, spi_tx, dbg| {
-            // fill the buffer; when this task is started dma must already be finished
-            // TODO: try to use .serialize()
+        // Read joystick
+        let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
+            joy.lock(|j| j.read_polar())
+        }));
+
+        // Calculate brightness
+        let brightness = dbg.lock(|dbg| dbg.with_rx_high(|| {
+            if r > 300.0 {
+                ((angle / 4.0).min(1.0).max(0.0) * 255 as f32) as u8
+            } else {
+                0
+            }
+        }));
+
+        // Update LED colors given time and desired brightness
+        dbg.lock(|dbg| dbg.with_tx_high(|| {
+            ws2812.set_test_pattern(t, brightness);
+        }));
+
+
+        // Prepare data to send and start DMA transfer
+        (spi_tx, dbg).lock(|spi_tx, dbg| {
             dbg.with_rx_high(|| {
-                ws2812.serialize_to_slice(spi_tx.take().unwrap());
+                // TODO: try to use .serialize()
+                let buf = spi_tx.take()
+                    .expect("Trying to serialize new data but DMA transfer is not finished");
+                ws2812.serialize_to_slice(buf);
             });
 
-            // start the transfer
-            if spi_tx.start().is_ok() {
-                dbg.set_tx(true);
-            }
+             spi_tx.start()
+                 .expect("If we were able to serialize we must be able to start!");
+             dbg.set_tx(true);
         });
     }
 
     #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
-    fn dma_complete(mut cx: dma_complete::Context) {
+    fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
             if !spi_tx.finish().unwrap() {
                 defmt::panic!("Interrupt from unexpected channel");
@@ -221,7 +242,7 @@ mod app {
     }
 
     #[task(binds = DMA1_CH2_3, priority = 3, shared = [serial_tx, serial_rx])]
-    fn dma_complete_123(mut cx: dma_complete_123::Context) {
+    fn dma_uart_callback(mut cx: dma_uart_callback::Context) {
         cx.shared.serial_rx.lock(|rx| {
             rx.on_transfer_complete().unwrap();
         });
@@ -235,68 +256,40 @@ mod app {
     ])]
     fn uart_interrupt(mut cx: uart_interrupt::Context) {
         cx.shared.serial_rx.lock(|rx| {
-            if let Some(d) = rx.on_uart_interrupt() {
-                if d.data1.len() == 0 && d.data2.len() == 0 {
+            if let Some(rx) = rx.on_uart_interrupt() {
+                if rx.len() == 0 {
                     *cx.local.empty_count += 1;
                 } else {
-                    defmt::info!("RX: '{=str}' + '{=str}', lost {=usize}, empty_count = {=usize}",
-                        core::str::from_utf8(d.data1).unwrap_or("<WRONG_UTF8>"),
-                        core::str::from_utf8(d.data2).unwrap_or("<WRONG_UTF8>"),
-                        d.overwritten,
-                        *cx.local.empty_count,
+                    defmt::info!("RX: rx = {=[u8]} {=[u8]}, lost = {=usize}, empty_cnt = {=usize}",
+                        rx.data().0, rx.data().1, rx.lost(), *cx.local.empty_count,
                     );
                 }
             }
         });
     }
 
-    #[task(
-        binds = TIM15, priority = 2,
-        shared = [ws2812, dbg, joy, usb, serial_tx],
-        local = [timer, t: usize = 0]
-    )]
-    fn tick(mut cx: tick::Context) {
-        // cx.shared.dbg.lock(|pin| pin.toggle().infallible());
-        *cx.local.t += 1;
+    #[task(shared = [serial_tx, &board_side])]
+    fn serial_transmit(cx: serial_transmit::Context) {
+        let mut tx = cx.shared.serial_tx;
+        let msg = "Yo, that's a test message!";
+        tx.lock(|tx| {
+            tx.transmit(msg.as_bytes()).unwrap()
+        });
+    }
 
+    #[task(binds = TIM15, priority = 2, shared = [&board_side], local = [timer, t: usize = 0])]
+    fn tick(cx: tick::Context) {
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
-            let period_ms = 10;
+            let t = cx.local.t;
+            *t += 1;
 
-            if *cx.local.t % period_ms == 0 {
-                cx.shared.dbg.lock(|dbg| {
-
-                    let (r, angle) = dbg.with_tx_high(|| {
-                        cx.shared.joy.lock(|j| j.read_polar())
-                    });
-
-                    let brightness = dbg.with_rx_high(|| {
-                        if r > 300.0 {
-                            ((angle / 4.0).min(1.0).max(0.0) * 255 as f32) as u8
-                        } else {
-                            0
-                        }
-                    });
-
-                    // defmt::info!("brightness = {=u8}", brightness);
-
-                    dbg.with_tx_high(|| {
-                        cx.shared.ws2812.lock(|ws2812| {
-                            // ws2812.set_test_pattern(*cx.local.t / period_ms, 100);
-                            ws2812.set_test_pattern(*cx.local.t / period_ms, brightness);
-                        });
-                    });
-                });
-
-                send_ws2812::spawn().unwrap();
+            if *t % 10 == 0 {
+                update_leds::spawn(*t / 10).unwrap();
             }
 
-            if *cx.local.t % 333 == 0 {
-                cx.shared.serial_tx.lock(|s| {
-                    let msg = "Hello world";
-                    // defmt::info!("Transmitting ...");
-                    s.transmit(msg.as_bytes()).unwrap();
-                });
+            if *t % 200 == 0 {
+                serial_transmit::spawn().unwrap();
             }
         }
     }
