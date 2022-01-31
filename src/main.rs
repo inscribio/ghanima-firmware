@@ -80,7 +80,7 @@ mod app {
         let board_side = BoardSide::get(board_side);
 
         // Keyboard matrix
-        let cols = ifree(|cs| [
+        let _cols = ifree(|cs| [
             gpiob.pb1.into_pull_up_input(cs).downgrade(),
             gpiob.pb0.into_pull_up_input(cs).downgrade(),
             gpioa.pa7.into_pull_up_input(cs).downgrade(),
@@ -88,7 +88,7 @@ mod app {
             gpioa.pa5.into_pull_up_input(cs).downgrade(),
             gpioa.pa4.into_pull_up_input(cs).downgrade(),
         ]);
-        let rows =  ifree(|cs| [
+        let _rows =  ifree(|cs| [
             gpiob.pb6.into_push_pull_output(cs).downgrade(),
             gpiob.pb7.into_push_pull_output(cs).downgrade(),
             gpioc.pc13.into_push_pull_output(cs).downgrade(),

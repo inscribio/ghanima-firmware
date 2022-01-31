@@ -6,6 +6,7 @@ const SPI_FREQ: usize = 3_000_000;
 const T0H_BITS: usize = 1;  // 333 ns (vs 220-380 ns)
 const T0L_BITS: usize = 3;  // 1000 ns (vs 580-1000 ns)
 const T1H_BITS: usize = 2;  // 666 ns (vs 580-1000 ns)
+#[allow(dead_code)]
 const T1L_BITS: usize = 2;  // 666 ns (vs 580-1000 ns)
 const RESET_US: usize = 280;
 

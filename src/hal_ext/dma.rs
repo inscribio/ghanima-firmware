@@ -26,14 +26,12 @@ pub struct Dma {
 impl DmaSplit for hal::pac::DMA1 {
     type Channels = Dma;
 
-    fn split(self, rcc: &mut hal::rcc::Rcc) -> Self::Channels {
+    fn split(self, _rcc: &mut hal::rcc::Rcc) -> Self::Channels {
         // Need to access some registers outside of HAL type system (field `regs` is private)
         let rcc_regs = unsafe { &*hal::pac::RCC::ptr() };
 
         // Enable DMA clock
         rcc_regs.ahbenr.modify(|_, w| w.dmaen().enabled());
-
-        let dma = unsafe { &*hal::pac::DMA1::ptr() };
 
         Dma {
             // isr: todo!(),
