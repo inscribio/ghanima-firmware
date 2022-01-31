@@ -35,6 +35,10 @@ mod app {
         ws2812: ws2812b::Leds,
     }
 
+    #[monotonic(binds = SysTick, default = true)]
+    type Mono = systick_monotonic::Systick<MONO_HZ>;
+    pub const MONO_HZ: u32 = 1000;
+
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: ws2812b::Buffer = ws2812b::BUFFER_ZERO,
@@ -184,7 +188,9 @@ mod app {
             ws2812,
         };
 
-        (shared, local, init::Monotonics())
+        let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
+
+        (shared, local, init::Monotonics(mono))
     }
 
     #[task(shared = [spi_tx, joy, dbg], local = [ws2812])]
