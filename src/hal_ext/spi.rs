@@ -2,6 +2,7 @@ use core::{sync::atomic, convert::Infallible};
 use embedded_dma::StaticReadBuffer;
 
 use crate::hal;
+use crate::utils::InfallibleResult;
 
 type DmaChannel = super::dma::DmaChannel<5>;
 
@@ -13,6 +14,9 @@ pub struct SpiTx {
     spi: hal::pac::SPI2,
     dma: DmaChannel,
 }
+
+#[derive(Debug)]
+pub struct TransferOngoing;
 
 impl SpiTx {
     pub fn new<MOSIPIN, F>(
@@ -137,9 +141,12 @@ where
         Self { tx: spi, buf, ready: true }
     }
 
-    pub fn start(&mut self) -> nb::Result<(), Infallible> {
+    /// Start DMA transfer
+    ///
+    ///
+    pub fn start(&mut self) -> nb::Result<(), TransferOngoing> {
         if !self.ready {
-            return Err(nb::Error::WouldBlock);
+            return Err(nb::Error::Other(TransferOngoing));
         }
         self.ready = false;
 
@@ -153,7 +160,11 @@ where
         // Wait for any data from previous transfer that has not been transmitted yet
         // Maybe it's not even needed, because DMA should just wait for space in FIFO,
         // but in practice SPI will most likely be ready anyway, so leave it for now.
-        self.wait_spi();
+        match self.wait_spi() {
+            Err(nb::Error::WouldBlock) => return Err(nb::Error::WouldBlock),
+            Err(nb::Error::Other(e)) => Err(e).infallible(),
+            Ok(()) => {},
+        };
 
         // Enable channel, then trigger DMA request
         self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
@@ -163,43 +174,46 @@ where
     }
 
     // This may be needed if we ever want to disable SPI peripheral
-    fn wait_spi(&self) {
+    fn wait_spi(&self) -> nb::Result<(), Infallible> {
         // Wait until all data has been transmitted
-        while !self.tx.spi.sr.read().ftlvl().is_empty() {}
-        while self.tx.spi.sr.read().bsy().is_busy() {}
+        if !self.tx.spi.sr.read().ftlvl().is_empty() || self.tx.spi.sr.read().bsy().is_busy() {
+            Err(nb::Error::WouldBlock)
+        } else {
+            Ok(())
+        }
     }
 
-    pub fn finish(&mut self) -> Result<bool, ()> {
-        let isr = self.tx.dma.isr();
-        if !isr.any() {
-            // not an interrupt from our channel
-            return Ok(false);
-        }
-
-        // Clear all interrupt flags
-        self.tx.dma.ifcr(|w| w.all());
+    /// Handle DMA interrupt
+    ///
+    /// Retuns `true` if there was an interrupt - this way it is possible to
+    /// call this function along handlers for other DMA channels. Error is
+    /// returned if the DMA transfer error flag is on.
+    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
+        let status = self.tx.dma.handle_interrupt();
 
         // Disable DMA request and channel
         self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
         self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        if isr.error() {
-            // TODO: error handling
-            return Err(());
-        }
-
         // "Subsequent reads and writes cannot be moved ahead of preceding reads"
         atomic::compiler_fence(atomic::Ordering::Acquire);
 
-        self.ready = true;
-
-        Ok(true)
+        status.map(|status| {
+            if status.complete() {
+                self.ready = true;
+                true
+            } else if status.half_complete() {
+                panic!("Unexpected half-transfer interrupt");
+            } else {
+                false
+            }
+        })
     }
 
-    pub fn take(&mut self) -> Result<&mut BUF, ()> {
+    pub fn take(&mut self) -> Result<&mut BUF, TransferOngoing> {
         match self.ready {
             true => Ok(&mut self.buf),
-            false => Err(()),
+            false => Err(TransferOngoing),
         }
     }
 }

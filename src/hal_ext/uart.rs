@@ -150,37 +150,39 @@ impl Tx {
         Ok(())
     }
 
-    pub fn finish(&mut self) -> Result<bool, ()> {
-        let isr = self.dma.isr();
-        if !isr.any() {
-            // not an interrupt from our channel
-            return Ok(false);
-        }
-
-        // Clear flags
-        self.dma.ifcr(|w| w.all());
+    /// Handle DMA interrupt
+    ///
+    /// Retuns `true` if there was an interrupt - this way it is possible to
+    /// call this function along handlers for other DMA channels. Error is
+    /// returned if the DMA transfer error flag is on.
+    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
+        let status = self.dma.handle_interrupt();
 
         // Disable DMA request and channel
         Self::uart().cr3.modify(|_, w| w.dmat().disabled());
         self.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        if isr.error() {
-            // TODO: error handling
-            return Err(())
-        }
-
-        // Ensure idle frame after transfer
-        // FIXME: sometimes waiting for TEACK leads to an infinite loop
-        // Self::uart().cr1.modify(|_, w| w.te().disabled());
-        // // We must check TEACK to ensure that TE=0 has been registered.
-        // while Self::uart().isr.read().teack().bit_is_clear() {}
-        // Self::uart().cr1.modify(|_, w| w.te().enabled());
-        // // Do not wait for TEACK=1, we will wait in transmit() if needed.
-
         atomic::compiler_fence(atomic::Ordering::Acquire);
 
-        self.ready = true;
-        Ok(true)
+        status.map(|status| {
+            if status.complete() {
+                self.ready = true;
+
+                // Ensure idle frame after transfer
+                // FIXME: sometimes waiting for TEACK leads to an infinite loop
+                // Self::uart().cr1.modify(|_, w| w.te().disabled());
+                // // We must check TEACK to ensure that TE=0 has been registered.
+                // while Self::uart().isr.read().teack().bit_is_clear() {}
+                // Self::uart().cr1.modify(|_, w| w.te().enabled());
+                // // Do not wait for TEACK=1, we will wait in transmit() if needed.
+
+                true
+            } else if status.half_complete() {
+                panic!("Unexpected half-transfer interrupt");
+            } else {
+                false
+            }
+        })
     }
 
     fn configure_dma_transfer(&mut self, len: usize) {
@@ -260,25 +262,18 @@ where
         }
     }
 
-    pub fn on_transfer_complete(&mut self) -> Result<bool, ()> {
-        let isr = self.dma.isr();
-        if !isr.any() {
-            // not an interrupt from our channel
-            return Ok(false);
-        }
-
-        // Clear interrupt flags
-        self.dma.ifcr(|w| w.all());
-
-        if isr.complete() {
-            self.buf.tail_wrapped();
-        }
-
-        if isr.error() {
-            Err(())
-        } else {
-            Ok(true)
-        }
+    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
+        self.dma.handle_interrupt()
+            .map(|status| {
+                if status.complete() {
+                    self.buf.tail_wrapped();
+                    true
+                } else if status.half_complete() {
+                    panic!("Unexpected half-transfer interrupt");
+                } else {
+                    false
+                }
+            })
     }
 }
 

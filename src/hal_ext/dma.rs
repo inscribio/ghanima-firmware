@@ -10,7 +10,13 @@ pub trait DmaSplit {
 }
 
 pub struct DmaChannel<const C: u8>;
+
+/// ISR flags for a single DMA channel
+#[derive(Debug, PartialEq, Eq)]
 pub struct InterruptStatus(u8);
+
+/// IFCR flags for a single DMA channel
+#[derive(Debug, PartialEq, Eq)]
 pub struct InterruptClear(u8);
 
 pub struct Dma {
@@ -74,6 +80,32 @@ macro_rules! dma_channels {
                     let mask = (ifcr.0 as u32 & Self::MASK) << Self::OFFSET;
                     unsafe { dma.ifcr.write(|w| w.bits(mask)); }
                 }
+
+                /// Clear channel interrupt flags and check which interrupts occured
+                ///
+                /// If there was an error flag it will be returned as `Err`, and the
+                /// half/full-transfer interrupts can be found in `Ok` vairant.
+                pub fn handle_interrupt(&mut self) -> Result<InterruptStatus, ()> {
+                    // Check if this is an interrupt from this channel
+                    let isr = self.isr();
+                    if !isr.any() {
+                        return Ok(InterruptStatus(0));
+                    }
+
+                    // Clear all interrupt flags
+                    self.ifcr(|w| w.all());
+
+                    if isr.error() {
+                        // On error hardware clears EN bit, we disable all interrupts
+                        self.ch().cr.modify(|_, w| {
+                            w
+                                .htie().disabled()
+                                .tcie().enabled()
+                                .teie().enabled()
+                        });
+                    }
+                    isr.as_result()
+                }
             }
         )+
     }
@@ -106,8 +138,25 @@ impl InterruptStatus {
     }
 
     /// TEIFx flag
+    ///
+    /// A DMA error is generated when redaing from or writing to a reserved address space.
     pub fn error(&self) -> bool {
         (self.0 & 0b1000) != 0
+    }
+
+    /// Replace error flag with `Err`
+    ///
+    /// A DMA error is generated when redaing from or writing to a reserved address space.
+    pub fn as_result(self) -> Result<Self, ()> {
+        if self.error() {
+            Err(())
+        } else {
+            let mut status = self.0 & 0b0110;
+            if status != 0 {
+                status |= 0b001;
+            }
+            Ok(Self(status))
+        }
     }
 }
 
@@ -167,5 +216,15 @@ mod tests {
         assert_eq!(InterruptClear(0).0, 0b0000);
         assert_eq!(InterruptClear(0).complete().half_complete().0, 0b0110);
         assert_eq!(InterruptClear(0).error().all().0, 0b1001);
+    }
+
+    #[test]
+    fn interrupt_status_as_result() {
+        assert_eq!(InterruptStatus(0b1000).as_result(), Err(()));
+        assert_eq!(InterruptStatus(0b0010).as_result().unwrap().complete(), true);
+        assert_eq!(InterruptStatus(0b0010).as_result().unwrap().any(), true);
+        assert_eq!(InterruptStatus(0b0100).as_result().unwrap().half_complete(), true);
+        assert_eq!(InterruptStatus(0b0100).as_result().unwrap().any(), true);
+        assert_eq!(InterruptStatus(0b0000).as_result().unwrap().any(), false);
     }
 }

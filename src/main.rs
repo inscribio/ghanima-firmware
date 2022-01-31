@@ -234,8 +234,8 @@ mod app {
     #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
-            if !spi_tx.finish().unwrap() {
-                defmt::panic!("Interrupt from unexpected channel");
+            if !spi_tx.on_dma_interrupt().unwrap() {
+                defmt::panic!("Unexpected interrupt");
             }
         });
         cx.shared.dbg.lock(|d| d.set_tx(false));
@@ -243,12 +243,16 @@ mod app {
 
     #[task(binds = DMA1_CH2_3, priority = 3, shared = [serial_tx, serial_rx])]
     fn dma_uart_callback(mut cx: dma_uart_callback::Context) {
+        let mut any = false;
         cx.shared.serial_rx.lock(|rx| {
-            rx.on_transfer_complete().unwrap();
+            any = any || rx.on_dma_interrupt().unwrap();
         });
         cx.shared.serial_tx.lock(|tx| {
-            tx.finish().unwrap();
+            any = any || tx.on_dma_interrupt().unwrap();
         });
+        if !any {
+            defmt::panic!("Unexpected interrupt");
+        }
     }
 
     #[task(binds = USART1, priority = 3, shared = [serial_rx], local = [
