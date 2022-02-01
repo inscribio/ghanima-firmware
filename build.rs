@@ -28,7 +28,4 @@ fn main() {
     // here, we ensure the build script is only re-run when
     // `memory.x` is changed.
     println!("cargo:rerun-if-changed=memory.x");
-
-    let log_level = env::var("DEFMT_LOG").unwrap_or("info".into());
-    println!("cargo:rustc-env=DEFMT_LOG={}", log_level)
 }
