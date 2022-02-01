@@ -46,8 +46,8 @@ where
             // Wrapped twice or more ...
             (n, _) => (
                 &buf[t..], &buf[0..t],
-                // overwritten [H, T] + N times whole buffer
-                (t - h) + (n - 1) as usize * buf.len()
+                // overwritten [H, END) + [0, T) + (N - 2) times whole buffer
+                (buf.len() - h) + t + (n - 2) as usize * buf.len()
             ),
 
         };
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn circ_buf_empty() {
+    fn empty() {
         test_circ_buf! {
             LEN = 7;
             [] => ([], []), head = 0, lost = 0;
@@ -150,7 +150,7 @@ mod tests {
 
 
     #[test]
-    fn circ_buf_single_slice() {
+    fn single_slice() {
         test_circ_buf! {
             LEN = 7;
             [1, 2, 3] => ([1, 2, 3], []), head = 3, lost = 0;
@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn circ_buf_whole_buf() {
+    fn whole_buf() {
         test_circ_buf! {
             LEN = 7;
             [1, 2, 3, 4, 5, 6, 7] => ([1, 2, 3, 4, 5, 6, 7], []), head = 0, lost = 0;
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn circ_buf_with_wrap() {
+    fn with_wrap() {
         test_circ_buf! {
             LEN = 7;
             [1, 2, 3, 4, 5] => ([1, 2, 3, 4, 5], []), head = 5, lost = 0;
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn circ_buf_with_overflow() {
+    fn with_overflow() {
         test_circ_buf! {
             LEN = 7;
             [
@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn circ_buf_double_wrap() {
+    fn double_wrap() {
         test_circ_buf! {
             LEN = 4;
             [
@@ -207,6 +207,31 @@ mod tests {
                 13, 14, 15, 16,
                 17, 18
             ] => ([15, 16], [17, 18]), head = 2, lost = 5;
+            [
+                /*    */19, 20,
+                21, 22, 23, 24,
+                25
+            ] => ([22, 23, 24], [25]), head = 1, lost = 3;
+        }
+    }
+
+    #[test]
+    fn multi_wrap() {
+        test_circ_buf! {
+            LEN = 4;
+            [
+                1_, 2_, 3_, 4_,
+                5_, 6_, 7_, 8_,
+                9_, 10, 11, 12,
+                13, 14, 15, 16,
+                17, 18, 19
+            ] => ([16], [17, 18, 19]), head = 3, lost = 15;
+            [
+                /*       */ 20,
+                21, 22, 23, 24,
+                21, 22, 23, 24,
+                21, 22, 23, 24
+            ] => ([21, 22, 23, 24], []), head = 0, lost = 9;
         }
     }
 }
