@@ -7,7 +7,7 @@ const NCOLS: usize = 6;
 const NCOLS_THUMB: usize = 4;
 const NROWS: usize = 5;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum BoardSide {
     Left,
     Right,
