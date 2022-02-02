@@ -1,6 +1,7 @@
 use crate::hal;
 
-use postcard::flavors::SerFlavor;
+use postcard::flavors::{SerFlavor, Cobs, Slice, HVec};
+use heapless::Vec;
 
 pub struct Crc {
     crc: hal::pac::CRC,
@@ -120,6 +121,59 @@ impl Crc {
             Err(Error::InvalidCrc)
         }
     }
+
+    /// Serialize an object to slice, appending CRC
+    pub fn serialize_to_slice<'a, 'b, T>(
+        &mut self,
+        value: &'b T,
+        buf: &'a mut [u8],
+    ) -> postcard::Result<&'a mut [u8]>
+    where
+        T: serde::Serialize + ?Sized
+    {
+        postcard::serialize_with_flavor::<T, CrcEncoder<Slice>, &'a mut [u8]>(
+            value,
+            CrcEncoder::new(Slice::new(buf), self),
+        )
+    }
+
+    /// Serialize to slice, appending CRC and then encoding all data with COBS
+    pub fn serialize_to_slice_cobs<'a, 'b, T>(
+        &mut self,
+        value: &'b T,
+        buf: &'a mut [u8],
+    ) -> postcard::Result<&'a mut [u8]>
+    where
+        T: serde::Serialize + ?Sized
+    {
+        // Note: outer-most type is performing its encoding first
+        postcard::serialize_with_flavor::<T, CrcEncoder<Cobs<Slice>>, &'a mut [u8]>(
+            value,
+            CrcEncoder::new(Cobs::try_new(Slice::new(buf))?, self),
+        )
+    }
+
+    /// Serialize an object to heapless::Vec, appending CRC
+    pub fn serialize_to_vec<T, const N: usize>(&mut self, value: &T) -> postcard::Result<Vec<u8, N>>
+    where
+        T: serde::Serialize + ?Sized
+    {
+        postcard::serialize_with_flavor::<T, CrcEncoder<HVec<N>>, Vec<u8, N>>(
+            value,
+            CrcEncoder::new(HVec::default(), self),
+        )
+    }
+
+    /// Serialize an object to heapless::Vec, appending CRC
+    pub fn serialize_to_vec_cobs<T, const N: usize>(&mut self, value: &T) -> postcard::Result<Vec<u8, N>>
+    where
+        T: serde::Serialize + ?Sized
+    {
+        postcard::serialize_with_flavor::<T, CrcEncoder<Cobs<HVec<N>>>, Vec<u8, N>>(
+            value,
+            CrcEncoder::new(Cobs::try_new(HVec::default())?, self),
+        )
+    }
 }
 
 impl<'a, F: SerFlavor> CrcEncoder<'a, F> {
@@ -144,6 +198,7 @@ impl<'a, F: SerFlavor> SerFlavor for CrcEncoder<'a, F> {
     }
 }
 
+#[allow(dead_code)]
 pub fn test_serdes_cobs_crc(crc: &mut Crc) {
     use postcard::{serialize_with_flavor, flavors::{Slice, Cobs}};
 
