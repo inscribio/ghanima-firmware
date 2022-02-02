@@ -4,13 +4,14 @@ use embedded_dma::{WriteBuffer, StaticWriteBuffer};
 use crate::hal;
 use hal::gpio;
 use super::circ_buf::CircularBuffer;
+use super::dma;
 
 type UartRegs = hal::pac::USART1;
 type UartRegisterBlock = hal::pac::usart1::RegisterBlock;
 type TxPin = gpio::gpioa::PA9<gpio::Alternate<gpio::AF1>>;
 type RxPin = gpio::gpioa::PA10<gpio::Alternate<gpio::AF1>>;
-type TxDma = super::dma::DmaChannel<2>;
-type RxDma = super::dma::DmaChannel<3>;
+type TxDma = dma::DmaChannel<2>;
+type RxDma = dma::DmaChannel<3>;
 
 /// DMA UART
 pub struct Uart<RXBUF> {
@@ -33,6 +34,9 @@ pub struct Tx {
     buf: &'static mut [u8],
     ready: bool,
 }
+
+#[derive(Debug)]
+pub struct TransferOngoing;
 
 /// DMA UART RX half
 ///
@@ -126,17 +130,20 @@ impl Tx {
         Self { dma, buf, ready: true }
     }
 
-    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<(), Infallible> {
+    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<(), TransferOngoing> {
+        if !self.ready {
+            return Err(nb::Error::Other(TransferOngoing));
+        }
+
         // Check TC bit to wait for transmission complete, and TEACK bit to
         // check if TE=1 after IDLE line from finish(). This will never be 1
         // if for some reason TE has been set to 0 witout re-setting to 1.
         let isr = Self::uart().isr.read();
-        let uart_ready = isr.tc().bit_is_clear() || isr.teack().bit_is_clear();
-        // TODO: In SPI we only return on !ready, but spin lock on SPI FIFO,
-        // should we do the same here or change SPI implementation?
-        if !self.ready || uart_ready {
+        if !(isr.tc().bit_is_set() && isr.teack().bit_is_set()) {
             return Err(nb::Error::WouldBlock);
         }
+
+        self.ready = false;
 
         self.buf[..data.len()].copy_from_slice(data);
         self.configure_dma_transfer(data.len());
@@ -151,38 +158,31 @@ impl Tx {
     }
 
     /// Handle DMA interrupt
-    ///
-    /// Retuns `true` if there was an interrupt - this way it is possible to
-    /// call this function along handlers for other DMA channels. Error is
-    /// returned if the DMA transfer error flag is on.
-    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
-        let status = self.dma.handle_interrupt();
+    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
+        self.dma.handle_interrupt(dma::Interrupt::FullTransfer)
+            .map(|status| {
+                // Disable DMA request and channel
+                Self::uart().cr3.modify(|_, w| w.dmat().disabled());
+                self.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        // Disable DMA request and channel
-        Self::uart().cr3.modify(|_, w| w.dmat().disabled());
-        self.dma.ch().cr.modify(|_, w| w.en().disabled());
+                atomic::compiler_fence(atomic::Ordering::Acquire);
 
-        atomic::compiler_fence(atomic::Ordering::Acquire);
+                if status.is_ok() {
+                    assert!(!self.ready, "Transfer completion but transfer have not been started");
+                    self.ready = true;
 
-        status.map(|status| {
-            if status.complete() {
-                self.ready = true;
+                    // Ensure idle frame after transfer
+                    // FIXME: sometimes waiting for TEACK leads to an infinite loop
+                    // Self::uart().cr1.modify(|_, w| w.te().disabled());
+                    // // We must check TEACK to ensure that TE=0 has been registered.
+                    // while Self::uart().isr.read().teack().bit_is_clear() {}
+                    // Self::uart().cr1.modify(|_, w| w.te().enabled());
+                    // // Do not wait for TEACK=1, we will wait in transmit() if needed.
+                }
 
-                // Ensure idle frame after transfer
-                // FIXME: sometimes waiting for TEACK leads to an infinite loop
-                // Self::uart().cr1.modify(|_, w| w.te().disabled());
-                // // We must check TEACK to ensure that TE=0 has been registered.
-                // while Self::uart().isr.read().teack().bit_is_clear() {}
-                // Self::uart().cr1.modify(|_, w| w.te().enabled());
-                // // Do not wait for TEACK=1, we will wait in transmit() if needed.
+                status
+            })
 
-                true
-            } else if status.half_complete() {
-                panic!("Unexpected half-transfer interrupt");
-            } else {
-                false
-            }
-        })
     }
 
     fn configure_dma_transfer(&mut self, len: usize) {
@@ -262,17 +262,13 @@ where
         }
     }
 
-    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
-        self.dma.handle_interrupt()
+    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
+        self.dma.handle_interrupt(dma::Interrupt::FullTransfer)
             .map(|status| {
-                if status.complete() {
+                if status.is_ok() {
                     self.buf.tail_wrapped();
-                    true
-                } else if status.half_complete() {
-                    panic!("Unexpected half-transfer interrupt");
-                } else {
-                    false
                 }
+                status
             })
     }
 }

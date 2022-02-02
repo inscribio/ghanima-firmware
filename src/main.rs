@@ -240,25 +240,31 @@ mod app {
     #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
-            if !spi_tx.on_dma_interrupt().unwrap() {
-                defmt::panic!("Unexpected interrupt");
-            }
+           spi_tx.on_dma_interrupt()
+               .transpose()
+               .expect("Unexpected interrupt");
         });
         cx.shared.dbg.lock(|d| d.set_tx(false));
     }
 
     #[task(binds = DMA1_CH2_3, priority = 3, shared = [serial_tx, serial_rx])]
-    fn dma_uart_callback(mut cx: dma_uart_callback::Context) {
-        let mut any = false;
-        cx.shared.serial_rx.lock(|rx| {
-            any = any || rx.on_dma_interrupt().unwrap();
+    fn dma_uart_callback(cx: dma_uart_callback::Context) {
+        let tx = cx.shared.serial_tx;
+        let rx = cx.shared.serial_rx;
+        (tx, rx).lock(|tx, rx| {
+            let rx_done = rx.on_dma_interrupt().transpose().expect("Unexpected interrupt");
+            let tx_done = tx.on_dma_interrupt().transpose().expect("Unexpected interrupt");
+
+            if rx_done.is_some() {
+                defmt::debug!("UART RX done");
+            }
+
+            if tx_done.is_some() {
+                defmt::debug!("UART TX done");
+            }
+
+            rx_done.or(tx_done).expect("No interrupt handled!");
         });
-        cx.shared.serial_tx.lock(|tx| {
-            any = any || tx.on_dma_interrupt().unwrap();
-        });
-        if !any {
-            defmt::panic!("Unexpected interrupt");
-        }
     }
 
     #[task(binds = USART1, priority = 3, shared = [serial_rx], local = [

@@ -19,6 +19,11 @@ pub struct InterruptStatus(u8);
 #[derive(Debug, PartialEq, Eq)]
 pub struct InterruptClear(u8);
 
+pub enum Interrupt {
+    FullTransfer,
+    HalfTransfer,
+}
+
 pub struct Dma {
     pub ch1: DmaChannel<1>,
     pub ch2: DmaChannel<2>,
@@ -67,7 +72,9 @@ macro_rules! dma_channels {
 
                 pub fn isr(&self) -> InterruptStatus {
                     let dma = unsafe { &*hal::pac::DMA1::ptr() };
-                    InterruptStatus(((dma.isr.read().bits() >> Self::OFFSET) & Self::MASK) as u8)
+                    let isr = dma.isr.read().bits();
+                    let masked = ((isr >> Self::OFFSET) & Self::MASK) as u8;
+                    InterruptStatus(masked)
                 }
 
                 pub fn ifcr<F>(&mut self, f: F)
@@ -81,19 +88,30 @@ macro_rules! dma_channels {
                     unsafe { dma.ifcr.write(|w| w.bits(mask)); }
                 }
 
-                /// Clear channel interrupt flags and check which interrupts occured
+                /// Handle transfer completion (or error) interrupt if occured
                 ///
-                /// If there was an error flag it will be returned as `Err`, and the
-                /// half/full-transfer interrupts can be found in `Ok` vairant.
-                pub fn handle_interrupt(&mut self) -> Result<InterruptStatus, ()> {
-                    // Check if this is an interrupt from this channel
+                /// This function will check and clear error flag (returns `Err` if set)
+                /// and half-transfer complete flag (`Ok`). If no flags are set, `None` is
+                /// returned.
+                pub fn handle_interrupt(&mut self, interrupt: Interrupt) -> Option<Result<(), ()>> {
+                    // Check if this is an interrupt from this channel (only the one we care about!)
                     let isr = self.isr();
-                    if !isr.any() {
-                        return Ok(InterruptStatus(0));
+                    let is_set = match interrupt {
+                        Interrupt::FullTransfer => isr.complete(),
+                        Interrupt::HalfTransfer => isr.half_complete(),
+                    };
+                    if !(is_set || isr.error()) {
+                        return None;
                     }
 
-                    // Clear all interrupt flags
-                    self.ifcr(|w| w.all());
+                    // Clear only the flags we checked! This is important because new flags
+                    // could have been set since the moment we read the status register.
+                    self.ifcr(|w| {
+                        match interrupt {
+                            Interrupt::FullTransfer => w.complete(),
+                            Interrupt::HalfTransfer => w.half_complete(),
+                        }.error()
+                    });
 
                     if isr.error() {
                         // On error hardware clears EN bit, we disable all interrupts
@@ -103,8 +121,10 @@ macro_rules! dma_channels {
                                 .tcie().enabled()
                                 .teie().enabled()
                         });
+                        Some(Err(()))
+                    } else {
+                        Some(Ok(()))
                     }
-                    isr.as_result()
                 }
             }
         )+

@@ -3,8 +3,9 @@ use embedded_dma::StaticReadBuffer;
 
 use crate::hal;
 use crate::utils::InfallibleResult;
+use super::dma;
 
-type DmaChannel = super::dma::DmaChannel<5>;
+type DmaChannel = dma::DmaChannel<5>;
 
 /// TX only, asynchronious SPI implementation
 ///
@@ -148,14 +149,6 @@ where
         if !self.ready {
             return Err(nb::Error::Other(TransferOngoing));
         }
-        self.ready = false;
-
-        // "Preceding reads and writes cannot be moved past subsequent writes"
-        atomic::compiler_fence(atomic::Ordering::Release);
-
-        // reload buffer length
-        let (_, len) = unsafe { self.buf.read_buffer() };
-        self.tx.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
         // Wait for any data from previous transfer that has not been transmitted yet
         // Maybe it's not even needed, because DMA should just wait for space in FIFO,
@@ -165,6 +158,15 @@ where
             Err(nb::Error::Other(e)) => Err(e).infallible(),
             Ok(()) => {},
         };
+
+        self.ready = false;
+
+        // "Preceding reads and writes cannot be moved past subsequent writes"
+        atomic::compiler_fence(atomic::Ordering::Release);
+
+        // reload buffer length
+        let (_, len) = unsafe { self.buf.read_buffer() };
+        self.tx.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
         // Enable channel, then trigger DMA request
         self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
@@ -188,26 +190,23 @@ where
     /// Retuns `true` if there was an interrupt - this way it is possible to
     /// call this function along handlers for other DMA channels. Error is
     /// returned if the DMA transfer error flag is on.
-    pub fn on_dma_interrupt(&mut self) -> Result<bool, ()> {
-        let status = self.tx.dma.handle_interrupt();
+    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
+        self.tx.dma.handle_interrupt(dma::Interrupt::FullTransfer)
+            .map(|status| {
+                // Disable DMA request and channel
+                self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
+                self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-        // Disable DMA request and channel
-        self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
-        self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
+                // "Subsequent reads and writes cannot be moved ahead of preceding reads"
+                atomic::compiler_fence(atomic::Ordering::Acquire);
 
-        // "Subsequent reads and writes cannot be moved ahead of preceding reads"
-        atomic::compiler_fence(atomic::Ordering::Acquire);
+                if status.is_ok() {
+                    assert!(!self.ready, "Transfer completion but transfer have not been started");
+                    self.ready = true;
+                }
 
-        status.map(|status| {
-            if status.complete() {
-                self.ready = true;
-                true
-            } else if status.half_complete() {
-                panic!("Unexpected half-transfer interrupt");
-            } else {
-                false
-            }
-        })
+                status
+            })
     }
 
     pub fn take(&mut self) -> Result<&mut BUF, TransferOngoing> {
