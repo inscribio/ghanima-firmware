@@ -51,7 +51,7 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 postcard = "0.7"
 rgb = "0.8"
 
-panic-probe = "0.3"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt = "0.3"
 defmt-rtt = "0.3"
 micromath = "2.0"
