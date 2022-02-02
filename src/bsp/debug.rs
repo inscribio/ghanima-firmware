@@ -153,3 +153,27 @@ impl DebugPins {
         };
     }
 }
+
+// FIXME: find way to use interned strings (=istr), stringify!/concat! do not work
+#[macro_export]
+macro_rules! debug_regs {
+    ( $( $periph:ident: $( $($reg:ident).+ )+ ),+ $(,)? ) => {
+        $( debug_regs! { @periph $periph $($($reg).+)+ } )+
+    };
+    ( @periph $periph:ident $( $($reg:ident).+ )+ ) => {
+        let periph = unsafe { &*hal::pac::$periph::ptr() };
+        $(
+            defmt::println!(
+                "{0=str}: {1=28..32:08b}_{1=24..28:08b}__{1=20..24:08b}_{1=16..20:08b}__{1=12..16:08b}_{1=8..12:08b}__{1=4..8:08b}_{1=0..4:08b}",
+                concat!(
+                    stringify!($periph),
+                    $(
+                        ".",
+                        stringify!($reg)
+                    ),+
+                ),
+                periph. $($reg).+ .read().bits()
+            );
+        )+
+    };
+}
