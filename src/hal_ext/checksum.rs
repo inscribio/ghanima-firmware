@@ -5,7 +5,7 @@ use heapless::Vec;
 ///
 /// In principle this is similar to `core::hash::Hasher` but allows to use output
 /// different than u64.
-pub trait Checksum {
+pub trait ChecksumGen {
     /// Checksum type that can be serialized (e.g. `u32`)
     type Output: AsBytes;
 
@@ -127,7 +127,7 @@ pub enum Error {
 pub struct ChecksumEncoder<F, C>
 where
     F: SerFlavor,
-    C: Checksum,
+    C: ChecksumGen,
 {
     flavor: F,
     state: C,
@@ -136,7 +136,7 @@ where
 impl<F, C> ChecksumEncoder<F, C>
 where
     F: SerFlavor,
-    C: Checksum,
+    C: ChecksumGen,
 {
     pub fn new(flavor: F, state: C) -> Self {
         Self { flavor, state }
@@ -146,7 +146,7 @@ where
 impl<F, C> SerFlavor for ChecksumEncoder<F, C>
 where
     F: SerFlavor,
-    C: Checksum,
+    C: ChecksumGen,
 {
     type Output = <F as SerFlavor>::Output;
 
@@ -190,12 +190,12 @@ macro_rules! impl_as_bytes {
 impl_as_bytes!(u8: 1, u16: 2, u32: 4, u64: 8);
 
 #[cfg(test)]
-mod tests {
+pub mod mock {
     use super::*;
     use std::vec::Vec;
     use crc::{Crc, CRC_32_MPEG_2};
 
-    struct Crc32(Vec<u8>);
+    pub struct Crc32(Vec<u8>);
 
     impl Crc32 {
         pub fn new() -> Self {
@@ -203,7 +203,7 @@ mod tests {
         }
     }
 
-    impl Checksum for Crc32 {
+    impl ChecksumGen for Crc32 {
         type Output = u32;
 
         fn push(&mut self, data: &[u8]) {
@@ -217,6 +217,12 @@ mod tests {
             digest.finalize()
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::mock::Crc32;
 
     const N: usize = 10;
     const DATA: [u8; N] = [0xa5, 0xa5, 0xa5, 0xa5, 0x1b, 0xad, 0xb0, 0x02, 0x0d, 0x15];

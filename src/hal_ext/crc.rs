@@ -1,7 +1,7 @@
 use postcard::flavors::SerFlavor;
 
 use crate::hal;
-use super::checksum::{Checksum, AsBytes};
+use super::checksum::{ChecksumGen, AsBytes};
 
 /// Wrapper around CRC peripheral
 pub struct Crc {
@@ -18,7 +18,7 @@ pub enum Variant {
 
 pub struct CrcChecksum<'a>(&'a mut Crc);
 
-impl<'a> Checksum for CrcChecksum<'a> {
+impl<'a> ChecksumGen for CrcChecksum<'a> {
     type Output = u32;
 
     fn push(&mut self, data: &[u8]) {

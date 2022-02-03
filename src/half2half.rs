@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 use postcard::{flavors::{Slice, Cobs}, CobsAccumulator};
 use heapless::Vec;
 
-use crate::hal_ext::{crc, Checksum};
+use crate::hal_ext::{crc, ChecksumGen};
 
 #[derive(Serialize, Deserialize, Format)]
 pub enum Message {
