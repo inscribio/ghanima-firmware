@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 use postcard::{flavors::{Slice, Cobs}, CobsAccumulator};
 use heapless::Vec;
 
-use crate::hal_ext::crc;
+use crate::hal_ext::{crc, Checksum};
 
 #[derive(Serialize, Deserialize, Format)]
 pub enum Message {
@@ -12,15 +12,13 @@ pub enum Message {
     Ack,
 }
 
-
-
 impl Message {
     pub fn to_slice<'a>(&self, crc: &mut crc::Crc, buf: &'a mut [u8]) -> postcard::Result<&'a mut [u8]> {
-        crc.serialize_to_slice_cobs::<Self>(self, buf)
+        crc.start().serialize_to_slice_cobs::<Self>(self, buf)
     }
 
     pub fn to_vec<'a, const N: usize>(&self, crc: &mut crc::Crc) -> postcard::Result<Vec<u8, N>> {
-        crc.serialize_to_vec_cobs::<Self, N>(self)
+        crc.start().serialize_to_vec_cobs::<Self, N>(self)
     }
 
     // TODO: maybe try to somehow return `impl Iterator<Item=Message>`

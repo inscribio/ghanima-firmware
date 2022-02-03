@@ -9,4 +9,7 @@ pub mod reboot;
 pub mod spi;
 pub mod uart;
 
+mod checksum;
 mod circ_buf;
+
+pub use checksum::Checksum;
