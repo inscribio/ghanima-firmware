@@ -6,7 +6,7 @@ use heapless::Vec;
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 
-pub trait Protocol: Serialize + for<'de> Deserialize<'de> {
+pub trait Message: Serialize + for<'de> Deserialize<'de> {
     type Checksum: ChecksumGen;
 
     /// Serialize to slice
@@ -18,33 +18,33 @@ pub trait Protocol: Serialize + for<'de> Deserialize<'de> {
     }
 
     fn iter_from_slice<'a, 'b, 'c, const N: usize>(
-        acc: &'a mut ProtocolAccumulator<N>,
+        acc: &'a mut Accumulator<N>,
         checksum: &'c mut Self::Checksum,
         data: &'b [u8],
-    ) -> ProtocolIterator<'a, 'b, 'c, Self, N> {
-        ProtocolIterator { acc, checksum, window: data, _proto: PhantomData }
+    ) -> Iterator<'a, 'b, 'c, Self, N> {
+        Iterator { acc, checksum, window: data, _msg: PhantomData }
     }
 }
 
 /// Clone of postcard::CobsAccumulator but with checksum decoding
-pub struct ProtocolAccumulator<const N: usize> {
+pub struct Accumulator<const N: usize> {
     buf: [u8; N],
     head: usize,
 }
 
-pub struct ProtocolIterator<'a, 'b, 'c, P: Protocol, const N: usize> {
-    acc: &'a mut ProtocolAccumulator<N>,
+pub struct Iterator<'a, 'b, 'c, M: Message, const N: usize> {
+    acc: &'a mut Accumulator<N>,
     window: &'b [u8],
-    checksum: &'c mut P::Checksum,
-    _proto: PhantomData<P>,
+    checksum: &'c mut M::Checksum,
+    _msg: PhantomData<M>,
 }
 
-impl<'a, 'b, 'c, P: Protocol, const N: usize> Iterator for ProtocolIterator<'a, 'b, 'c, P, N> {
-    type Item = P;
+impl<'a, 'b, 'c, M: Message, const N: usize> core::iter::Iterator for Iterator<'a, 'b, 'c, M, N> {
+    type Item = M;
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.window.is_empty() {
-            let result = self.acc.feed::<P>(self.checksum, self.window);
+            let result = self.acc.feed::<M>(self.checksum, self.window);
 
             use FeedResult::*;
             let (msg, new_window) = match result {
@@ -66,8 +66,8 @@ impl<'a, 'b, 'c, P: Protocol, const N: usize> Iterator for ProtocolIterator<'a, 
 
 #[derive(Debug)]
 pub enum FeedResult<'a, M> {
-    /// Consumed all data, still pending
     Consumed,
+    /// Consumed all data, still pending
 
     /// No sentinel found and data too long to fit in internal buf; dropped accumulated data
     OverFull(&'a [u8]),
@@ -88,15 +88,15 @@ pub enum FeedResult<'a, M> {
     }
 }
 
-impl<const N: usize> ProtocolAccumulator<N> {
+impl<const N: usize> Accumulator<N> {
     pub const fn new() -> Self {
         Self { buf: [0; N], head: 0 }
     }
 
-    pub fn feed<'a, P>(&mut self, checksum: &mut P::Checksum, data: &'a [u8]) -> FeedResult<'a, P>
+    pub fn feed<'a, M>(&mut self, checksum: &mut M::Checksum, data: &'a [u8]) -> FeedResult<'a, M>
     where
         // TODO: or maybe use PhantomData ensuring one accumulator always decodes same type of message?
-        P: Protocol
+        M: Message
     {
         if data.is_empty() {
             return FeedResult::Consumed;
@@ -175,7 +175,7 @@ mod tests {
         c: u8,
     }
 
-    impl Protocol for TestMessage {
+    impl Message for TestMessage {
         type Checksum = Crc32;
     }
 
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn deserialize_with_accumulator() {
         let mut crc = Crc32::new();
-        let mut acc = ProtocolAccumulator::<32>::new();
+        let mut acc = Accumulator::<32>::new();
         let buf = &[
             0x12, 0x34, 0x56, 0x78, 0x90, 0x00,                                   // 1
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,  // 2
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn deserialize_iter_from_slice() {
         let mut crc = Crc32::new();
-        let mut acc = ProtocolAccumulator::<32>::new();
+        let mut acc = Accumulator::<32>::new();
         let buf = [
             0x12, 0x34, 0x56, 0x78, 0x90, 0x00,
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn deserialize_iter_from_slice_missing() {
         let mut crc = Crc32::new();
-        let mut acc = ProtocolAccumulator::<32>::new();
+        let mut acc = Accumulator::<32>::new();
         let buf = [
             0x12, 0x34, 0x56, 0x78, 0x90,  // no 0x00 so decoding should fail
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
