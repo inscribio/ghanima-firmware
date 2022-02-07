@@ -11,17 +11,27 @@ pub trait ChecksumGen {
     /// Checksum type that can be serialized (e.g. `u32`)
     type Output: PrimInt;
 
+    /// Reset internal state to start generating checksum for new data
+    fn reset(&mut self);
+
     /// Push data from slice to the generator
+    ///
+    /// Note that wiht this method one must ensure correct state by calling `reset`
+    /// before any `push` sequence followed by `get`.
     fn push(&mut self, data: &[u8]);
 
-    /// Finalize checksum generation and retrieve the result
-    fn get(self) -> Self::Output;
+    /// Retrieve checksum generation result for all data since last `reset`
+    ///
+    /// Note that wiht this method one must ensure correct state by calling `reset`
+    /// before any `push` sequence followed by `get`.
+    fn get(&self) -> Self::Output;
 
     /// Push `data` and retrive the final checksum
-    fn decode(mut self, data: &[u8]) -> Self::Output
+    fn decode(&mut self, data: &[u8]) -> Self::Output
     where
         Self: Sized
     {
+        self.reset();
         self.push(data);
         self.get()
     }
@@ -45,7 +55,7 @@ pub trait ChecksumGen {
     }
 
     /// Encode checksum of `buf[..data_len]` at the end of `buf`
-    fn encode<'a>(self, buf: &'a mut [u8], data_len: usize) -> Result<&'a [u8], Error>
+    fn encode<'a>(&mut self, buf: &'a mut [u8], data_len: usize) -> Result<&'a [u8], Error>
     where
         Self: Sized
     {
@@ -58,7 +68,7 @@ pub trait ChecksumGen {
     }
 
     /// Verify that the data
-    fn verify<'a>(self, data: &'a [u8]) -> Result<&'a [u8], Error>
+    fn verify<'a>(&mut self, data: &'a [u8]) -> Result<&'a [u8], Error>
     where
         Self: Sized
     {
@@ -87,26 +97,27 @@ pub enum Error {
 /// This is a postcard serialization flavor that uses some `Checksum` encoder
 /// to append checksum at the end of the data. Checksum bytes are appended in
 /// **little-endian** order!
-pub struct ChecksumEncoder<F, C>
+pub struct ChecksumEncoder<'a, F, C>
 where
     F: SerFlavor,
     C: ChecksumGen,
 {
     flavor: F,
-    state: C,
+    state: &'a mut C,
 }
 
-impl<F, C> ChecksumEncoder<F, C>
+impl<'a, F, C> ChecksumEncoder<'a, F, C>
 where
     F: SerFlavor,
     C: ChecksumGen,
 {
-    pub fn new(flavor: F, state: C) -> Self {
+    pub fn new(flavor: F, state: &'a mut C) -> Self {
+        state.reset();
         Self { flavor, state }
     }
 }
 
-impl<F, C> SerFlavor for ChecksumEncoder<F, C>
+impl<'a, F, C> SerFlavor for ChecksumEncoder<'a, F, C>
 where
     F: SerFlavor,
     C: ChecksumGen,
@@ -116,6 +127,11 @@ where
     fn try_push(&mut self, data: u8) -> Result<(), ()> {
         self.state.push(&[data]);
         self.flavor.try_push(data)
+    }
+
+    fn try_extend(&mut self, data: &[u8]) -> Result<(), ()> {
+        self.state.push(data);
+        self.flavor.try_extend(data)
     }
 
     fn release(mut self) -> Result<Self::Output, ()> {
@@ -142,11 +158,15 @@ pub mod mock {
     impl ChecksumGen for Crc32 {
         type Output = u32;
 
+        fn reset(&mut self) {
+            self.0.clear();
+        }
+
         fn push(&mut self, data: &[u8]) {
             self.0.extend_from_slice(data);
         }
 
-        fn get(self) -> Self::Output {
+        fn get(&self) -> Self::Output {
             let crc = Crc::<u32>::new(&CRC_32_MPEG_2);
             let mut digest = crc.digest();
             digest.update(&self.0);

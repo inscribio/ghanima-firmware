@@ -10,18 +10,18 @@ pub trait Protocol: Serialize + for<'de> Deserialize<'de> {
     type Checksum: ChecksumGen;
 
     /// Serialize to slice
-    fn to_slice<'a>(&self, checksum: Self::Checksum, buf: &'a mut [u8]) -> postcard::Result<&'a mut [u8]> {
+    fn to_slice<'a>(&self, checksum: &mut Self::Checksum, buf: &'a mut [u8]) -> postcard::Result<&'a mut [u8]> {
         postcard::serialize_with_flavor::<Self, ChecksumEncoder<Cobs<Slice>, Self::Checksum>, &'a mut [u8]>(
             self,
             ChecksumEncoder::new(Cobs::try_new(Slice::new(buf))?, checksum),
         )
     }
 
-    fn iter_from_slice<'a, 'b, F: FnMut() -> Self::Checksum, const N: usize>(
+    fn iter_from_slice<'a, 'b, 'c, const N: usize>(
         acc: &'a mut ProtocolAccumulator<N>,
-        checksum: F,
+        checksum: &'c mut Self::Checksum,
         data: &'b [u8],
-    ) -> ProtocolIterator<'a, 'b, Self, F, N> {
+    ) -> ProtocolIterator<'a, 'b, 'c, Self, N> {
         ProtocolIterator { acc, checksum, window: data, _proto: PhantomData }
     }
 }
@@ -30,6 +30,38 @@ pub trait Protocol: Serialize + for<'de> Deserialize<'de> {
 pub struct ProtocolAccumulator<const N: usize> {
     buf: [u8; N],
     head: usize,
+}
+
+pub struct ProtocolIterator<'a, 'b, 'c, P: Protocol, const N: usize> {
+    acc: &'a mut ProtocolAccumulator<N>,
+    window: &'b [u8],
+    checksum: &'c mut P::Checksum,
+    _proto: PhantomData<P>,
+}
+
+impl<'a, 'b, 'c, P: Protocol, const N: usize> Iterator for ProtocolIterator<'a, 'b, 'c, P, N> {
+    type Item = P;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.window.is_empty() {
+            let result = self.acc.feed::<P>(self.checksum, self.window);
+
+            use FeedResult::*;
+            let (msg, new_window) = match result {
+                Consumed => return None,
+                Success { msg, remaining } => (Some(msg), remaining),
+                OverFull(r) | CobsDecodingError(r) | ChecksumError(r) | DeserError(r) => (None, r),
+            };
+
+            self.window = new_window;
+
+            if let Some(msg) = msg {
+                return Some(msg);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -61,7 +93,7 @@ impl<const N: usize> ProtocolAccumulator<N> {
         Self { buf: [0; N], head: 0 }
     }
 
-    pub fn feed<'a, P>(&mut self, checksum: P::Checksum, data: &'a [u8]) -> FeedResult<'a, P>
+    pub fn feed<'a, P>(&mut self, checksum: &mut P::Checksum, data: &'a [u8]) -> FeedResult<'a, P>
     where
         // TODO: or maybe use PhantomData ensuring one accumulator always decodes same type of message?
         P: Protocol
@@ -130,38 +162,6 @@ impl<const N: usize> ProtocolAccumulator<N> {
     }
 }
 
-pub struct ProtocolIterator<'a, 'b, P: Protocol, F: FnMut() -> P::Checksum, const N: usize> {
-    acc: &'a mut ProtocolAccumulator<N>,
-    window: &'b [u8],
-    checksum: F,
-    _proto: PhantomData<P>,
-}
-
-impl<'a, 'b, P: Protocol, F: FnMut() -> P::Checksum, const N: usize> Iterator for ProtocolIterator<'a, 'b, P, F, N> {
-    type Item = P;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while !self.window.is_empty() {
-            let result = self.acc.feed::<P>((self.checksum)(), self.window);
-
-            use FeedResult::*;
-            let (msg, new_window) = match result {
-                Consumed => return None,
-                Success { msg, remaining } => (Some(msg), remaining),
-                OverFull(r) | CobsDecodingError(r) | ChecksumError(r) | DeserError(r) => (None, r),
-            };
-
-            self.window = new_window;
-
-            if let Some(msg) = msg {
-                return Some(msg);
-            }
-        }
-
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,12 +184,13 @@ mod tests {
         let mut crc = Crc32::new();
         let mut buf = [0u8; 16];
         let msg = TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff };
-        let data = msg.to_slice(crc, &mut buf).unwrap();
+        let data = msg.to_slice(&mut crc, &mut buf).unwrap();
         assert_eq!(data, [3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0])
     }
 
     #[test]
     fn deserialize_with_accumulator() {
+        let mut crc = Crc32::new();
         let mut acc = ProtocolAccumulator::<32>::new();
         let buf = &[
             0x12, 0x34, 0x56, 0x78, 0x90, 0x00,                                   // 1
@@ -200,42 +201,42 @@ mod tests {
         ];
 
         // 1
-        let buf = match acc.feed::<TestMessage>(Crc32::new(), buf) {
+        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
             FeedResult::CobsDecodingError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
 
         // 2
-        let (buf, msg) = match acc.feed::<TestMessage>(Crc32::new(), buf) {
+        let (buf, msg) = match acc.feed::<TestMessage>(&mut crc, buf) {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
         assert_eq!(msg, TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff });
 
         // 3
-        let buf = match acc.feed::<TestMessage>(Crc32::new(), buf) {
+        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
             FeedResult::ChecksumError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
 
         // 4
-        let (buf, msg) = match acc.feed::<TestMessage>(Crc32::new(), buf) {
+        let (buf, msg) = match acc.feed::<TestMessage>(&mut crc, buf) {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
         assert_eq!(msg, TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff });
 
         // 5
-        let buf = match acc.feed::<TestMessage>(Crc32::new(), buf) {
+        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
             FeedResult::ChecksumError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert!(matches!(acc.feed::<TestMessage>(Crc32::new(), buf), FeedResult::Consumed));
+        assert!(matches!(acc.feed::<TestMessage>(&mut crc, buf), FeedResult::Consumed));
     }
 
     #[test]
     fn deserialize_iter_from_slice() {
-        let mut crc = || Crc32::new();
+        let mut crc = Crc32::new();
         let mut acc = ProtocolAccumulator::<32>::new();
         let buf = [
             0x12, 0x34, 0x56, 0x78, 0x90, 0x00,
@@ -244,14 +245,14 @@ mod tests {
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
             0x00, 0x2,
         ];
-        let msgs = TestMessage::iter_from_slice(&mut acc, crc, &buf)
+        let msgs = TestMessage::iter_from_slice(&mut acc, &mut crc, &buf)
             .collect::<Vec<_>>();
         assert_eq!(msgs, vec![TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 2]);
     }
 
     #[test]
     fn deserialize_iter_from_slice_missing() {
-        let mut crc = || Crc32::new();
+        let mut crc = Crc32::new();
         let mut acc = ProtocolAccumulator::<32>::new();
         let buf = [
             0x12, 0x34, 0x56, 0x78, 0x90,  // no 0x00 so decoding should fail
@@ -260,7 +261,7 @@ mod tests {
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
             0x00, 0x2,
         ];
-        let msgs = TestMessage::iter_from_slice(&mut acc, crc, &buf)
+        let msgs = TestMessage::iter_from_slice(&mut acc, &mut crc, &buf)
             .collect::<Vec<_>>();
         assert_eq!(msgs, vec![TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 1]);
     }
