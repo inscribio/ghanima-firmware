@@ -1,4 +1,6 @@
-use postcard::flavors::{SerFlavor, Cobs, Slice, HVec};
+use num::PrimInt;
+use serde::{Serialize, Deserialize};
+use postcard::{flavors::{SerFlavor, Cobs, Slice, HVec}, serialize_with_flavor};
 use heapless::Vec;
 
 /// Checksum generator
@@ -7,9 +9,7 @@ use heapless::Vec;
 /// different than u64.
 pub trait ChecksumGen {
     /// Checksum type that can be serialized (e.g. `u32`)
-    type Output: AsBytes;
-
-    const LEN: usize = <Self::Output as AsBytes>::N;
+    type Output: PrimInt;
 
     /// Push data from slice to the generator
     fn push(&mut self, data: &[u8]);
@@ -26,20 +26,38 @@ pub trait ChecksumGen {
         self.get()
     }
 
+    /// Number of bytes in the output checksum
+    const LEN: usize = core::mem::size_of::<Self::Output>();
+
+    /// Reinterpret checksum as little-endian byte slice
+    #[inline(always)]
+    fn as_le_bytes<'a>(checksum: &'a mut Self::Output) -> &'a [u8] {
+        // Use little-endian byte order (same as postcard would use)
+        *checksum = checksum.to_le();
+        // NOTE(safety): reinterpreting primitive integer, we know it's byte size
+        unsafe {
+            // Convert Self::Output into u8 ptr
+            let ptr = checksum as *const Self::Output;
+            let ptr: *const u8 = core::mem::transmute(ptr);
+            // Construct a byte slice
+            core::slice::from_raw_parts(ptr, Self::LEN)
+        }
+    }
+
     /// Encode checksum of `buf[..data_len]` at the end of `buf`
-    fn encode(self, buf: &mut [u8], data_len: usize) -> Result<(), Error>
+    fn encode<'a>(self, buf: &'a mut [u8], data_len: usize) -> Result<&'a [u8], Error>
     where
         Self: Sized
     {
         if buf.len() < data_len + Self::LEN {
             return Err(Error::BufTooShort);
         }
-        let checksum = self.decode(&buf[..data_len]).as_be_bytes();
-        buf[data_len..data_len + Self::LEN].copy_from_slice(checksum.as_ref());
-        Ok(())
+        let mut checksum = self.decode(&buf[..data_len]);
+        buf[data_len..data_len + Self::LEN].copy_from_slice(Self::as_le_bytes(&mut checksum));
+        Ok(&buf[..data_len + Self::LEN])
     }
 
-    /// Verify that the
+    /// Verify that the data
     fn verify<'a>(self, data: &'a [u8]) -> Result<&'a [u8], Error>
     where
         Self: Sized
@@ -48,68 +66,12 @@ pub trait ChecksumGen {
             return Err(Error::BufTooShort);
         }
         let (data, checksum) = data.split_at(data.len() - Self::LEN);
-        if checksum == self.decode(data).as_be_bytes().as_ref() {
+        let mut computed = self.decode(data);
+        if checksum == Self::as_le_bytes(&mut computed) {
             Ok(data)
         } else {
             Err(Error::ChecksumInvalid)
         }
-    }
-
-    /// Serialize an object to slice, appending checksum
-    fn serialize_to_slice<'a, 'b, T>(
-        self,
-        value: &'b T,
-        buf: &'a mut [u8],
-    ) -> postcard::Result<&'a mut [u8]>
-    where
-        T: serde::Serialize + ?Sized,
-        Self: Sized,
-    {
-        postcard::serialize_with_flavor::<T, ChecksumEncoder<Slice, Self>, &'a mut [u8]>(
-            value,
-            ChecksumEncoder::new(Slice::new(buf), self),
-        )
-    }
-
-    /// Serialize to slice, appending checksum and then encoding all data with COBS
-    fn serialize_to_slice_cobs<'a, 'b, T>(
-        self,
-        value: &'b T,
-        buf: &'a mut [u8],
-    ) -> postcard::Result<&'a mut [u8]>
-    where
-        T: serde::Serialize + ?Sized,
-        Self: Sized,
-    {
-        // Note: outer-most type is performing its encoding first
-        postcard::serialize_with_flavor::<T, ChecksumEncoder<Cobs<Slice>, Self>, &'a mut [u8]>(
-            value,
-            ChecksumEncoder::new(Cobs::try_new(Slice::new(buf))?, self),
-        )
-    }
-
-    /// Serialize an object to heapless::Vec, appending checksum
-    fn serialize_to_vec<T, const N: usize>(self, value: &T) -> postcard::Result<Vec<u8, N>>
-    where
-        T: serde::Serialize + ?Sized,
-        Self: Sized,
-    {
-        postcard::serialize_with_flavor::<T, ChecksumEncoder<HVec<N>, Self>, Vec<u8, N>>(
-            value,
-            ChecksumEncoder::new(HVec::default(), self),
-        )
-    }
-
-    /// Serialize an object to heapless::Vec, appending checksum, then encoding in COBS
-    fn serialize_to_vec_cobs<T, const N: usize>(self, value: &T) -> postcard::Result<Vec<u8, N>>
-    where
-        T: serde::Serialize + ?Sized,
-        Self: Sized,
-    {
-        postcard::serialize_with_flavor::<T, ChecksumEncoder<Cobs<HVec<N>>, Self>, Vec<u8, N>>(
-            value,
-            ChecksumEncoder::new(Cobs::try_new(HVec::default())?, self),
-        )
     }
 }
 
@@ -123,7 +85,8 @@ pub enum Error {
 /// Encoder that appends checksum at the end of data
 ///
 /// This is a postcard serialization flavor that uses some `Checksum` encoder
-/// to append checksum at the end of the data.
+/// to append checksum at the end of the data. Checksum bytes are appended in
+/// **little-endian** order!
 pub struct ChecksumEncoder<F, C>
 where
     F: SerFlavor,
@@ -156,38 +119,11 @@ where
     }
 
     fn release(mut self) -> Result<Self::Output, ()> {
-        let checksum = self.state.get().as_be_bytes();
-        self.flavor.try_extend(checksum.as_ref())?;
+        let mut checksum = self.state.get();
+        self.flavor.try_extend(C::as_le_bytes(&mut checksum))?;
         self.flavor.release()
     }
 }
-
-/// Integer type that can be converted to big-endian bytes
-///
-/// This is a helper trait implemented for all unsigned integers.
-pub trait AsBytes {
-    type Bytes: AsRef<[u8]>;
-
-    const N: usize = core::mem::size_of::<Self::Bytes>();
-
-    fn as_be_bytes(self) -> Self::Bytes;
-}
-
-macro_rules! impl_as_bytes {
-    ($($int:ty: $n:literal),+ $(,)?) => {
-        $(
-            impl AsBytes for $int {
-                type Bytes = [u8; $n];
-
-                fn as_be_bytes(self) -> Self::Bytes {
-                    self.to_be_bytes()
-                }
-            }
-        )+
-    }
-}
-
-impl_as_bytes!(u8: 1, u16: 2, u32: 4, u64: 8);
 
 #[cfg(test)]
 pub mod mock {
@@ -227,24 +163,16 @@ mod tests {
     const N: usize = 10;
     const DATA: [u8; N] = [0xa5, 0xa5, 0xa5, 0xa5, 0x1b, 0xad, 0xb0, 0x02, 0x0d, 0x15];
     const DATA_CRC: [u8; N + 4] = [
-        0xa5, 0xa5, 0xa5, 0xa5, 0x1b, 0xad, 0xb0, 0x02, 0x0d, 0x15, 0xe3, 0xb2, 0xde, 0x49
-    ];
-    const DATA_CRC_COBS: [u8; N + 4 + 2] = [
-        15, 0xa5, 0xa5, 0xa5, 0xa5, 0x1b, 0xad, 0xb0, 0x02, 0x0d, 0x15, 0xe3, 0xb2, 0xde, 0x49, 0
+        0xa5, 0xa5, 0xa5, 0xa5, 0x1b, 0xad, 0xb0, 0x02, 0x0d, 0x15,
+        0x49, 0xde, 0xb2, 0xe3,
     ];
 
     #[test]
-    fn serialize_to_slice() {
+    fn encode() {
         let mut buf = [0u8; 32];
-        let buf = Crc32::new().serialize_to_slice(&DATA, &mut buf).unwrap();
+        buf[..DATA.len()].copy_from_slice(&DATA);
+        let buf = Crc32::new().encode(&mut buf, DATA.len()).unwrap();
         assert_eq!(buf, DATA_CRC);
-    }
-
-    #[test]
-    fn serialize_to_slice_cobs() {
-        let mut buf = [0u8; 32];
-        let buf = Crc32::new().serialize_to_slice_cobs(&DATA, &mut buf).unwrap();
-        assert_eq!(buf, DATA_CRC_COBS);
     }
 
     #[test]

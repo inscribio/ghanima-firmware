@@ -12,7 +12,7 @@ pub mod uart;
 mod checksum;
 mod circ_buf;
 
-pub use checksum::ChecksumGen;
+pub use checksum::{ChecksumGen, ChecksumEncoder};
 
 #[cfg(test)]
 pub use checksum::mock as checksum_mock;

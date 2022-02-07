@@ -1,7 +1,7 @@
 use postcard::flavors::SerFlavor;
 
 use crate::hal;
-use super::checksum::{ChecksumGen, AsBytes};
+use super::checksum::ChecksumGen;
 
 /// Wrapper around CRC peripheral
 pub struct Crc {
