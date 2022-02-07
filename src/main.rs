@@ -241,6 +241,7 @@ mod app {
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
            spi_tx.on_dma_interrupt()
+               .as_option()
                .transpose()
                .expect("Unexpected interrupt");
         });
@@ -252,8 +253,8 @@ mod app {
         let tx = cx.shared.serial_tx;
         let rx = cx.shared.serial_rx;
         (tx, rx).lock(|tx, rx| {
-            let rx_done = rx.on_dma_interrupt().transpose().expect("Unexpected interrupt");
-            let tx_done = tx.on_dma_interrupt().transpose().expect("Unexpected interrupt");
+            let rx_done = rx.on_dma_interrupt().as_option().transpose().expect("Unexpected interrupt");
+            let tx_done = tx.on_dma_interrupt().as_option().transpose().expect("Unexpected interrupt");
 
             if rx_done.is_some() {
                 defmt::debug!("UART RX done");

@@ -9,6 +9,7 @@ pub trait DmaSplit {
     fn split(self, rcc: &mut hal::rcc::Rcc) -> Self::Channels;
 }
 
+/// Single DMA channel
 pub struct DmaChannel<const C: u8>;
 
 /// ISR flags for a single DMA channel
@@ -19,11 +20,21 @@ pub struct InterruptStatus(u8);
 #[derive(Debug, PartialEq, Eq)]
 pub struct InterruptClear(u8);
 
+/// DMA Interrupt type to handle (error is always checked)
 pub enum Interrupt {
     FullTransfer,
     HalfTransfer,
 }
 
+/// Result of handling DMA interrupt
+#[derive(Debug, PartialEq, Eq)]
+pub enum InterruptResult {
+    NotSet,
+    Done,
+    Error,
+}
+
+/// All DMA channels on the MCU
 pub struct Dma {
     pub ch1: DmaChannel<1>,
     pub ch2: DmaChannel<2>,
@@ -88,12 +99,8 @@ macro_rules! dma_channels {
                     unsafe { dma.ifcr.write(|w| w.bits(mask)); }
                 }
 
-                /// Handle transfer completion (or error) interrupt if occured
-                ///
-                /// This function will check and clear error flag (returns `Err` if set)
-                /// and half-transfer complete flag (`Ok`). If no flags are set, `None` is
-                /// returned.
-                pub fn handle_interrupt(&mut self, interrupt: Interrupt) -> Option<Result<(), ()>> {
+                /// Handle transfer completion (or error) interrupt if it occured
+                pub fn handle_interrupt(&mut self, interrupt: Interrupt) -> InterruptResult {
                     // Check if this is an interrupt from this channel (only the one we care about!)
                     let isr = self.isr();
                     let is_set = match interrupt {
@@ -101,7 +108,7 @@ macro_rules! dma_channels {
                         Interrupt::HalfTransfer => isr.half_complete(),
                     };
                     if !(is_set || isr.error()) {
-                        return None;
+                        return InterruptResult::NotSet;
                     }
 
                     // Clear only the flags we checked! This is important because new flags
@@ -121,9 +128,9 @@ macro_rules! dma_channels {
                                 .tcie().enabled()
                                 .teie().enabled()
                         });
-                        Some(Err(()))
+                        InterruptResult::Error
                     } else {
-                        Some(Ok(()))
+                        InterruptResult::Done
                     }
                 }
             }
@@ -199,6 +206,27 @@ impl InterruptClear {
     pub fn error(&mut self) -> &mut Self {
         self.0 |= 0b1000;
         self
+    }
+}
+
+impl InterruptResult {
+    /// Ignore case when no interrupt flag was set
+    ///
+    /// This is useful when we only want to check for potential errors.
+    pub fn if_any(&self) -> &Result<(), ()> {
+        match self {
+            Self::NotSet | Self::Done => &Ok(()),
+            Self::Error => &Err(()),
+        }
+    }
+
+    /// Transform to an option (if set) containing result (done/error)
+    pub fn as_option(&self) -> &Option<Result<(), ()>> {
+        match self {
+            Self::NotSet => &None,
+            Self::Done => &Some(Ok(())),
+            Self::Error => &Some(Err(())),
+        }
     }
 }
 

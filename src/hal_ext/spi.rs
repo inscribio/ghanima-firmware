@@ -190,23 +190,22 @@ where
     /// Retuns `true` if there was an interrupt - this way it is possible to
     /// call this function along handlers for other DMA channels. Error is
     /// returned if the DMA transfer error flag is on.
-    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
-        self.tx.dma.handle_interrupt(dma::Interrupt::FullTransfer)
-            .map(|status| {
-                // Disable DMA request and channel
-                self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
-                self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
+    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
+        let res = self.tx.dma.handle_interrupt(dma::Interrupt::FullTransfer);
+        if let Some(status) = res.as_option() {
+            // Disable DMA request and channel
+            self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
+            self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-                // "Subsequent reads and writes cannot be moved ahead of preceding reads"
-                atomic::compiler_fence(atomic::Ordering::Acquire);
+            // "Subsequent reads and writes cannot be moved ahead of preceding reads"
+            atomic::compiler_fence(atomic::Ordering::Acquire);
 
-                if status.is_ok() {
-                    assert!(!self.ready, "Transfer completion but transfer have not been started");
-                    self.ready = true;
-                }
-
-                status
-            })
+            if status.is_ok() {
+                assert!(!self.ready, "Transfer completion but transfer have not been started");
+                self.ready = true;
+            }
+        }
+        res
     }
 
     pub fn take(&mut self) -> Result<&mut BUF, TransferOngoing> {

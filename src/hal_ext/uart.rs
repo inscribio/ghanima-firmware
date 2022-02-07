@@ -158,31 +158,29 @@ impl Tx {
     }
 
     /// Handle DMA interrupt
-    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
-        self.dma.handle_interrupt(dma::Interrupt::FullTransfer)
-            .map(|status| {
-                // Disable DMA request and channel
-                Self::uart().cr3.modify(|_, w| w.dmat().disabled());
-                self.dma.ch().cr.modify(|_, w| w.en().disabled());
+    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
+        let res = self.dma.handle_interrupt(dma::Interrupt::FullTransfer);
+        if let Some(status) = res.as_option() {
+            // Disable DMA request and channel
+            Self::uart().cr3.modify(|_, w| w.dmat().disabled());
+            self.dma.ch().cr.modify(|_, w| w.en().disabled());
 
-                atomic::compiler_fence(atomic::Ordering::Acquire);
+            atomic::compiler_fence(atomic::Ordering::Acquire);
 
-                if status.is_ok() {
-                    assert!(!self.ready, "Transfer completion but transfer have not been started");
-                    self.ready = true;
+            if status.is_ok() {
+                assert!(!self.ready, "Transfer completion but transfer have not been started");
+                self.ready = true;
 
-                    // Ensure idle frame after transfer
-                    // FIXME: sometimes waiting for TEACK leads to an infinite loop
-                    // Self::uart().cr1.modify(|_, w| w.te().disabled());
-                    // // We must check TEACK to ensure that TE=0 has been registered.
-                    // while Self::uart().isr.read().teack().bit_is_clear() {}
-                    // Self::uart().cr1.modify(|_, w| w.te().enabled());
-                    // // Do not wait for TEACK=1, we will wait in transmit() if needed.
-                }
-
-                status
-            })
-
+                // Ensure idle frame after transfer
+                // FIXME: sometimes waiting for TEACK leads to an infinite loop
+                // Self::uart().cr1.modify(|_, w| w.te().disabled());
+                // // We must check TEACK to ensure that TE=0 has been registered.
+                // while Self::uart().isr.read().teack().bit_is_clear() {}
+                // Self::uart().cr1.modify(|_, w| w.te().enabled());
+                // // Do not wait for TEACK=1, we will wait in transmit() if needed.
+            }
+        }
+        res
     }
 
     fn configure_dma_transfer(&mut self, len: usize) {
@@ -262,14 +260,12 @@ where
         }
     }
 
-    pub fn on_dma_interrupt(&mut self) -> Option<Result<(), ()>> {
-        self.dma.handle_interrupt(dma::Interrupt::FullTransfer)
-            .map(|status| {
-                if status.is_ok() {
-                    self.buf.tail_wrapped();
-                }
-                status
-            })
+    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
+        let res = self.dma.handle_interrupt(dma::Interrupt::FullTransfer);
+        if res == dma::InterruptResult::Done {
+            self.buf.tail_wrapped();
+        }
+        res
     }
 }
 
