@@ -11,6 +11,5 @@ use stm32f0xx_hal as hal;
 
 pub mod bsp;
 pub mod hal_ext;
-// pub mod half2half;
+pub mod half2half;
 pub mod utils;
-mod protocol;

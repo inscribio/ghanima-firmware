@@ -6,7 +6,7 @@ use heapless::Vec;
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 
-pub trait Message: Serialize + for<'de> Deserialize<'de> {
+pub trait Packet: Serialize + for<'de> Deserialize<'de> {
     type Checksum: ChecksumGen;
 
     /// Serialize to slice
@@ -32,19 +32,19 @@ pub struct Accumulator<const N: usize> {
     head: usize,
 }
 
-pub struct Iterator<'a, 'b, 'c, M: Message, const N: usize> {
+pub struct Iterator<'a, 'b, 'c, P: Packet, const N: usize> {
     acc: &'a mut Accumulator<N>,
     window: &'b [u8],
-    checksum: &'c mut M::Checksum,
-    _msg: PhantomData<M>,
+    checksum: &'c mut P::Checksum,
+    _msg: PhantomData<P>,
 }
 
-impl<'a, 'b, 'c, M: Message, const N: usize> core::iter::Iterator for Iterator<'a, 'b, 'c, M, N> {
-    type Item = M;
+impl<'a, 'b, 'c, P: Packet, const N: usize> core::iter::Iterator for Iterator<'a, 'b, 'c, P, N> {
+    type Item = P;
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.window.is_empty() {
-            let result = self.acc.feed::<M>(self.checksum, self.window);
+            let result = self.acc.feed::<P>(self.checksum, self.window);
 
             use FeedResult::*;
             let (msg, new_window) = match result {
@@ -65,7 +65,7 @@ impl<'a, 'b, 'c, M: Message, const N: usize> core::iter::Iterator for Iterator<'
 }
 
 #[derive(Debug)]
-pub enum FeedResult<'a, M> {
+pub enum FeedResult<'a, P> {
     Consumed,
     /// Consumed all data, still pending
 
@@ -83,7 +83,7 @@ pub enum FeedResult<'a, M> {
 
     /// Successfully deserialized a message, returing unused input data
     Success {
-        msg: M,
+        msg: P,
         remaining: &'a [u8],
     }
 }
@@ -93,10 +93,10 @@ impl<const N: usize> Accumulator<N> {
         Self { buf: [0; N], head: 0 }
     }
 
-    pub fn feed<'a, M>(&mut self, checksum: &mut M::Checksum, data: &'a [u8]) -> FeedResult<'a, M>
+    pub fn feed<'a, P>(&mut self, checksum: &mut P::Checksum, data: &'a [u8]) -> FeedResult<'a, P>
     where
         // TODO: or maybe use PhantomData ensuring one accumulator always decodes same type of message?
-        M: Message
+        P: Packet
     {
         if data.is_empty() {
             return FeedResult::Consumed;
@@ -175,7 +175,7 @@ mod tests {
         c: u8,
     }
 
-    impl Message for TestMessage {
+    impl Packet for TestMessage {
         type Checksum = Crc32;
     }
 
