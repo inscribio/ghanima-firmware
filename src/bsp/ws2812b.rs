@@ -152,8 +152,6 @@ impl Leds {
 
 #[cfg(test)]
 mod tests {
-    use std::println;
-
     use super::*;
 
     #[test]

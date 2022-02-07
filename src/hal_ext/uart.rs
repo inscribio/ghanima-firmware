@@ -1,4 +1,4 @@
-use core::{sync::atomic, convert::Infallible};
+use core::sync::atomic;
 use embedded_dma::WriteBuffer;
 
 use crate::hal;

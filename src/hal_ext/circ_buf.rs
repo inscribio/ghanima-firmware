@@ -71,7 +71,7 @@ where
     // DMA transfer mock
     #[cfg(test)]
     fn advance_dma(&mut self, tail: &mut u16, data: &[u8]) -> (&[u8], &[u8], usize) {
-        let mut buf = unsafe {
+        let buf = unsafe {
             let (buf, len) = self.buf.write_buffer();
             core::slice::from_raw_parts_mut(buf, len)
         };
@@ -104,7 +104,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::vec::Vec;
 
     // Assume that given buffer has static lifetime to satisfy DMA buffer constraints.
     // This is safe in the context of these unit tests, as we don't use DMA, so we only

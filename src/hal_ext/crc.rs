@@ -1,5 +1,3 @@
-use postcard::flavors::SerFlavor;
-
 use crate::hal;
 use super::checksum::ChecksumGen;
 

@@ -1,8 +1,7 @@
 use core::marker::PhantomData;
 
 use serde::{Serialize, Deserialize};
-use postcard::{CobsAccumulator, flavors::{Cobs, Slice}};
-use heapless::Vec;
+use postcard::flavors::{Cobs, Slice};
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 

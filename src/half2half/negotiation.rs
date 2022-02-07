@@ -2,7 +2,7 @@ use defmt::Format;
 use serde::{Serialize, Deserialize};
 use smlang::statemachine;
 
-use crate::hal_ext::{crc, ChecksumGen};
+use crate::hal_ext::crc::Crc;
 use super::packet::Packet;
 
 #[derive(Serialize, Deserialize, Format)]
@@ -14,7 +14,7 @@ pub enum Message {
 
 impl Packet for Message {
     // #[cfg(not(test))]
-    type Checksum = crc::Crc;
+    type Checksum = Crc;
     // #[cfg(test)]
     // type Checksum = crate::hal_ext::checksum_mock::Crc32;
 }
@@ -106,8 +106,7 @@ mod tests {
         assert!(fsm.state() == &init);
 
         for (event, state) in seq {
-            fsm.process_event(event);
-            assert_eq!(fsm.state(), &state);
+            assert_eq!(fsm.process_event(event).unwrap(), &state);
         }
     }
 

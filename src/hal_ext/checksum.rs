@@ -1,7 +1,5 @@
 use num::PrimInt;
-use serde::{Serialize, Deserialize};
-use postcard::{flavors::{SerFlavor, Cobs, Slice, HVec}, serialize_with_flavor};
-use heapless::Vec;
+use postcard::flavors::SerFlavor;
 
 /// Checksum generator
 ///
