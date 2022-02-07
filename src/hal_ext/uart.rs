@@ -1,5 +1,5 @@
 use core::{sync::atomic, convert::Infallible};
-use embedded_dma::{WriteBuffer, StaticWriteBuffer};
+use embedded_dma::WriteBuffer;
 
 use crate::hal;
 use hal::gpio;
@@ -65,7 +65,7 @@ pub struct RxData<'a> {
 
 impl<BUF> Uart<BUF>
 where
-    BUF: StaticWriteBuffer<Word = u8>
+    BUF: WriteBuffer<Word = u8>
 {
     // TODO: use builder pattern or a config struct
     pub fn new(
@@ -200,7 +200,7 @@ impl Tx {
 
 impl<BUF> Rx<BUF>
 where
-    BUF: StaticWriteBuffer<Word = u8>
+    BUF: WriteBuffer<Word = u8>
 {
     fn new(_pin: RxPin, mut dma: RxDma, mut buf: BUF) -> Self {
         let uart = unsafe { &*UartRegs::ptr() };

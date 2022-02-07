@@ -1,5 +1,5 @@
 use core::{sync::atomic, convert::Infallible};
-use embedded_dma::StaticReadBuffer;
+use embedded_dma::ReadBuffer;
 
 use crate::hal;
 use crate::utils::InfallibleResult;
@@ -115,7 +115,7 @@ impl SpiTx {
 
     pub fn with_buf<BUF>(self, buf: BUF) -> SpiTransfer<BUF>
     where
-        BUF: StaticReadBuffer<Word = u8>
+        BUF: ReadBuffer<Word = u8>
     {
         SpiTransfer::init(self, buf)
     }
@@ -129,7 +129,7 @@ pub struct SpiTransfer<BUF> {
 
 impl<BUF> SpiTransfer<BUF>
 where
-    BUF: StaticReadBuffer<Word = u8>
+    BUF: ReadBuffer<Word = u8>
 {
     fn init(mut spi: SpiTx, buf: BUF) -> Self {
         // Configure channel

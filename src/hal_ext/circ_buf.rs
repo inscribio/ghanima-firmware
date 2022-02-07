@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use embedded_dma::{WriteBuffer, StaticWriteBuffer};
+use embedded_dma::WriteBuffer;
 
 /// DMA RX circular buffer
 ///
@@ -14,7 +14,7 @@ pub(crate) struct CircularBuffer<BUF> {
 
 impl<BUF> CircularBuffer<BUF>
 where
-    BUF: StaticWriteBuffer<Word = u8>,
+    BUF: WriteBuffer<Word = u8>,
 {
     pub fn new(buf: BUF) -> Self {
         Self { buf, head: 0, wrap_count: 0 }
@@ -64,7 +64,7 @@ where
     }
 
     unsafe fn buf(&mut self) -> &'static [u8] {
-        let (buf, len) = self.buf.static_write_buffer();
+        let (buf, len) = self.buf.write_buffer();
         core::slice::from_raw_parts(buf, len)
     }
 
@@ -72,7 +72,7 @@ where
     #[cfg(test)]
     fn advance_dma(&mut self, tail: &mut u16, data: &[u8]) -> (&[u8], &[u8], usize) {
         let mut buf = unsafe {
-            let (buf, len) = self.buf.static_write_buffer();
+            let (buf, len) = self.buf.write_buffer();
             core::slice::from_raw_parts_mut(buf, len)
         };
         // no need to be efficient in test cases
@@ -92,7 +92,7 @@ where
 // Defer WriteBuffer to the internal buffer
 unsafe impl<BUF> WriteBuffer for CircularBuffer<BUF>
 where
-    BUF: StaticWriteBuffer<Word = u8>
+    BUF: WriteBuffer<Word = u8>
 {
     type Word = <BUF as WriteBuffer>::Word;
 

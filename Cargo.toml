@@ -31,7 +31,7 @@ systick-monotonic = "1.0"
 
 nb = "1.0"
 embedded-hal = "0.2"
-embedded-dma = "0.1"
+embedded-dma = "0.2"
 
 usb-device = "0.2"
 usbd-hid = "0.5"
