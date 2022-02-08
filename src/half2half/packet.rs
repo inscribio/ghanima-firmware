@@ -5,9 +5,22 @@ use postcard::flavors::{Cobs, Slice};
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 
-pub trait Packet: Serialize + for<'de> Deserialize<'de> {
+/// Mark trait to define types used as checksumed packets in a protocol
+///
+/// While this trait does not provide anything it is used to automatically
+/// implement `PacketSer` and `PacketDeser` for given type if it implements
+/// proper serde traits.
+pub trait Packet {
     type Checksum: ChecksumGen;
+}
 
+// Automatically implement all the sub-traits of Packet
+impl<P: Packet + Serialize> PacketSer for P {}
+impl<P: Packet + for<'de> Deserialize<'de>> PacketDeser for P {}
+impl<'de, P: Packet + Deserialize<'de>> PacketDeserRef<'de> for P {}
+
+/// Serializable packet
+pub trait PacketSer: Packet + Serialize {
     /// Serialize to slice
     fn to_slice<'a>(&self, checksum: &mut Self::Checksum, buf: &'a mut [u8]) -> postcard::Result<&'a mut [u8]> {
         postcard::serialize_with_flavor::<Self, ChecksumEncoder<Cobs<Slice>, Self::Checksum>, &'a mut [u8]>(
@@ -15,14 +28,70 @@ pub trait Packet: Serialize + for<'de> Deserialize<'de> {
             ChecksumEncoder::new(Cobs::try_new(Slice::new(buf))?, checksum),
         )
     }
+}
 
-    fn iter_from_slice<'a, 'b, 'c, const N: usize>(
-        acc: &'a mut Accumulator<N>,
-        checksum: &'c mut Self::Checksum,
-        data: &'b [u8],
-    ) -> Iterator<'a, 'b, 'c, Self, N> {
+/// Deserializable, owned packet
+///
+/// This trait means that the packet can be deserialized from any lifetime, which
+/// basically means that the packet does not reference the data from which it is
+/// deserialized (i.e. packet struct cannot have references).
+pub trait PacketDeser: Packet + for<'de> Deserialize<'de> {
+    /// Iterate over packets deserialized from a slice (if any) accumulating in Accumulator
+    fn iter_from_slice<'acc, 'chk, 'dat, const N: usize>(
+        acc: &'acc mut Accumulator<N>, checksum: &'chk mut Self::Checksum, data: &'dat [u8]
+    ) -> Iterator<'acc, 'chk, 'dat, Self, N>
+    {
         Iterator { acc, checksum, window: data, _msg: PhantomData }
     }
+}
+
+/// Desierializable packet that can reference deserialized data
+pub trait PacketDeserRef<'de>: Packet + Deserialize<'de> {
+    /// Deserialize packet from slice (if any) and return unused slice data
+    ///
+    /// Note that packet lifetime is bounded by the lifetime of accumulator because
+    /// it may reference the data in the Accumulator buffer that would be invalid on
+    /// next Accumulator usage.
+    fn get_from_slice<'chk, 'dat, const N: usize>(
+        acc: &'de mut Accumulator<N>,
+        checksum: &'chk mut Self::Checksum,
+        data: &'dat [u8],
+    ) -> (Option<Self>, &'dat [u8]) {
+        let result = acc.feed::<Self>(checksum, data);
+
+        use FeedResult::*;
+        let (msg, new_window) = match result {
+            Consumed => (None, &[][..]),
+            Success { msg, remaining } => (Some(msg), remaining),
+            OverFull(r) | CobsDecodingError(r) | ChecksumError(r) | DeserError(r) => (None, r),
+        };
+
+        (msg, new_window)
+    }
+
+    // Too much magic for me, but this should be possible ...
+    // fn for_each_in_slice<'acc, 'chk, 'dat, F, const N: usize>(
+    //     acc: &'acc mut Accumulator<N>,
+    //     checksum: &'chk mut Self::Checksum,
+    //     data: &'dat [u8],
+    //     handler: F,
+    // )
+    // where
+    //     // F: FnMut(&'de Self),
+    //     F: FnMut(Self),
+    //     Self: 'de,
+    // {
+    //     let mut window = data;
+    //     while !window.is_empty() {
+    //         let (msg, new_window) = Self::get_from_slice(acc, checksum, window);
+    //         window = new_window;
+    //         if let Some(msg) = msg {
+    //             handler(msg)
+    //             // handler(&msg)
+    //         }
+    //     }
+    // }
+
 }
 
 /// Clone of postcard::CobsAccumulator but with checksum decoding
@@ -31,14 +100,15 @@ pub struct Accumulator<const N: usize> {
     head: usize,
 }
 
-pub struct Iterator<'a, 'b, 'c, P: Packet, const N: usize> {
-    acc: &'a mut Accumulator<N>,
-    window: &'b [u8],
-    checksum: &'c mut P::Checksum,
+/// Iterator over packets deserialized from a slice
+pub struct Iterator<'acc, 'chk, 'dat, P: PacketDeser, const N: usize> {
+    acc: &'acc mut Accumulator<N>,
+    checksum: &'chk mut P::Checksum,
+    window: &'dat [u8],
     _msg: PhantomData<P>,
 }
 
-impl<'a, 'b, 'c, P: Packet, const N: usize> core::iter::Iterator for Iterator<'a, 'b, 'c, P, N> {
+impl<'acc, 'chk, 'dat, P: PacketDeser, const N: usize> core::iter::Iterator for Iterator<'acc, 'chk, 'dat, P, N> {
     type Item = P;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -65,26 +135,18 @@ impl<'a, 'b, 'c, P: Packet, const N: usize> core::iter::Iterator for Iterator<'a
 
 #[derive(Debug)]
 pub enum FeedResult<'a, P> {
-    Consumed,
     /// Consumed all data, still pending
-
+    Consumed,
     /// No sentinel found and data too long to fit in internal buf; dropped accumulated data
     OverFull(&'a [u8]),
-
     /// Found sentinel byte but COBS decoding on the packet failed
     CobsDecodingError(&'a [u8]),
-
     /// COBS decoding succeeded, but checksum verification failed
     ChecksumError(&'a [u8]),
-
     /// Failed to deserialize message from the data even though checksum was correct
     DeserError(&'a [u8]),
-
     /// Successfully deserialized a message, returing unused input data
-    Success {
-        msg: P,
-        remaining: &'a [u8],
-    }
+    Success { msg: P, remaining: &'a [u8] }
 }
 
 impl<const N: usize> Accumulator<N> {
@@ -92,10 +154,10 @@ impl<const N: usize> Accumulator<N> {
         Self { buf: [0; N], head: 0 }
     }
 
-    pub fn feed<'a, P>(&mut self, checksum: &mut P::Checksum, data: &'a [u8]) -> FeedResult<'a, P>
+    pub fn feed<'dat, 'chk, 'acc, P>(&'acc mut self, checksum: &'chk mut P::Checksum, data: &'dat [u8]) -> FeedResult<'dat, P>
     where
         // TODO: or maybe use PhantomData ensuring one accumulator always decodes same type of message?
-        P: Packet
+        P: PacketDeserRef<'acc>
     {
         if data.is_empty() {
             return FeedResult::Consumed;
@@ -168,13 +230,13 @@ mod tests {
     use crate::hal_ext::checksum_mock::Crc32;
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    struct TestMessage {
+    struct Message {
         a: u32,
         b: u16,
         c: u8,
     }
 
-    impl Packet for TestMessage {
+    impl Packet for Message {
         type Checksum = Crc32;
     }
 
@@ -182,7 +244,7 @@ mod tests {
     fn serialize_to_slice() {
         let mut crc = Crc32::new();
         let mut buf = [0u8; 16];
-        let msg = TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff };
+        let msg = Message { a: 0xaa0055bb, b: 0x1234, c: 0xff };
         let data = msg.to_slice(&mut crc, &mut buf).unwrap();
         assert_eq!(data, [3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0])
     }
@@ -200,37 +262,37 @@ mod tests {
         ];
 
         // 1
-        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
+        let buf = match acc.feed::<Message>(&mut crc, buf) {
             FeedResult::CobsDecodingError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
 
         // 2
-        let (buf, msg) = match acc.feed::<TestMessage>(&mut crc, buf) {
+        let (buf, msg) = match acc.feed::<Message>(&mut crc, buf) {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert_eq!(msg, TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff });
+        assert_eq!(msg, Message { a: 0xaa0055bb, b: 0x1234, c: 0xff });
 
         // 3
-        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
+        let buf = match acc.feed::<Message>(&mut crc, buf) {
             FeedResult::ChecksumError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
 
         // 4
-        let (buf, msg) = match acc.feed::<TestMessage>(&mut crc, buf) {
+        let (buf, msg) = match acc.feed::<Message>(&mut crc, buf) {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert_eq!(msg, TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff });
+        assert_eq!(msg, Message { a: 0xaa0055bb, b: 0x1234, c: 0xff });
 
         // 5
-        let buf = match acc.feed::<TestMessage>(&mut crc, buf) {
+        let buf = match acc.feed::<Message>(&mut crc, buf) {
             FeedResult::ChecksumError(remaining) => remaining,
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert!(matches!(acc.feed::<TestMessage>(&mut crc, buf), FeedResult::Consumed));
+        assert!(matches!(acc.feed::<Message>(&mut crc, buf), FeedResult::Consumed));
     }
 
     #[test]
@@ -244,9 +306,9 @@ mod tests {
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
             0x00, 0x2,
         ];
-        let msgs = TestMessage::iter_from_slice(&mut acc, &mut crc, &buf)
+        let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
             .collect::<Vec<_>>();
-        assert_eq!(msgs, vec![TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 2]);
+        assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 2]);
     }
 
     #[test]
@@ -260,8 +322,85 @@ mod tests {
             3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
             0x00, 0x2,
         ];
-        let msgs = TestMessage::iter_from_slice(&mut acc, &mut crc, &buf)
+        let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
             .collect::<Vec<_>>();
-        assert_eq!(msgs, vec![TestMessage { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 1]);
+        assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 1]);
+    }
+
+    #[derive(Serialize)]
+    struct MessageWithRef<'a> {
+        id: u16,
+        other: &'a Message,
+    }
+
+    impl<'a> Packet for MessageWithRef<'a> {
+        type Checksum = Crc32;
+    }
+
+    #[test]
+    fn serialize_to_slice_with_ref() {
+        let mut crc = Crc32::new();
+        let mut buf = [0u8; 16];
+        let other = &Message { a: 0xaa0055bb, b: 0x1234, c: 0xff };
+        let msg = MessageWithRef { id: 0xbaad, other };
+        let data = msg.to_slice(&mut crc, &mut buf).unwrap();
+        assert_eq!(data, [5, 0xad, 0xba, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0xfe, 0xc9, 0x4d, 0xb0, 0])
+    }
+
+    // Deserialize with references probably won't work for types other than &str or &[u8]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct MessageWithSimpleRef<'a> {
+        id: u16,
+        name: &'a str,
+    }
+
+    impl<'a> Packet for MessageWithSimpleRef<'a> {
+        type Checksum = Crc32;
+    }
+
+    #[test]
+    fn serialize_to_slice_with_simple_ref() {
+        let mut crc = Crc32::new();
+        let mut buf = [0u8; 18];
+        let name = "Yossarian";
+        let msg = MessageWithSimpleRef { id: 0xbaad, name };
+        let data = msg.to_slice(&mut crc, &mut buf).unwrap();
+        assert_eq!(data, [
+            17,
+            0xad, 0xba,
+            9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
+            0xc5, 0xab, 0x20, 0xd6,
+            0
+        ])
+    }
+
+    #[test]
+    fn deserialize_from_slice_with_ref() {
+        let mut crc = Crc32::new();
+        let mut acc = Accumulator::<20>::new();
+        let buf = [
+            0xff, 0xee, 0xdd, 0xcc, 0,
+            17,
+            0xad, 0xba,
+            9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
+            0xc5, 0xab, 0x20, 0xd6,
+            0,
+            0x11, 0x22, 0x33, 0x44, 0
+        ];
+
+        let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
+        assert!(msg.is_none());
+        assert_eq!(buf, [
+            17, 0xad, 0xba, 9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
+            0xc5, 0xab, 0x20, 0xd6, 0, 0x11, 0x22, 0x33, 0x44, 0
+        ]);
+
+        let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
+        assert_eq!(msg.unwrap(), MessageWithSimpleRef { id: 0xbaad, name: "Yossarian" });
+        assert_eq!(buf, [0x11, 0x22, 0x33, 0x44, 0]);
+
+        let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
+        assert!(msg.is_none());
+        assert_eq!(buf, []);
     }
 }
