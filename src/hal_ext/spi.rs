@@ -14,6 +14,8 @@ type DmaChannel = dma::DmaChannel<5>;
 pub struct SpiTx {
     spi: hal::pac::SPI2,
     dma: DmaChannel,
+    buf: &'static mut [u8],
+    ready: bool,
 }
 
 #[derive(Debug)]
@@ -22,8 +24,9 @@ pub struct TransferOngoing;
 impl SpiTx {
     pub fn new<MOSIPIN, F>(
         spi: hal::pac::SPI2,
-        dma: DmaChannel,
         _mosi: MOSIPIN,
+        dma: DmaChannel,
+        buf: &'static mut [u8],
         freq: F,
         rcc: &mut hal::rcc::Rcc,
     ) -> Self
@@ -42,7 +45,7 @@ impl SpiTx {
         // Enable DMA clock
         rcc_regs.ahbenr.modify(|_, w| w.dmaen().enabled());
 
-        let mut s = Self { spi, dma };
+        let mut s = Self { spi, dma, buf, ready: true };
 
         // Disable SPI & DMA
         s.spi.cr1.modify(|_, w| w.spe().disabled());
@@ -113,41 +116,51 @@ impl SpiTx {
         }
     }
 
-    pub fn with_buf<BUF>(self, buf: BUF) -> SpiTransfer<BUF>
-    where
-        BUF: ReadBuffer<Word = u8>
-    {
-        SpiTransfer::init(self, buf)
+    // This may be needed if we ever want to disable SPI peripheral
+    fn wait_spi(&self) -> nb::Result<(), Infallible> {
+        // Wait until all data has been transmitted
+        if !self.spi.sr.read().ftlvl().is_empty() || self.spi.sr.read().bsy().is_busy() {
+            Err(nb::Error::WouldBlock)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn configure_dma_transfer(&mut self, len: usize) {
+        let src = self.buf.as_ptr();
+        let dst = self.spi.dr.as_ptr() as u32;
+        self.dma.ch().mar.write(|w| unsafe { w.ma().bits(src as u32) });
+        self.dma.ch().par.write(|w| unsafe { w.pa().bits(dst) });
+        self.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
+    }
+
+    fn len(&mut self) -> u16 {
+        self.dma.ch().ndtr.read().ndt().bits()
     }
 }
 
-pub struct SpiTransfer<BUF> {
-    tx: SpiTx,
-    buf: BUF,
-    ready: bool,
-}
-
-impl<BUF> SpiTransfer<BUF>
-where
-    BUF: ReadBuffer<Word = u8>
-{
-    fn init(mut spi: SpiTx, buf: BUF) -> Self {
-        // Configure channel
-        let (src, len) = unsafe { buf.read_buffer() };
-        let dst = spi.spi.dr.as_ptr() as u32;
-        spi.dma.ch().mar.write(|w| unsafe { w.ma().bits(src as u32) });
-        spi.dma.ch().par.write(|w| unsafe { w.pa().bits(dst) });
-        spi.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
-
-        Self { tx: spi, buf, ready: true }
+impl dma::DmaTx for SpiTx {
+    fn capacity(&self) -> usize {
+        let (_, len) = unsafe { self.buf.read_buffer() };
+        len
     }
 
-    /// Start DMA transfer
-    ///
-    ///
-    pub fn start(&mut self) -> nb::Result<(), TransferOngoing> {
-        if !self.ready {
-            return Err(nb::Error::Other(TransferOngoing));
+    fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    fn push<F: FnOnce(&mut [u8]) -> usize>(&mut self, writer: F) -> Result<(), dma::TransferOngoing> {
+        if !self.is_ready() {
+            return Err(dma::TransferOngoing);
+        }
+        let len = writer(&mut self.buf);
+        self.configure_dma_transfer(len);
+        Ok(())
+    }
+
+    fn start(&mut self) -> nb::Result<(), dma::TransferOngoing> {
+        if !self.is_ready() {
+            return Err(nb::Error::Other(dma::TransferOngoing));
         }
 
         // Wait for any data from previous transfer that has not been transmitted yet
@@ -159,6 +172,11 @@ where
             Ok(()) => {},
         };
 
+        // Copy new data
+        if self.len() == 0 {
+            return Ok(());
+        }
+
         self.ready = false;
 
         // "Preceding reads and writes cannot be moved past subsequent writes"
@@ -166,36 +184,21 @@ where
 
         // reload buffer length
         let (_, len) = unsafe { self.buf.read_buffer() };
-        self.tx.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
+        self.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
 
         // Enable channel, then trigger DMA request
-        self.tx.dma.ch().cr.modify(|_, w| w.en().enabled());
-        self.tx.spi.cr2.modify(|_, w| w.txdmaen().enabled());
+        self.dma.ch().cr.modify(|_, w| w.en().enabled());
+        self.spi.cr2.modify(|_, w| w.txdmaen().enabled());
 
         Ok(())
     }
 
-    // This may be needed if we ever want to disable SPI peripheral
-    fn wait_spi(&self) -> nb::Result<(), Infallible> {
-        // Wait until all data has been transmitted
-        if !self.tx.spi.sr.read().ftlvl().is_empty() || self.tx.spi.sr.read().bsy().is_busy() {
-            Err(nb::Error::WouldBlock)
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Handle DMA interrupt
-    ///
-    /// Retuns `true` if there was an interrupt - this way it is possible to
-    /// call this function along handlers for other DMA channels. Error is
-    /// returned if the DMA transfer error flag is on.
-    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
-        let res = self.tx.dma.handle_interrupt(dma::Interrupt::FullTransfer);
+    fn on_interrupt(&mut self) -> dma::InterruptResult {
+        let res = self.dma.handle_interrupt(dma::Interrupt::FullTransfer);
         if let Some(status) = res.as_option() {
             // Disable DMA request and channel
-            self.tx.spi.cr2.modify(|_, w| w.txdmaen().disabled());
-            self.tx.dma.ch().cr.modify(|_, w| w.en().disabled());
+            self.spi.cr2.modify(|_, w| w.txdmaen().disabled());
+            self.dma.ch().cr.modify(|_, w| w.en().disabled());
 
             // "Subsequent reads and writes cannot be moved ahead of preceding reads"
             atomic::compiler_fence(atomic::Ordering::Acquire);
@@ -206,13 +209,6 @@ where
             }
         }
         res
-    }
-
-    pub fn take(&mut self) -> Result<&mut BUF, TransferOngoing> {
-        match self.ready {
-            true => Ok(&mut self.buf),
-            false => Err(TransferOngoing),
-        }
     }
 }
 
@@ -242,4 +238,3 @@ mod tests {
         SpiTx::get_baudrate_divisor(48_000_000, 3_500_000);
     }
 }
-

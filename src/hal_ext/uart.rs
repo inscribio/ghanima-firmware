@@ -35,9 +35,6 @@ pub struct Tx {
     ready: bool,
 }
 
-#[derive(Debug)]
-pub struct TransferOngoing;
-
 /// DMA UART RX half
 ///
 /// UART receiver using DMA with a circular buffer. DMA is configured to transfer
@@ -130,9 +127,44 @@ impl Tx {
         Self { dma, buf, ready: true }
     }
 
-    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<(), TransferOngoing> {
-        if !self.ready {
-            return Err(nb::Error::Other(TransferOngoing));
+    fn configure_dma_transfer(&mut self, len: usize) {
+        let src = self.buf.as_ptr();
+        let dst = Self::uart().tdr.as_ptr() as u32;
+        self.dma.ch().mar.write(|w| unsafe { w.ma().bits(src as u32) });
+        self.dma.ch().par.write(|w| unsafe { w.pa().bits(dst) });
+        self.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
+    }
+
+    fn len(&mut self) -> u16 {
+        self.dma.ch().ndtr.read().ndt().bits()
+    }
+
+    fn uart() -> &'static UartRegisterBlock {
+        unsafe { &*UartRegs::ptr() }
+    }
+}
+
+impl dma::DmaTx for Tx {
+    fn capacity(&self) -> usize {
+        self.buf.len()
+    }
+
+    fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    fn push<F: FnOnce(&mut [u8]) -> usize>(&mut self, writer: F) -> Result<(), dma::TransferOngoing> {
+        if !self.is_ready() {
+            return Err(dma::TransferOngoing);
+        }
+        let len = writer(&mut self.buf);
+        self.configure_dma_transfer(len);
+        Ok(())
+    }
+
+    fn start(&mut self) -> nb::Result<(), dma::TransferOngoing> {
+        if !self.is_ready() {
+            return Err(nb::Error::Other(dma::TransferOngoing));
         }
 
         // Check TC bit to wait for transmission complete, and TEACK bit to
@@ -143,10 +175,11 @@ impl Tx {
             return Err(nb::Error::WouldBlock);
         }
 
-        self.ready = false;
+        if self.len() == 0 {
+            return Ok(());
+        }
 
-        self.buf[..data.len()].copy_from_slice(data);
-        self.configure_dma_transfer(data.len());
+        self.ready = false;
 
         atomic::compiler_fence(atomic::Ordering::Release);
 
@@ -157,8 +190,7 @@ impl Tx {
         Ok(())
     }
 
-    /// Handle DMA interrupt
-    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
+    fn on_interrupt(&mut self) -> dma::InterruptResult {
         let res = self.dma.handle_interrupt(dma::Interrupt::FullTransfer);
         if let Some(status) = res.as_option() {
             // Disable DMA request and channel
@@ -181,18 +213,6 @@ impl Tx {
             }
         }
         res
-    }
-
-    fn configure_dma_transfer(&mut self, len: usize) {
-        let src = self.buf.as_ptr();
-        let dst = Self::uart().tdr.as_ptr() as u32;
-        self.dma.ch().mar.write(|w| unsafe { w.ma().bits(src as u32) });
-        self.dma.ch().par.write(|w| unsafe { w.pa().bits(dst) });
-        self.dma.ch().ndtr.write(|w| w.ndt().bits(len as u16));
-    }
-
-    fn uart() -> &'static UartRegisterBlock {
-        unsafe { &*UartRegs::ptr() }
     }
 }
 

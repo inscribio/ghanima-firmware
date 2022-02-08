@@ -45,6 +45,52 @@ pub struct Dma {
     pub ch7: DmaChannel<7>,
 }
 
+/// Trait representing buffered DMA transmitter
+pub trait DmaTx {
+    /// Get per-transfer capacity of the DMA buffer
+    fn capacity(&self) -> usize;
+
+    /// Check if DMA transfer is ready/ongoing
+    fn is_ready(&self) -> bool;
+
+    /// Push data to the internal buffer
+    ///
+    /// This interface allows to copy data to internal buffer which is passed
+    /// as an argument to `writer` callback, which should return the number of
+    /// data written.
+    fn push<F: FnOnce(&mut [u8]) -> usize>(&mut self, writer: F) -> Result<(), TransferOngoing>;
+
+    /// Start transmiting data
+    ///
+    /// If the previous transfer is not complete returns `TransferOngoing`, if it is
+    /// complete but there is minimal waiting required (e.g. for a TX FIFO flag) then
+    /// returns `nb::Error::WouldBlock`.
+    fn start(&mut self) -> nb::Result<(), TransferOngoing>;
+
+    /// Handle DMA TX complete interrupt
+    ///
+    /// The return value has the same meaning as `DmaChannel::handle_interrupt`.
+    fn on_interrupt(&mut self) -> InterruptResult;
+
+    /// Transmit data (shorthand for copy to `buf_mut()` followed by `start()`)
+    // Note:
+    // Initially tried the following interface:
+    //   fn transmit<I: IntoIterator<Item = u8>>(&mut self, data: I) -> nb::Result<usize, TransferOngoing>;
+    // but this is very likely less efficient (likely no memcpy) and there is a problem
+    // when other components want to serialize to a slice in their interface.
+    fn transmit(&mut self, data: &[u8]) -> nb::Result<(), TransferOngoing> {
+        self.push(|buf| {
+            buf[..data.len()].copy_from_slice(data);
+            data.len()
+        }).map_err(|e| nb::Error::Other(e))?;
+        self.start()
+    }
+}
+
+/// DMA TX ongoing error
+#[derive(Debug)]
+pub struct TransferOngoing;
+
 impl DmaSplit for hal::pac::DMA1 {
     type Channels = Dma;
 

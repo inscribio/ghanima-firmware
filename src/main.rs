@@ -16,14 +16,14 @@ mod app {
 
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{spi, uart, dma::DmaSplit, reboot};
+    use lib::hal_ext::{spi, uart, dma::{DmaSplit, DmaTx}, reboot};
 
     #[shared]
     struct Shared {
         usb: Usb,
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
-        spi_tx: spi::SpiTransfer<&'static mut [u8]>,
+        spi_tx: spi::SpiTx,
         serial_tx: uart::Tx,
         serial_rx: uart::Rx<&'static mut [u8]>,
         board_side: BoardSide,
@@ -123,11 +123,10 @@ mod app {
         // SPI (tx only) for RGB data
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
-        let spi = spi::SpiTx::new(dev.SPI2, dma.ch5, rgb_tx, 3.mhz(), &mut rcc);
-        let mut spi_tx = spi.with_buf(&mut cx.local.led_buf[..]);
+        let mut spi_tx = spi::SpiTx::new(dev.SPI2, rgb_tx, dma.ch5, &mut cx.local.led_buf[..], 3.mhz(), &mut rcc);
         let mut ws2812 = ws2812b::Leds::new();
         // Send a first transfer with all leds disabled ASAP
-        ws2812.serialize_to_slice(spi_tx.take().unwrap());
+        spi_tx.push(|buf| { ws2812.serialize_to_slice(buf); ws2812b::BUFFER_SIZE }).unwrap();
         spi_tx.start().unwrap();
 
         // USB
@@ -226,9 +225,8 @@ mod app {
         (spi_tx, dbg).lock(|spi_tx, dbg| {
             dbg.with_rx_high(|| {
                 // TODO: try to use .serialize()
-                let buf = spi_tx.take()
+                spi_tx.push(|buf| { ws2812.serialize_to_slice(buf); ws2812b::BUFFER_SIZE })
                     .expect("Trying to serialize new data but DMA transfer is not finished");
-                ws2812.serialize_to_slice(buf);
             });
 
              spi_tx.start()
@@ -240,7 +238,7 @@ mod app {
     #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
-           spi_tx.on_dma_interrupt()
+           spi_tx.on_interrupt()
                .as_option()
                .transpose()
                .expect("Unexpected interrupt");
@@ -254,7 +252,7 @@ mod app {
         let rx = cx.shared.serial_rx;
         (tx, rx).lock(|tx, rx| {
             let rx_done = rx.on_dma_interrupt().as_option().transpose().expect("Unexpected interrupt");
-            let tx_done = tx.on_dma_interrupt().as_option().transpose().expect("Unexpected interrupt");
+            let tx_done = tx.on_interrupt().as_option().transpose().expect("Unexpected interrupt");
 
             if rx_done.is_some() {
                 defmt::debug!("UART RX done");
