@@ -53,6 +53,7 @@ postcard-cobs = { version = "0.2", default-features = false }
 num = { version = "0.4", default-features = false }
 rgb = "0.8"
 smlang = "0.5"
+ringbuffer = { version = "0.8", default-features = false }
 
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt = "0.3"

@@ -277,6 +277,68 @@ impl InterruptResult {
 }
 
 #[cfg(test)]
+pub mod mock {
+    use super::*;
+    use std::vec::Vec;
+
+    pub struct DmaTxMock<C: FnMut(Vec<u8>), const N: usize> {
+        buf: [u8; N],
+        len: usize,
+        ready: bool,
+        instant_interrupt: bool,
+        callback: C,
+    }
+
+    impl<C: FnMut(Vec<u8>), const N: usize> DmaTxMock<C, N> {
+        pub fn new(instant_interrupt: bool, callback: C) -> Self {
+            Self { buf: [0; N], len: 0, ready: true, instant_interrupt, callback }
+        }
+    }
+
+    impl<C: FnMut(Vec<u8>), const N: usize> DmaTx for DmaTxMock<C, N> {
+        fn capacity(&self) -> usize {
+            N
+        }
+
+        fn is_ready(&self) -> bool {
+            self.ready
+        }
+
+        fn push<F: FnOnce(&mut [u8]) -> usize>(&mut self, writer: F) -> Result<(), TransferOngoing> {
+            if !self.is_ready() {
+                return Err(TransferOngoing);
+            }
+            self.len = writer(&mut self.buf);
+            Ok(())
+        }
+
+        fn start(&mut self) -> nb::Result<(), TransferOngoing> {
+            if !self.is_ready() {
+                return Err(nb::Error::Other(TransferOngoing));
+            }
+            if self.len != 0 {
+                self.ready = false;
+            }
+            if self.instant_interrupt {
+                self.on_interrupt();
+            }
+            Ok(())
+        }
+
+        fn on_interrupt(&mut self) -> InterruptResult {
+            if !self.ready {
+                (self.callback)(self.buf[..self.len].into());
+                self.len = 0;
+                self.ready = true;
+                InterruptResult::Done
+            } else {
+                InterruptResult::NotSet
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
