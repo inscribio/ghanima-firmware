@@ -17,6 +17,7 @@ impl<'a, P: Packet> Packet for MarkedPacket<'a, P> {
     type Checksum = P::Checksum;
 }
 
+/// Packet transmission queue
 pub struct Sender<P, TX, const N: usize>
 where
     P: PacketSer,

@@ -16,7 +16,7 @@ mod app {
 
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{spi, uart, dma::{DmaSplit, DmaTx}, reboot};
+    use lib::hal_ext::{spi, uart, dma::{DmaSplit, DmaTx, DmaRx}, reboot};
 
     #[shared]
     struct Shared {
@@ -251,8 +251,10 @@ mod app {
         let tx = cx.shared.serial_tx;
         let rx = cx.shared.serial_rx;
         (tx, rx).lock(|tx, rx| {
-            let rx_done = rx.on_dma_interrupt().as_option().transpose().expect("Unexpected interrupt");
-            let tx_done = tx.on_interrupt().as_option().transpose().expect("Unexpected interrupt");
+            let rx_done = rx.on_interrupt(serial_on_receive)
+                .as_option().transpose().expect("Unexpected interrupt");
+            let tx_done = tx.on_interrupt()
+                .as_option().transpose().expect("Unexpected interrupt");
 
             if rx_done.is_some() {
                 defmt::debug!("UART RX done");
@@ -271,17 +273,15 @@ mod app {
     ])]
     fn uart_interrupt(mut cx: uart_interrupt::Context) {
         cx.shared.serial_rx.lock(|rx| {
-            if let Some(rx) = rx.on_uart_interrupt() {
-                if rx.len() == 0 {
-                    *cx.local.empty_count += 1;
-                } else {
-                    defmt::info!("RX: rx = {=[u8]} {=[u8]}, lost = {=usize}, empty_cnt = {=usize}",
-                        rx.data().0, rx.data().1, rx.lost(), *cx.local.empty_count,
-                    );
-                }
-            }
+            rx.on_interrupt(serial_on_receive)
+                .as_option().transpose().expect("Unexpected interrupt");
         });
     }
+
+    fn serial_on_receive(data: &[u8]) {
+        defmt::info!("RX: {=[u8]}", data);
+    }
+
 
     #[task(shared = [serial_tx, &board_side])]
     fn serial_transmit(cx: serial_transmit::Context) {

@@ -45,6 +45,10 @@ pub struct Dma {
     pub ch7: DmaChannel<7>,
 }
 
+/// DMA transfer ongoing error
+#[derive(Debug)]
+pub struct TransferOngoing;
+
 /// Trait representing buffered DMA transmitter
 pub trait DmaTx {
     /// Get per-transfer capacity of the DMA buffer
@@ -87,9 +91,17 @@ pub trait DmaTx {
     }
 }
 
-/// DMA TX ongoing error
-#[derive(Debug)]
-pub struct TransferOngoing;
+// Trait representing buffered DMA receiver
+pub trait DmaRx {
+    /// Read the received data (if any)
+    fn read<F: FnMut(&[u8])>(&mut self, reader: F);
+
+    /// Remaining capacity of the internal buffer
+    fn capacity_remaining(&mut self) -> usize;
+
+    /// Handle interrupt and read out received data
+    fn on_interrupt<F: FnMut(&[u8])>(&mut self, reader: F) -> InterruptResult;
+}
 
 impl DmaSplit for hal::pac::DMA1 {
     type Channels = Dma;

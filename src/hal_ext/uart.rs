@@ -258,11 +258,16 @@ where
         Self { dma, buf: CircularBuffer::new(buf) }
     }
 
-    pub fn consume(&mut self) -> RxData {
+    fn tail(&mut self) -> u16 {
         let buf_len = unsafe { self.buf.write_buffer().1 as u16 };
         let remaining = self.dma.ch().ndtr.read().ndt().bits();
         // Tail is where DMA is currently writing
         let tail = buf_len - remaining;
+        tail
+    }
+
+    fn consume(&mut self) -> RxData {
+        let tail = self.tail();
 
         atomic::compiler_fence(atomic::Ordering::Acquire);
 
@@ -270,7 +275,7 @@ where
         RxData { data1, data2, overwritten }
     }
 
-    pub fn on_uart_interrupt(&mut self) -> Option<RxData> {
+    fn on_uart_interrupt(&mut self) -> Option<RxData> {
         let uart = unsafe { &*UartRegs::ptr() };
         if uart.isr.read().idle().bit_is_set() {
             uart.icr.write(|w| w.idlecf().clear());
@@ -280,12 +285,56 @@ where
         }
     }
 
-    pub fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
+    fn on_dma_interrupt(&mut self) -> dma::InterruptResult {
         let res = self.dma.handle_interrupt(dma::Interrupt::FullTransfer);
         if res == dma::InterruptResult::Done {
             self.buf.tail_wrapped();
         }
         res
+    }
+}
+
+impl<BUF> dma::DmaRx for Rx<BUF>
+where
+    BUF: WriteBuffer<Word = u8>
+{
+    fn read<F: FnMut(&[u8])>(&mut self, mut reader: F) {
+        let rx = self.consume();
+        if !rx.data1.is_empty() {
+            reader(rx.data1);
+        }
+        if !rx.data2.is_empty() {
+            reader(rx.data2);
+        }
+    }
+
+    fn capacity_remaining(&mut self) -> usize {
+        let tail = self.tail();
+        self.buf.capacity_remaining(tail)
+    }
+
+    fn on_interrupt<F: FnMut(&[u8])>(&mut self, mut reader: F) -> dma::InterruptResult {
+        // Handle both interrupts and don't care if there was no interrupt,
+        // this way on_interrupt can be called in both interrupt handlers.
+        let dma = self.on_dma_interrupt();
+        let uart = self.on_uart_interrupt();
+        let was_uart = uart.is_some();
+
+        // Process data
+        if let Some(rx) = uart {
+            if !rx.data1.is_empty() {
+                reader(rx.data1);
+            }
+            if !rx.data2.is_empty() {
+                reader(rx.data2);
+            }
+        }
+
+        match (dma, was_uart) {
+            (dma::InterruptResult::Error, _) => dma::InterruptResult::Error,
+            (_, true) => dma::InterruptResult::Done,
+            (dma, false) => dma,
+        }
     }
 }
 

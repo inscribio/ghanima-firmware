@@ -26,15 +26,25 @@ where
     /// may not be continues (buffer might have wrapped). Will also return the
     /// number of data that has been overwritten by DMA.
     pub fn consume(&mut self, tail: u16) -> (&[u8], &[u8], usize) {
+        let buf = unsafe { self.buf() };
+        let data = Self::get_data(buf, self.wrap_count, self.head, tail);
+
+        // Mark as consumed
+        self.head = tail;
+        self.wrap_count = 0;
+
+        data
+    }
+
+    fn get_data<'a>(buf: &'a [u8], wrap_count: u8, head: u16, tail: u16) -> (&'a [u8], &'a [u8], usize) {
+        let (h, t) = (head as usize, tail as usize);
+        let nil = &[][..];
+
         use Ordering::Equal as HeadOnTail;
         use Ordering::Less as HeadBeforeTail;
         use Ordering::Greater as TailBeforeHead;
 
-        let (h, t) = (self.head as usize, tail as usize);
-        let nil = &[][..];
-        let buf = unsafe { self.buf() };
-
-        let result = match (self.wrap_count, self.head.cmp(&tail)) {
+        let (slice1, slice2, overwritten) = match (wrap_count, head.cmp(&tail)) {
             // No wrapping
             (0, HeadOnTail)     => (nil, nil, 0),  // no data
             (0, HeadBeforeTail) => (&buf[h..t], nil, 0),  // data [H, T)
@@ -49,14 +59,15 @@ where
                 // overwritten [H, END) + [0, T) + (N - 2) times whole buffer
                 (buf.len() - h) + t + (n - 2) as usize * buf.len()
             ),
-
         };
 
-        // Mark as consumed
-        self.head = tail;
-        self.wrap_count = 0;
+        (slice1, slice2, overwritten)
+    }
 
-        result
+    pub fn capacity_remaining(&mut self, tail: u16) -> usize {
+        let buf = unsafe { self.buf() };
+        let (s1, s2, _) = Self::get_data(buf, self.wrap_count, self.head, tail);
+        buf.len() - (s1.len() + s2.len())
     }
 
     pub fn tail_wrapped(&mut self) {
