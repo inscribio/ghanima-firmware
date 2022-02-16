@@ -1,9 +1,13 @@
+use core::marker::PhantomData;
+
 use defmt::Format;
 use serde::{Serialize, Deserialize};
 use smlang::statemachine;
 
 use crate::hal_ext::crc::Crc;
 use super::{packet::Packet, SenderQueue, ReceiverQueue};
+
+pub type Fsm<TX, RX> = StateMachine<Context<TX, RX>>;
 
 #[derive(Serialize, Deserialize, Debug, Format, PartialEq)]
 pub enum Message {
@@ -20,6 +24,8 @@ impl Packet for Message {
 }
 
 statemachine! {
+    // TODO: is there any way to avoid trait object here?
+    temporary_context: &mut dyn SenderQueue<Message>,
     transitions: {
         // Both sides starts as slaves
         *AsSlave + UsbOn / send_establish_master = WantsMaster,
@@ -41,58 +47,52 @@ statemachine! {
     }
 }
 
-struct Context<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> {
-    sender: TX,
-    receiver: RX,
+pub struct Context<TX, RX> {
     usb_on: bool,
     // Context sets `timeout`; in tick() we push it to timeout_at
     timeout: bool,
     timeout_value: u32,
     timeout_at: Option<u32>,
+    _tx: PhantomData<TX>,
+    _rx: PhantomData<RX>,
 }
 
-impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> Context<TX, RX> {
-    pub fn new(sender: TX, receiver: RX, timeout: u32) -> Self {
-        Self {
-            sender,
-            receiver,
-            timeout: false,
-            timeout_value: timeout,
-            timeout_at: None,
-            usb_on: false
-        }
-    }
-}
-
-impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachineContext for Context<TX, RX> {
-    fn send_ack(&mut self) {
-        self.sender.push(Message::Ack);
+impl<TX, RX> StateMachineContext for Context<TX, RX> {
+    fn send_ack(&mut self, tx: &mut dyn SenderQueue<Message>) {
+        tx.push(Message::Ack);
     }
 
 
-    fn send_establish_master(&mut self) {
+    fn send_establish_master(&mut self, tx: &mut dyn SenderQueue<Message>) {
         self.timeout = true;
-        self.sender.push(Message::EstablishMaster);
+        tx.push(Message::EstablishMaster);
     }
 
-    fn send_release_master(&mut self) {
-        self.sender.push(Message::ReleaseMaster);
+    fn send_release_master(&mut self, tx: &mut dyn SenderQueue<Message>) {
+        tx.push(Message::ReleaseMaster);
     }
 
-    // fn has_usb(&mut self) -> Result<(), ()>  {
-    //     if self.usb_state { Ok(()) } else { Err(()) }
-    // }
-
-    fn no_usb(&mut self) -> Result<(), ()>  {
+    fn no_usb<'a>(&mut self, _: &mut dyn SenderQueue<Message>) -> Result<(), ()>  {
         if !self.usb_on { Ok(()) } else { Err(()) }
     }
 }
 
 impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<TX, RX>> {
-    pub fn usb_state(&mut self, on: bool) {
+    pub fn with(timeout: u32) -> Self {
+        Self::new(Context {
+            timeout: false,
+            timeout_value: timeout,
+            timeout_at: None,
+            usb_on: false,
+            _tx: PhantomData,
+            _rx: PhantomData,
+        })
+    }
+
+    pub fn usb_state(&mut self, tx: &mut TX, on: bool) {
         // Event only on state change
         if self.context.usb_on != on {
-            self.process_event(match on {
+            self.process_event(tx, match on {
                 true => Events::UsbOn,
                 false => Events::UsbOff,
             }).ok();
@@ -100,16 +100,16 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
         self.context.usb_on = on;
     }
 
-    pub fn tick(&mut self, time: u32) {
+    pub fn tick<'a>(&mut self, tx: &mut TX, rx: &mut RX, time: u32) {
         // Process any received messages
-        while let Some(packet) = self.context.receiver.get() {
+        while let Some(packet) = rx.get() {
             let event = match packet {
                 Message::Ack => Some(Events::Ack),
                 Message::EstablishMaster => Some(Events::EstablishMaster),
                 Message::ReleaseMaster => Some(Events::ReleaseMaster),
             };
             if let Some(event) = event {
-                self.process_event(event).ok();
+                self.process_event(tx, event).ok();
             }
         }
 
@@ -122,7 +122,7 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
         if let Some(timeout_at) = self.context.timeout_at {
             if time >= timeout_at {
                 self.context.timeout_at = None;
-                self.process_event(Events::Timeout).ok();
+                self.process_event(tx, Events::Timeout).ok();
             }
         }
     }
@@ -131,7 +131,6 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::borrow::BorrowMut;
     use core::marker::PhantomData;
     use std::string::{String, ToString};
     use std::collections::VecDeque;
@@ -236,14 +235,15 @@ mod tests {
         }
     }
 
+    type Fsm = super::Fsm<Endpoint<Tx>, Endpoint<Rx>>;
+
     fn events_seq<const N: usize>(init: States, seq: [(Events, States); N]) {
-        let ch = Connection::new();
-        let ctx = Context::new(ch.tx_left, ch.rx_left, 10);
-        let mut fsm = StateMachine::new(ctx);
+        let mut ch = Connection::new();
+        let mut fsm = Fsm::with(10);
         assert!(fsm.state() == &init);
         println!();
         for (event, state) in seq {
-            assert_eq!(fsm.process_event(event).unwrap(), &state);
+            assert_eq!(fsm.process_event(&mut ch.tx_left, event).unwrap(), &state);
         }
     }
 
@@ -255,8 +255,6 @@ mod tests {
         ]);
     }
 
-    type Fsm = StateMachine<Context<Endpoint<Tx>, Endpoint<Rx>>>;
-
     enum Dir {
         Left,
         Right,
@@ -265,29 +263,30 @@ mod tests {
     enum Step<'a> {
         Tick(States, States),
         DropNext(Dir, Message),
+        #[allow(dead_code)]
         Inject(Dir, Message),
         Usb(Dir, bool),
         Act(Box<dyn FnOnce(&mut Fsm, &mut Fsm) + 'a>),
     }
 
     impl<'a> Step<'a> {
+        #[allow(dead_code)]
         fn act(action: impl FnOnce(&mut Fsm, &mut Fsm) + 'a) -> Self {
             Self::Act(Box::new(action))
         }
     }
 
     fn scenario<'a, const N: usize>(timeout: u32, steps: [Step<'a>; N]) {
-        let ch = Connection::new();
-        let mut left = StateMachine::new(Context::new(ch.tx_left, ch.rx_left, timeout));
-        let mut right = StateMachine::new(Context::new(ch.tx_right, ch.rx_right, timeout));
+        let mut ch = Connection::new();
+        let mut left = Fsm::with(timeout);
+        let mut right = Fsm::with(timeout);
 
         let mut time = 0;
         let mut drop_next = (Vec::new(), Vec::new());
-        let mut current_state = (States::AsSlave, States::AsSlave);
         println!("\nState at {}: left={:?} right={:?}", time, left.state(), right.state());
-        assert_eq!((left.state(), right.state()), (&current_state.0, &current_state.1));
+        assert_eq!((left.state(), right.state()), (&States::AsSlave, &States::AsSlave));
 
-        let mut drop = |dir: Dir, channel: &mut VecDeque<Message>, to_drop: &mut Vec<Message>| {
+        let drop = |dir: Dir, channel: &mut VecDeque<Message>, to_drop: &mut Vec<Message>| {
             if to_drop.len() == 0 {
                 return;
             }
@@ -316,12 +315,12 @@ mod tests {
                     act(&mut left, &mut right)
                 },
                 Step::Usb(dir, on) => {
-                    let (text, fsm, mut channel, to_drop) = match dir {
-                        Dir::Left => ("left", &mut left, ch.left_to_right.as_ref(), &mut drop_next.0),
-                        Dir::Right => ("right", &mut right, ch.right_to_left.as_ref(), &mut drop_next.1),
+                    let (text, fsm, tx, channel, to_drop) = match dir {
+                        Dir::Left => ("left", &mut left, &mut ch.tx_left, ch.left_to_right.as_ref(), &mut drop_next.0),
+                        Dir::Right => ("right", &mut right, &mut ch.tx_right, ch.right_to_left.as_ref(), &mut drop_next.1),
                     };
                     println!("USB {} {}", text, if on { "on" } else { "off" });
-                    fsm.usb_state(on);
+                    fsm.usb_state(tx, on);
                     drop(dir, &mut channel.borrow_mut(), to_drop);
                 },
                 Step::DropNext(dir, msg) => {
@@ -343,18 +342,17 @@ mod tests {
                 Step::Tick(new_l, new_r) => {
                     time += 1;
 
-                    left.tick(time);
+                    left.tick(&mut ch.tx_left, &mut ch.rx_left, time);
                     println!("State at {}: left={:?} right={:?} [L]", time, left.state(), right.state());
 
                     drop(Dir::Left, &mut ch.left_to_right.as_ref().borrow_mut(), &mut drop_next.0);
 
-                    right.tick(time);
+                    right.tick(&mut ch.tx_right, &mut ch.rx_right,time);
                     println!("      at {}: left={:?} right={:?} [R]", time, left.state(), right.state());
 
                     drop(Dir::Right, &mut ch.right_to_left.as_ref().borrow_mut(), &mut drop_next.1);
 
                     assert_eq!((left.state(), right.state()), (&new_l, &new_r));
-                    current_state = (new_l, new_r);
                 },
             }
         }
