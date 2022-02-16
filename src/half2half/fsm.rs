@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use smlang::statemachine;
 
 use crate::hal_ext::crc::Crc;
-use super::{packet::Packet, SenderQueue, ReceiverQueue};
+use super::{packet::Packet, TransmitQueue, ReceiveQueue};
 
 pub type Fsm<TX, RX> = StateMachine<Context<TX, RX>>;
 
@@ -25,7 +25,7 @@ impl Packet for Message {
 
 statemachine! {
     // TODO: is there any way to avoid trait object here?
-    temporary_context: &mut dyn SenderQueue<Message>,
+    temporary_context: &mut dyn TransmitQueue<Message>,
     transitions: {
         // Both sides starts as slaves
         *AsSlave + UsbOn / send_establish_master = WantsMaster,
@@ -58,26 +58,28 @@ pub struct Context<TX, RX> {
 }
 
 impl<TX, RX> StateMachineContext for Context<TX, RX> {
-    fn send_ack(&mut self, tx: &mut dyn SenderQueue<Message>) {
+    fn send_ack(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+        defmt::info!("Send Ack");
         tx.push(Message::Ack);
     }
 
-
-    fn send_establish_master(&mut self, tx: &mut dyn SenderQueue<Message>) {
+    fn send_establish_master(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+        defmt::info!("Send EstablishMaster");
         self.timeout = true;
         tx.push(Message::EstablishMaster);
     }
 
-    fn send_release_master(&mut self, tx: &mut dyn SenderQueue<Message>) {
+    fn send_release_master(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+        defmt::info!("Send ReleaseMaster");
         tx.push(Message::ReleaseMaster);
     }
 
-    fn no_usb<'a>(&mut self, _: &mut dyn SenderQueue<Message>) -> Result<(), ()>  {
+    fn no_usb<'a>(&mut self, _: &mut dyn TransmitQueue<Message>) -> Result<(), ()>  {
         if !self.usb_on { Ok(()) } else { Err(()) }
     }
 }
 
-impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<TX, RX>> {
+impl<TX: TransmitQueue<Message>, RX: ReceiveQueue<Message>> StateMachine<Context<TX, RX>> {
     pub fn with(timeout: u32) -> Self {
         Self::new(Context {
             timeout: false,
@@ -92,6 +94,7 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
     pub fn usb_state(&mut self, tx: &mut TX, on: bool) {
         // Event only on state change
         if self.context.usb_on != on {
+            defmt::info!("USB {=bool}", on);
             self.process_event(tx, match on {
                 true => Events::UsbOn,
                 false => Events::UsbOff,
@@ -100,17 +103,15 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
         self.context.usb_on = on;
     }
 
-    pub fn tick<'a>(&mut self, tx: &mut TX, rx: &mut RX, time: u32) {
+    pub fn tick(&mut self, tx: &mut TX, rx: &mut RX, time: u32) {
         // Process any received messages
         while let Some(packet) = rx.get() {
             let event = match packet {
-                Message::Ack => Some(Events::Ack),
-                Message::EstablishMaster => Some(Events::EstablishMaster),
-                Message::ReleaseMaster => Some(Events::ReleaseMaster),
+                Message::Ack => { defmt::info!("Got Ack"); Events::Ack },
+                Message::EstablishMaster => { defmt::info!("Got EstablishMaster"); Events::EstablishMaster },
+                Message::ReleaseMaster => { defmt::info!("Got ReleaseMaster"); Events::ReleaseMaster },
             };
-            if let Some(event) = event {
-                self.process_event(tx, event).ok();
-            }
+            self.process_event(tx, event).ok();
         }
 
         // Process timeouts
@@ -125,6 +126,10 @@ impl<TX: SenderQueue<Message>, RX: ReceiverQueue<Message>> StateMachine<Context<
                 self.process_event(tx, Events::Timeout).ok();
             }
         }
+    }
+
+    pub fn is_master(&self) -> bool {
+        self.state() == &States::AsMaster
     }
 }
 
@@ -168,14 +173,14 @@ mod tests {
         }
     }
 
-    impl SenderQueue<Message> for Endpoint<Tx> {
+    impl TransmitQueue<Message> for Endpoint<Tx> {
         fn push(&mut self, msg: Message) {
             println!("  Push({}: {:?})", self.name, msg);
             self.channel.as_ref().borrow_mut().push_back(msg);
         }
     }
 
-    impl ReceiverQueue<Message> for Endpoint<Rx> {
+    impl ReceiveQueue<Message> for Endpoint<Rx> {
         fn get(&mut self) -> Option<Message> {
             let msg = self.channel.as_ref().borrow_mut().pop_front();
             if let Some(ref msg) = msg {
@@ -448,6 +453,31 @@ mod tests {
             Tick(AsMaster, WantsMaster),  // t=7
             Tick(AsMaster, WantsMaster),  // t=8, R resends EstablishMaster
             Tick(AsSlave, AsMaster),
+        ]);
+    }
+
+
+    #[test]
+    fn one_half_connected_later() {
+        // Simulate disconnecting right half by dropping all messages from left half.
+        // That's basically just testing timeout and resending EstablishMaster.
+        scenario(2, [
+            Tick(AsSlave, AsSlave),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Usb(Left, true),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Tick(WantsMaster, AsSlave),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Tick(WantsMaster, AsSlave),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Tick(WantsMaster, AsSlave),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Tick(WantsMaster, AsSlave),
+            DropNext(Left, Message::EstablishMaster), DropNext(Left, Message::ReleaseMaster), DropNext(Left, Message::Ack),
+            Tick(WantsMaster, AsSlave),
+            // Right half connected, stop dropping messages.
+            Tick(WantsMaster, AsSlave),
+            Tick(AsMaster, AsSlave),
         ]);
     }
 }

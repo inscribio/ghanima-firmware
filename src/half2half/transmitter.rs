@@ -1,7 +1,7 @@
 use serde::Serialize;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferRead, RingBufferWrite};
 
-use super::{PacketId, SenderQueue};
+use super::{PacketId, TransmitQueue};
 use super::packet::{Packet, PacketSer};
 use crate::hal_ext::dma::{self, DmaTx};
 
@@ -18,7 +18,7 @@ impl<'a, P: Packet> Packet for MarkedPacket<'a, P> {
 }
 
 /// Packet transmission queue
-pub struct Sender<P, TX, const N: usize>
+pub struct Transmitter<P, TX, const N: usize>
 where
     P: PacketSer,
     TX: DmaTx,
@@ -29,7 +29,7 @@ where
     retransmissions: u8,
 }
 
-impl<P, TX, const N: usize> SenderQueue<P> for Sender<P, TX, N>
+impl<P, TX, const N: usize> TransmitQueue<P> for Transmitter<P, TX, N>
 where
     P: PacketSer,
     TX: DmaTx,
@@ -39,7 +39,7 @@ where
     }
 }
 
-impl<P, TX, const N: usize> Sender<P, TX, N>
+impl<P, TX, const N: usize> Transmitter<P, TX, N>
 where
     P: PacketSer,
     TX: DmaTx,
@@ -135,18 +135,18 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(true, |data| sent.set(data));
-        let mut sender = Sender::<Message, _, 4>::new(dma);
+        let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
         assert_eq!(sent.take(), []);
-        sender.push(Message(0xaabb, 0xcc));
+        tx.push(Message(0xaabb, 0xcc));
         assert_eq!(sent.take(), []);
 
         // Before COBS = id(00 00) 0(bb aa) 1(cc) crc32(23 09 66 61)
         let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
 
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), []);
     }
 
@@ -155,10 +155,10 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 40>::new(true, |data| sent.set(data));
-        let mut sender = Sender::<Message, _, 4>::new(dma);
+        let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
         for _ in 0..3 {
-            sender.push(Message(0xaabb, 0xcc));
+            tx.push(Message(0xaabb, 0xcc));
             assert_eq!(sent.take(), []);
         }
         let cobs = [
@@ -167,9 +167,9 @@ mod tests {
             2, 0x02, 8, 0xbb, 0xaa, 0xcc, 0x39, 0xc6, 0x7c, 0xf3, 0,  // id(02 00)
         ];
 
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), []);
     }
 
@@ -178,10 +178,10 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(true, |data| sent.set(data));
-        let mut sender = Sender::<Message, _, 4>::new(dma);
+        let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
         for _ in 0..3 {
-            sender.push(Message(0xaabb, 0xcc));
+            tx.push(Message(0xaabb, 0xcc));
             assert_eq!(sent.take(), []);
         }
         let cobs = [
@@ -191,13 +191,13 @@ mod tests {
         ];
 
         // cobs.len()=33 so it won't fit in the first tick
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs[..22]);
         // now the rest of data should be sent
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs[22..]);
         // no more data to send
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), []);
     }
 
@@ -206,17 +206,17 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(false, |data| sent.set(data));
-        let mut sender = Sender::<Message, _, 4>::new(dma);
+        let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
-        sender.push(Message(0xaabb, 0xcc));
+        tx.push(Message(0xaabb, 0xcc));
         let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
 
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), []);
-        sender.on_interrupt();
-        sender.tick(&mut crc);
+        tx.on_interrupt();
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
-        sender.tick(&mut crc);
+        tx.tick(&mut crc);
         assert_eq!(sent.take(), []);
     }
 }

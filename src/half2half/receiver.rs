@@ -2,7 +2,7 @@ use ringbuffer::{ConstGenericRingBuffer, RingBufferRead, RingBufferWrite};
 use serde::Deserialize;
 
 use crate::hal_ext::dma::{self, DmaRx};
-use super::{PacketId, ReceiverQueue};
+use super::{PacketId, ReceiveQueue};
 use super::packet::{Packet, PacketDeser, Accumulator};
 
 #[derive(Deserialize)]
@@ -33,7 +33,7 @@ struct RxState<P, const N: usize, const B: usize> {
     id_counter: Option<PacketId>,
 }
 
-impl<P, RX, const N: usize, const B: usize> ReceiverQueue<P> for Receiver<P, RX, N, B>
+impl<P, RX, const N: usize, const B: usize> ReceiveQueue<P> for Receiver<P, RX, N, B>
 where
     P: PacketDeser,
     RX: DmaRx,
