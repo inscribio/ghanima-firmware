@@ -1,7 +1,7 @@
 use serde::Serialize;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferRead, RingBufferWrite};
 
-use super::PacketId;
+use super::{PacketId, SenderQueue};
 use super::packet::{Packet, PacketSer};
 use crate::hal_ext::dma::{self, DmaTx};
 
@@ -27,6 +27,16 @@ where
     tx: TX,
     id_counter: PacketId,
     retransmissions: u8,
+}
+
+impl<P, TX, const N: usize> SenderQueue<P> for Sender<P, TX, N>
+where
+    P: PacketSer,
+    TX: DmaTx,
+{
+    fn push(&mut self, packet: P) {
+        self.push(packet)
+    }
 }
 
 impl<P, TX, const N: usize> Sender<P, TX, N>
