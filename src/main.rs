@@ -16,7 +16,11 @@ mod app {
 
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{spi, uart, dma::{DmaSplit, DmaTx, DmaRx}, reboot};
+    use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}, reboot};
+    use lib::half2half;
+
+    type SerialTx = half2half::Transmitter<uart::Tx, 4>;
+    type SerialRx = half2half::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
 
     #[shared]
     struct Shared {
@@ -24,8 +28,10 @@ mod app {
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
-        serial_tx: uart::Tx,
-        serial_rx: uart::Rx<&'static mut [u8]>,
+        fsm: half2half::Fsm<SerialTx, SerialRx>,
+        serial_tx: SerialTx,
+        serial_rx: SerialRx,
+        crc: crc::Crc,
         board_side: BoardSide,
     }
 
@@ -78,6 +84,9 @@ mod app {
 
         // DMA
         let dma = dev.DMA1.split(&mut rcc);
+
+        // CRC
+        let crc = crc::Crc::new(dev.CRC, &mut rcc, crc::Variant::Crc32MPEG2);
 
         // Determine board side
         let board_side = ifree(|cs| gpiob.pb13.into_floating_input(cs));
@@ -177,8 +186,10 @@ mod app {
             spi_tx,
             dbg,
             joy,
-            serial_tx,
-            serial_rx,
+            fsm: half2half::Fsm::with(10),
+            serial_tx: half2half::Transmitter::new(serial_tx),
+            serial_rx: half2half::Receiver::new(serial_rx),
+            crc,
             board_side,
         };
 
@@ -192,14 +203,19 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(shared = [spi_tx, joy, dbg], local = [ws2812])]
+    #[task(shared = [spi_tx, joy, dbg, fsm], local = [ws2812])]
     fn update_leds(cx: update_leds::Context, t: usize) {
         let update_leds::SharedResources {
             spi_tx,
             mut joy,
-            mut dbg
+            mut dbg,
+            mut fsm,
         } = cx.shared;
         let ws2812 = cx.local.ws2812;
+
+        if fsm.lock(|fsm| !fsm.is_master()) {
+            return;
+        }
 
         // Read joystick
         let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
@@ -246,12 +262,13 @@ mod app {
         cx.shared.dbg.lock(|d| d.set_tx(false));
     }
 
-    #[task(binds = DMA1_CH2_3, priority = 3, shared = [serial_tx, serial_rx])]
+    #[task(binds = DMA1_CH2_3, priority = 3, shared = [crc, serial_tx, serial_rx])]
     fn dma_uart_callback(cx: dma_uart_callback::Context) {
         let tx = cx.shared.serial_tx;
         let rx = cx.shared.serial_rx;
-        (tx, rx).lock(|tx, rx| {
-            let rx_done = rx.on_interrupt(serial_on_receive)
+        let crc = cx.shared.crc;
+        (tx, rx, crc).lock(|tx, rx, mut crc| {
+            let rx_done = rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
             let tx_done = tx.on_interrupt()
                 .as_option().transpose().expect("Unexpected interrupt");
@@ -268,27 +285,39 @@ mod app {
         });
     }
 
-    #[task(binds = USART1, priority = 3, shared = [serial_rx], local = [
+    #[task(binds = USART1, priority = 3, shared = [crc, serial_rx], local = [
            empty_count: usize = 0,
     ])]
-    fn uart_interrupt(mut cx: uart_interrupt::Context) {
-        cx.shared.serial_rx.lock(|rx| {
-            rx.on_interrupt(serial_on_receive)
+    fn uart_interrupt(cx: uart_interrupt::Context) {
+        let rx = cx.shared.serial_rx;
+        let crc = cx.shared.crc;
+        (rx, crc).lock(|rx, mut crc| {
+            rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
         });
     }
 
-    fn serial_on_receive(data: &[u8]) {
-        defmt::info!("RX: {=[u8]}", data);
-    }
+    #[task(shared = [fsm, serial_tx, serial_rx, crc, usb], local = [
+           empty_count: usize = 0,
+    ])]
+    fn uart_tick(cx: uart_tick::Context, time_100ms: u32) {
+        let uart_tick::SharedResources {
+            fsm,
+            serial_tx: mut tx,
+            serial_rx: rx,
+            crc,
+            mut usb,
+        } = cx.shared;
 
+        let usb_on = usb.lock(|usb| usb.dev.state() == UsbDeviceState::Configured);
 
-    #[task(shared = [serial_tx, &board_side])]
-    fn serial_transmit(cx: serial_transmit::Context) {
-        let mut tx = cx.shared.serial_tx;
-        let msg = "Yo, that's a test message!";
-        tx.lock(|tx| {
-            tx.transmit(msg.as_bytes()).unwrap()
+        (fsm, &mut tx, rx).lock(|fsm, mut tx, mut rx| {
+            fsm.usb_state(&mut tx, usb_on);
+            fsm.tick(&mut tx, &mut rx, time_100ms);
+        });
+
+        (tx, crc).lock(|tx, mut crc| {
+            tx.tick(&mut crc);
         });
     }
 
@@ -303,8 +332,8 @@ mod app {
                 update_leds::spawn(*t / 10).unwrap();
             }
 
-            if *t % 200 == 0 {
-                serial_transmit::spawn().unwrap();
+            if *t % 20 == 0 {
+                uart_tick::spawn((*t / 100) as u32).unwrap();
             }
         }
     }
