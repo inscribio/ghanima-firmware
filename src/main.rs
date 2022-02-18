@@ -17,10 +17,12 @@ mod app {
     use super::lib;
     use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}, reboot};
-    use lib::half2half;
+    use lib::{keyboard, layers};
 
-    type SerialTx = half2half::Transmitter<uart::Tx, 4>;
-    type SerialRx = half2half::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
+    const DEBOUNCE_COUNT: u16 = 5;
+
+    type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
+    type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
 
     #[shared]
     struct Shared {
@@ -28,17 +30,16 @@ mod app {
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
-        fsm: half2half::Fsm<SerialTx, SerialRx>,
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
-        board_side: BoardSide,
     }
 
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
         ws2812: ws2812b::Leds,
+        keyboard: keyboard::Keyboard<SerialTx, SerialRx>,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -93,7 +94,7 @@ mod app {
         let board_side = BoardSide::get(board_side);
 
         // Keyboard matrix
-        let _cols = ifree(|cs| [
+        let cols = ifree(|cs| [
             gpiob.pb1.into_pull_up_input(cs).downgrade(),
             gpiob.pb0.into_pull_up_input(cs).downgrade(),
             gpioa.pa7.into_pull_up_input(cs).downgrade(),
@@ -101,7 +102,7 @@ mod app {
             gpioa.pa5.into_pull_up_input(cs).downgrade(),
             gpioa.pa4.into_pull_up_input(cs).downgrade(),
         ]);
-        let _rows =  ifree(|cs| [
+        let rows =  ifree(|cs| [
             gpiob.pb6.into_push_pull_output(cs).downgrade(),
             gpiob.pb7.into_push_pull_output(cs).downgrade(),
             gpioc.pc13.into_push_pull_output(cs).downgrade(),
@@ -138,6 +139,10 @@ mod app {
         spi_tx.push(|buf| { ws2812.serialize_to_slice(buf); ws2812b::BUFFER_SIZE }).unwrap();
         spi_tx.start().unwrap();
 
+        // configure periodic timer
+        let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
+        timer.listen(hal::timers::Event::TimeOut);
+
         // USB
         let usb = hal::usb::Peripheral {
             usb: dev.USB,
@@ -151,6 +156,7 @@ mod app {
         let usb_serial = usbd_serial::SerialPort::new(usb_bus);
         // let usb_cdc = usbd_serial::CdcAcmClass::new(usb_bus, 64);
         let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, reboot::DfuBootloader);
+        let usb_keyboard = keyberon::new_class(usb_bus, ());
 
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
         // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
@@ -165,9 +171,14 @@ mod app {
             .composite_with_iads()
             .build();
 
-        // configure periodic timer
-        let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
-        timer.listen(hal::timers::Event::TimeOut);
+        // Keyboard
+        let serial_tx = keyboard::Transmitter::new(serial_tx);
+        let serial_rx = keyboard::Receiver::new(serial_rx);
+        let keyboard = keyboard::Keyboard {
+            keys: keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
+            fsm: keyboard::Fsm::with(10), // FIXME: timeouts
+            layout: layers::layout(),
+        };
 
         dbg.with_tx_high(|| {
             defmt::info!("Liftoff!");
@@ -182,20 +193,20 @@ mod app {
                 dev: usb_dev,
                 serial: usb_serial,
                 dfu: usb_dfu,
+                keyboard: usb_keyboard,
             },
             spi_tx,
             dbg,
             joy,
-            fsm: half2half::Fsm::with(10),
-            serial_tx: half2half::Transmitter::new(serial_tx),
-            serial_rx: half2half::Receiver::new(serial_rx),
+            serial_tx,
+            serial_rx,
             crc,
-            board_side,
         };
 
         let local = Local {
             timer,
             ws2812,
+            keyboard,
         };
 
         let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
@@ -203,19 +214,14 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(shared = [spi_tx, joy, dbg, fsm], local = [ws2812])]
+    #[task(shared = [spi_tx, joy, dbg], local = [ws2812])]
     fn update_leds(cx: update_leds::Context, t: usize) {
         let update_leds::SharedResources {
             spi_tx,
             mut joy,
             mut dbg,
-            mut fsm,
         } = cx.shared;
         let ws2812 = cx.local.ws2812;
-
-        if fsm.lock(|fsm| !fsm.is_master()) {
-            return;
-        }
 
         // Read joystick
         let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
@@ -297,31 +303,39 @@ mod app {
         });
     }
 
-    #[task(shared = [fsm, serial_tx, serial_rx, crc, usb], local = [
-           empty_count: usize = 0,
-    ])]
-    fn uart_tick(cx: uart_tick::Context, time_100ms: u32) {
-        let uart_tick::SharedResources {
-            fsm,
+    #[task(shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    fn keyboard_tick(cx: keyboard_tick::Context, time_100ms: u32) {
+        let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
             crc,
             mut usb,
         } = cx.shared;
+        let mut kb = cx.local.keyboard;
 
+        // Check current USB state for role negotiation
         let usb_on = usb.lock(|usb| usb.dev.state() == UsbDeviceState::Configured);
 
-        (fsm, &mut tx, rx).lock(|fsm, mut tx, mut rx| {
-            fsm.usb_state(&mut tx, usb_on);
-            fsm.tick(&mut tx, &mut rx, time_100ms);
+        // Run keyboard logic and get the USB report
+        let report = (&mut tx, rx).lock(|mut tx, mut rx| {
+            kb.fsm.usb_state(&mut tx, usb_on);
+            kb.tick(&mut tx, &mut rx, time_100ms)
         });
 
+        // Transmit any serial messages
         (tx, crc).lock(|tx, mut crc| {
             tx.tick(&mut crc);
         });
+
+        // Set current USB report to the new one, finish if there is no change
+        if !usb_on || !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
+            return;
+        }
+        // Spin until we are able to send the report. Important: lock separately in each loop iterations!
+        while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
     }
 
-    #[task(binds = TIM15, priority = 2, shared = [&board_side], local = [timer, t: usize = 0])]
+    #[task(binds = TIM15, priority = 2, local = [timer, t: usize = 0])]
     fn tick(cx: tick::Context) {
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
@@ -333,7 +347,7 @@ mod app {
             }
 
             if *t % 20 == 0 {
-                uart_tick::spawn((*t / 100) as u32).unwrap();
+                keyboard_tick::spawn((*t / 100) as u32).unwrap();
             }
         }
     }

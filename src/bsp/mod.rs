@@ -8,3 +8,12 @@ pub mod joystick;
 pub mod sides;
 pub mod usb;
 pub mod ws2812b;
+
+use crate::hal::gpio;
+
+pub const NCOLS: usize = 6;
+pub const NCOLS_THUMB: usize = 4;
+pub const NROWS: usize = 5;
+
+pub type ColPin = gpio::Pin<gpio::Input<gpio::PullUp>>;
+pub type RowPin = gpio::Pin<gpio::Output<gpio::PushPull>>;

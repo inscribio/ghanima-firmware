@@ -1,31 +1,17 @@
 use core::marker::PhantomData;
 
-use defmt::Format;
-use serde::{Serialize, Deserialize};
+use keyberon::layout::Layout;
 use smlang::statemachine;
 
-use crate::hal_ext::crc::Crc;
-use super::{packet::Packet, TransmitQueue, ReceiveQueue};
+use crate::io;
+use super::Message;
+use keyberon::layout::Event as KeyEvent;
 
 pub type Fsm<TX, RX> = StateMachine<Context<TX, RX>>;
 
-#[derive(Serialize, Deserialize, Debug, Format, PartialEq)]
-pub enum Message {
-    EstablishMaster,
-    ReleaseMaster,
-    Ack,
-}
-
-impl Packet for Message {
-    // #[cfg(not(test))]
-    type Checksum = Crc;
-    // #[cfg(test)]
-    // type Checksum = crate::hal_ext::checksum_mock::Crc32;
-}
-
 statemachine! {
     // TODO: is there any way to avoid trait object here?
-    temporary_context: &mut dyn TransmitQueue<Message>,
+    temporary_context: &mut dyn io::TransmitQueue<Message>,
     transitions: {
         // Both sides starts as slaves
         *AsSlave + UsbOn / send_establish_master = WantsMaster,
@@ -36,7 +22,7 @@ statemachine! {
         // Trying to acquire master
         WantsMaster + UsbOff = AsSlave,
         WantsMaster + Ack = AsMaster,
-        WantsMaster + Timeout / send_establish_master = WantsMaster,
+        WantsMaster + Timeout / timeout_send_establish_master = WantsMaster,
         // TODO: how to deal with negotiation? (unlikely to happen)
         WantsMaster + EstablishMaster = AsSlave,
 
@@ -49,6 +35,7 @@ statemachine! {
 
 pub struct Context<TX, RX> {
     usb_on: bool,
+    is_alone: bool,
     // Context sets `timeout`; in tick() we push it to timeout_at
     timeout: bool,
     timeout_value: u32,
@@ -58,34 +45,42 @@ pub struct Context<TX, RX> {
 }
 
 impl<TX, RX> StateMachineContext for Context<TX, RX> {
-    fn send_ack(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+    fn send_ack(&mut self, tx: &mut dyn io::TransmitQueue<Message>) {
         defmt::info!("Send Ack");
         tx.push(Message::Ack);
     }
 
-    fn send_establish_master(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+    fn send_establish_master(&mut self, tx: &mut dyn io::TransmitQueue<Message>) {
         defmt::info!("Send EstablishMaster");
         self.timeout = true;
         tx.push(Message::EstablishMaster);
     }
 
-    fn send_release_master(&mut self, tx: &mut dyn TransmitQueue<Message>) {
+    fn timeout_send_establish_master(&mut self, tx: &mut dyn io::TransmitQueue<Message>) {
+        defmt::info!("Timeout: send EstablishMaster");
+        self.timeout = true;
+        self.is_alone = true;
+        tx.push(Message::EstablishMaster);
+    }
+
+    fn send_release_master(&mut self, tx: &mut dyn io::TransmitQueue<Message>) {
         defmt::info!("Send ReleaseMaster");
         tx.push(Message::ReleaseMaster);
     }
 
-    fn no_usb<'a>(&mut self, _: &mut dyn TransmitQueue<Message>) -> Result<(), ()>  {
+    fn no_usb<'a>(&mut self, _: &mut dyn io::TransmitQueue<Message>) -> Result<(), ()>  {
         if !self.usb_on { Ok(()) } else { Err(()) }
     }
 }
 
-impl<TX: TransmitQueue<Message>, RX: ReceiveQueue<Message>> StateMachine<Context<TX, RX>> {
+impl<TX: io::TransmitQueue<Message>, RX: io::ReceiveQueue<Message>> StateMachine<Context<TX, RX>> {
     pub fn with(timeout: u32) -> Self {
         Self::new(Context {
             timeout: false,
             timeout_value: timeout,
             timeout_at: None,
             usb_on: false,
+            is_alone: false,
             _tx: PhantomData,
             _rx: PhantomData,
         })
@@ -103,18 +98,59 @@ impl<TX: TransmitQueue<Message>, RX: ReceiveQueue<Message>> StateMachine<Context
         self.context.usb_on = on;
     }
 
-    pub fn tick(&mut self, tx: &mut TX, rx: &mut RX, time: u32) {
+    // TODO: rename fsm->role, change role messages to Message::Role(RoleMessage),
+    // remove TX and RX, and only have on_rx(RoleMessage) and usb_state -> Option<RoleMessage>
+    //
+    // pub fn on_rx(&mut self, packet: Packet) {
+    //     while let Some(packet) = rx.get() {
+    //         let event = match packet {
+    //             Message::Ack => { defmt::info!("Got Ack"); Some(Events::Ack) },
+    //             Message::EstablishMaster => { defmt::info!("Got EstablishMaster"); Some(Events::EstablishMaster) },
+    //             Message::ReleaseMaster => { defmt::info!("Got ReleaseMaster"); Some(Events::ReleaseMaster) },
+    //             Message::Key(event) => {
+    //                 match &event {
+    //                     &KeyEvent::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
+    //                     &KeyEvent::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
+    //                 }
+    //                 // Only master cares for key presses from the other half
+    //                 if self.is_master() {
+    //                     layout.event(event);
+    //                 }
+    //                 None
+    //             },
+    //         };
+    //         if let Some(event) = event {
+    //             self.process_event(tx, event).ok();
+    //         }
+    //     }
+    // }
+
+    pub fn tick<ACT>(&mut self, tx: &mut TX, rx: &mut RX, layout: &mut Layout<ACT>, time: u32) {
         // Process any received messages
         while let Some(packet) = rx.get() {
             let event = match packet {
-                Message::Ack => { defmt::info!("Got Ack"); Events::Ack },
-                Message::EstablishMaster => { defmt::info!("Got EstablishMaster"); Events::EstablishMaster },
-                Message::ReleaseMaster => { defmt::info!("Got ReleaseMaster"); Events::ReleaseMaster },
+                Message::Ack => { defmt::info!("Got Ack"); Some(Events::Ack) },
+                Message::EstablishMaster => { defmt::info!("Got EstablishMaster"); Some(Events::EstablishMaster) },
+                Message::ReleaseMaster => { defmt::info!("Got ReleaseMaster"); Some(Events::ReleaseMaster) },
+                Message::Key(event) => {
+                    match &event {
+                        &KeyEvent::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
+                        &KeyEvent::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
+                    }
+                    // Only master cares for key presses from the other half
+                    if self.should_handle_events() {
+                        layout.event(event);
+                    }
+                    None
+                },
             };
-            self.process_event(tx, event).ok();
+            if let Some(event) = event {
+                self.context.is_alone = false;
+                self.process_event(tx, event).ok();
+            }
         }
 
-        // Process timeouts
+        // Process message timeouts
         if self.context.timeout {
             self.context.timeout = false;
             // Ignore any possible past timeouts
@@ -128,8 +164,12 @@ impl<TX: TransmitQueue<Message>, RX: ReceiveQueue<Message>> StateMachine<Context
         }
     }
 
-    pub fn is_master(&self) -> bool {
-        self.state() == &States::AsMaster
+    pub fn should_handle_events(&self) -> bool {
+        match self.state() {
+            &States::AsMaster => true,
+            &States::WantsMaster if self.context.is_alone => true,
+            _ => false,
+        }
     }
 }
 
@@ -173,14 +213,14 @@ mod tests {
         }
     }
 
-    impl TransmitQueue<Message> for Endpoint<Tx> {
+    impl io::TransmitQueue<Message> for Endpoint<Tx> {
         fn push(&mut self, msg: Message) {
             println!("  Push({}: {:?})", self.name, msg);
             self.channel.as_ref().borrow_mut().push_back(msg);
         }
     }
 
-    impl ReceiveQueue<Message> for Endpoint<Rx> {
+    impl io::ReceiveQueue<Message> for Endpoint<Rx> {
         fn get(&mut self) -> Option<Message> {
             let msg = self.channel.as_ref().borrow_mut().pop_front();
             if let Some(ref msg) = msg {

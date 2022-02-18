@@ -11,5 +11,7 @@ use stm32f0xx_hal as hal;
 
 pub mod bsp;
 pub mod hal_ext;
-pub mod half2half;
+pub mod io;
+pub mod keyboard;
+pub mod layers;
 pub mod utils;

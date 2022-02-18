@@ -8,7 +8,7 @@ pub struct Usb {
     pub dev: UsbDevice<'static, usb::UsbBusType>,
     pub serial: usbd_serial::SerialPort<'static, usb::UsbBusType>,
     // pub cdc: usbd_serial::CdcAcmClass<'static, usb::UsbBusType>,
-    // pub keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
+    pub keyboard: keyberon::Class<'static, usb::UsbBusType, ()>,
     // pub mouse: HIDClass<'static, usb::UsbBusType>,
     // this does not need to be share but it should be cleaner to have it here
     pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
@@ -16,16 +16,7 @@ pub struct Usb {
 
 impl Usb {
     pub fn poll(&mut self) -> bool {
-        // unsafe {
-        //     if let Some(serial) = &crate::logger::SERIAL {
-        //         let serial: &mut usbd_serial::SerialPort<'static, usb::UsbBusType> = &mut serial.borrow_mut();
-        //         self.dev.poll(&mut [serial, &mut self.dfu])
-        //     } else {
-        //         false
-        //     }
-        // }
-        self.dev.poll(&mut [&mut self.serial, &mut self.dfu])
-        // self.dev.poll(&mut [&mut self.cdc, &mut self.dfu])
+        self.dev.poll(&mut [&mut self.keyboard, &mut self.serial, &mut self.dfu])
     }
 
     /// Perform CDC-ACM loopback. Useful for testing.

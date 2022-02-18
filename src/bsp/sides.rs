@@ -2,10 +2,7 @@ use core::convert::Infallible;
 use embedded_hal::digital::v2::InputPin;
 
 use crate::utils::InfallibleResult;
-
-const NCOLS: usize = 6;
-const NCOLS_THUMB: usize = 4;
-const NROWS: usize = 5;
+use super::{NCOLS, NCOLS_THUMB, NROWS};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum BoardSide {
