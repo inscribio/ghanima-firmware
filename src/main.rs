@@ -176,7 +176,7 @@ mod app {
         let serial_rx = keyboard::Receiver::new(serial_rx);
         let keyboard = keyboard::Keyboard {
             keys: keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
-            fsm: keyboard::Fsm::with(10), // FIXME: timeouts
+            fsm: keyboard::Fsm::with(1000), // TODO: type-safe timings, use Mono
             layout: layers::layout(),
         };
 
@@ -304,7 +304,7 @@ mod app {
     }
 
     #[task(shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
-    fn keyboard_tick(cx: keyboard_tick::Context, time_100ms: u32) {
+    fn keyboard_tick(cx: keyboard_tick::Context, time_ms: u32) {
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
@@ -319,7 +319,7 @@ mod app {
         // Run keyboard logic and get the USB report
         let report = (&mut tx, rx).lock(|mut tx, mut rx| {
             kb.fsm.usb_state(&mut tx, usb_on);
-            kb.tick(&mut tx, &mut rx, time_100ms)
+            kb.tick(&mut tx, &mut rx, time_ms)
         });
 
         // Transmit any serial messages
@@ -346,9 +346,7 @@ mod app {
                 update_leds::spawn(*t / 10).unwrap();
             }
 
-            if *t % 20 == 0 {
-                keyboard_tick::spawn((*t / 100) as u32).unwrap();
-            }
+            keyboard_tick::spawn(*t as u32).unwrap();
         }
     }
 
