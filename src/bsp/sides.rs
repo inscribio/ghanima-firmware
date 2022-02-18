@@ -4,7 +4,7 @@ use embedded_hal::digital::v2::InputPin;
 use crate::utils::InfallibleResult;
 use super::{NCOLS, NCOLS_THUMB, NROWS};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BoardSide {
     Left,
     Right,

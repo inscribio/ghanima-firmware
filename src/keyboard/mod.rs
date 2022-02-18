@@ -1,3 +1,6 @@
+mod keys;
+mod role;
+
 use core::convert::Infallible;
 
 use serde::{Serialize, Deserialize};
@@ -6,27 +9,22 @@ use keyberon::layout::{self, Event};
 
 use crate::io;
 use crate::hal_ext::crc::Crc;
+use role::Role;
 
 pub use keys::Keys;
-pub use fsm::Fsm;
-
-pub mod keys;
-pub mod fsm;
 
 pub type Transmitter<TX, const N: usize> = io::Transmitter<Message, TX, N>;
 pub type Receiver<RX, const N: usize, const B: usize> = io::Receiver<Message, RX, N, B>;
 
-pub struct Keyboard<TX, RX, ACT: 'static = Infallible> {
-    pub keys: keys::Keys,
-    pub fsm: fsm::Fsm<TX, RX>,
-    pub layout: layout::Layout<ACT>,
+pub struct Keyboard<ACT: 'static = Infallible> {
+    keys: keys::Keys,
+    fsm: role::Fsm,
+    layout: layout::Layout<ACT>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Message {
-    EstablishMaster,
-    ReleaseMaster,
-    Ack,
+    Role(role::Message),
     #[serde(with = "EventDef")]
     Key(Event),
 }
@@ -43,26 +41,64 @@ enum EventDef {
     Release(u8, u8),
 }
 
-impl<TX, RX, ACT> Keyboard<TX, RX, ACT>
-where
-    TX: io::TransmitQueue<Message>,
-    RX: io::ReceiveQueue<Message>,
-    ACT: 'static
-{
-    pub fn tick(&mut self, tx: &mut TX, rx: &mut RX, time: u32) -> KbHidReport {
-        // Advance IO FSM, may push events to layout
-        self.fsm.tick(tx, rx, &mut self.layout, time);
+impl<ACT: 'static> Keyboard<ACT> {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<ACT>, timeout_ticks: u32) -> Self {
+        let side = *keys.side();
+        Self {
+            keys,
+            fsm: role::Fsm::with(side, timeout_ticks),
+            layout
+        }
+    }
+
+    pub fn tick<TX, RX>(&mut self, tx: &mut TX, rx: &mut RX, usb_on: bool) -> KbHidReport
+        where
+        TX: io::TransmitQueue<Message>,
+        RX: io::ReceiveQueue<Message>,
+    {
+        let maybe_tx = |tx: &mut TX, msg: Option<role::Message>| {
+            if let Some(msg) = msg {
+                tx.push(Message::Role(msg));
+            }
+        };
+
+        // First update USB state in FSM
+        maybe_tx(tx, self.fsm.usb_state(usb_on));
+
+        // Process RX data
+        while let Some(msg) = rx.get() {
+            match msg {
+                Message::Role(msg) => {
+                    defmt::info!("Got role::Message: {}", msg);
+                    maybe_tx(tx, self.fsm.on_rx(msg));
+                },
+                Message::Key(event) => {
+                    match &event {
+                        &Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
+                        &Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
+                    }
+                    // Only master cares for key presses from the other half
+                    if self.fsm.role() == Role::Master {
+                        self.layout.event(event);
+                    }
+                },
+            }
+        }
+
+        // Advance FSM time, process timeouts
+        maybe_tx(tx, self.fsm.tick());
 
         // Scan keys and push all events
         for event in self.keys.scan() {
-            if self.fsm.should_handle_events() {
+            match self.fsm.role() {
                 // Master should handle keyboard logic
-                self.layout.event(event)
-            } else {
-                let (i, j) = event.coord();
-                defmt::info!("Send Key({=u8}, {=u8})", i, j);
+                Role::Master => self.layout.event(event),
                 // Slave should only send key events to master
-                tx.push(Message::Key(event));
+                Role::Slave => {
+                    let (i, j) = event.coord();
+                    defmt::info!("Send Key({=u8}, {=u8})", i, j);
+                    tx.push(Message::Key(event));
+                },
             }
         }
 

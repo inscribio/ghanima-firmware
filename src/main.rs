@@ -39,7 +39,7 @@ mod app {
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
         ws2812: ws2812b::Leds,
-        keyboard: keyboard::Keyboard<SerialTx, SerialRx>,
+        keyboard: keyboard::Keyboard,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -174,11 +174,11 @@ mod app {
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
         let serial_rx = keyboard::Receiver::new(serial_rx);
-        let keyboard = keyboard::Keyboard {
-            keys: keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
-            fsm: keyboard::Fsm::with(1000), // TODO: type-safe timings, use Mono
-            layout: layers::layout(),
-        };
+        let keyboard = keyboard::Keyboard::new(
+            keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
+            layers::layout(),
+            1000,
+        );
 
         dbg.with_tx_high(|| {
             defmt::info!("Liftoff!");
@@ -304,28 +304,23 @@ mod app {
     }
 
     #[task(shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
-    fn keyboard_tick(cx: keyboard_tick::Context, time_ms: u32) {
+    fn keyboard_tick(cx: keyboard_tick::Context) {
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
             crc,
             mut usb,
         } = cx.shared;
-        let mut kb = cx.local.keyboard;
+        let keyboard = cx.local.keyboard;
 
         // Check current USB state for role negotiation
         let usb_on = usb.lock(|usb| usb.dev.state() == UsbDeviceState::Configured);
 
         // Run keyboard logic and get the USB report
-        let report = (&mut tx, rx).lock(|mut tx, mut rx| {
-            kb.fsm.usb_state(&mut tx, usb_on);
-            kb.tick(&mut tx, &mut rx, time_ms)
-        });
+        let report = (&mut tx, rx).lock(|tx, rx| keyboard.tick(tx, rx, usb_on));
 
         // Transmit any serial messages
-        (tx, crc).lock(|tx, mut crc| {
-            tx.tick(&mut crc);
-        });
+        (tx, crc).lock(|tx, crc| tx.tick(crc));
 
         // Set current USB report to the new one, finish if there is no change
         if !usb_on || !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
@@ -346,7 +341,7 @@ mod app {
                 update_leds::spawn(*t / 10).unwrap();
             }
 
-            keyboard_tick::spawn(*t as u32).unwrap();
+            keyboard_tick::spawn().unwrap();
         }
     }
 

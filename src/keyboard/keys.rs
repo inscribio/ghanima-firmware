@@ -1,4 +1,3 @@
-use core::convert::Infallible;
 use keyberon::{matrix, debounce, layout};
 
 use crate::bsp::{NCOLS, NROWS, ColPin, RowPin, sides::BoardSide};
@@ -33,5 +32,9 @@ impl Keys {
                 // Matrix produces local coordinates; make them global.
                 e.transform(|i, j| self.side.transform_coordinates((i, j)))
             })
+    }
+
+    pub fn side(&self) -> &BoardSide {
+        &self.side
     }
 }
