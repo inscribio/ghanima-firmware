@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Fail safe
+set -euo pipefail
+
+use_ansi() { test -t 1; }
+
+# only output colors if our output is to terminal
+RED=""
+BOLD=""
+CLEAR=""
+if use_ansi; then
+    RED="\033[0;31m"
+    BOLD="\033[1m"
+    CLEAR="\033[0m"
+fi
+
+# Stash changes to run checks on "clean" repo, i.e. what will actually be pushed
+stash() {
+    echo -e "${BOLD}Stashing changes ...${CLEAR}\n"
+    local out
+    out=$(git stash push --include-untracked --message 'Stashed from git hook')
+    # If any changes were stashed make sure to unstash on exit
+    if ! grep --ignore-case --quiet 'no .* changes to save' <<< "$out"; then
+        trap 'unstash' EXIT
+    fi
+}
+
+unstash() {
+    echo -e "${BOLD}Restoring stashed changes ...${CLEAR}\n"
+    git stash pop --quiet
+}
+
+stash
+
+echo -e "${BOLD}Running git push checks ...${CLEAR}\n"
+if ! ./utils/run-checks; then
+    echo -e "\n${RED}${BOLD}Checks failed. Aborting!${CLEAR}" 1>&2
+    exit 1
+fi
+
+exit 0

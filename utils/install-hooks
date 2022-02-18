@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+here="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+gitdir="$here/../.git"
+
+ln -vrfs "$here/pre-push-hook" "$gitdir/hooks/pre-push"

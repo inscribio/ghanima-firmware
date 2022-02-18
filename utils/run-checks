@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# Avoid linking errors for tests on host
+export DEFMT_LOG=off
+
+cargo check && \
+	cargo test --target x86_64-unknown-linux-gnu "$@"
