@@ -189,8 +189,8 @@ macro_rules! dma_channels {
                         self.ch().cr.modify(|_, w| {
                             w
                                 .htie().disabled()
-                                .tcie().enabled()
-                                .teie().enabled()
+                                .tcie().disabled()
+                                .teie().disabled()
                         });
                         InterruptResult::Error
                     } else {
