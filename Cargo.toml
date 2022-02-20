@@ -48,7 +48,7 @@ generic-array = "0.14"
 bitfield = "0.13"
 heapless = "0.7"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-postcard = { path = "tmp/postcard" }
+postcard = "0.7.3"
 postcard-cobs = { version = "0.2", default-features = false }
 num = { version = "0.4", default-features = false }
 rgb = "0.8"
