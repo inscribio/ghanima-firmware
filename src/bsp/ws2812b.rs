@@ -1,8 +1,8 @@
 use static_assertions as sa;
 use rgb::RGB8;
 
-// SPI frequency: 3 MHz; Bit time: 333 ns
-const SPI_FREQ: usize = 3_000_000;
+/// Assumed SPI frequency: 3 MHz; Bit time: 333 ns
+pub const SPI_FREQ: usize = 3_000_000;
 const T0H_BITS: usize = 1;  // 333 ns (vs 220-380 ns)
 const T0L_BITS: usize = 3;  // 1000 ns (vs 580-1000 ns)
 const T1H_BITS: usize = 2;  // 666 ns (vs 580-1000 ns)
@@ -37,16 +37,24 @@ const fn bytes_for_bits(bits: usize) -> usize {
     (bits + 7) / 8
 }
 
+/// Size of [`Buffer`] in bytes
 pub const BUFFER_SIZE: usize = bytes_for_bits(all_bits(LEDS_COUNT));
+/// Buffer that can be used for serialized LED data
 pub type Buffer = [u8; BUFFER_SIZE];
+/// Zero-initialized [`Buffer`]
 pub const BUFFER_ZERO: Buffer = [0u8; BUFFER_SIZE];
 const SERIAL_SIZE: usize = bytes_for_bits(SERIAL_BITS);
 
+/// Structure holding RGB LED colors for the whole board
+///
+/// Provides methods to serialize RGB data into format suitable for transmission
+/// via SPI configured with frequency of [`SPI_FREQ`].
 pub struct Leds {
     pub leds: [RGB8; LEDS_COUNT],
 }
 
 impl Leds {
+    /// Intialize with all LEDs diabled (black)
     pub const fn new() -> Self {
         Self {
             leds: [RGB8::new(0, 0, 0); LEDS_COUNT],
@@ -96,16 +104,16 @@ impl Leds {
         }
     }
 
-    // Serialize all RGB values to given buffer
+    /// Serialize all RGB values to given buffer
     pub fn serialize(&mut self, buf: &mut [u8; BUFFER_SIZE]) {
         self.serialize_to_slice(&mut buf[..])
     }
 
-    // Serialize all RGB values to given buffer
-    //
-    // # Panics
-    //
-    // If the buffer is not large enough - it must be at least BUFFER_SIZE bytes.
+    /// Serialize all RGB values to given buffer
+    ///
+    /// # Panics
+    ///
+    /// If the buffer is not large enough - it must be at least [`BUFFER_SIZE`] bytes.
     pub fn serialize_to_slice(&mut self, buf: &mut [u8]) {
         let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.leds.len()))/8];
         Self::serialize_colors(&self.leds, data);
@@ -130,6 +138,7 @@ impl Leds {
         GAMMA[pixel as usize]
     }
 
+    /// Set colors to a pattern suitable for testing LEDs
     pub fn set_test_pattern(&mut self, t: usize, brightness: u8) {
         let reflect = |v: usize| {
             let v = v % 512;

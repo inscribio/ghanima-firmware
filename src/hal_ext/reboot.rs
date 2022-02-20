@@ -10,6 +10,13 @@ const SYSTEM_MEMORY_BASE: u32 = 0x1fffc800;
 #[link_section = ".uninit.MAGIC"]
 static mut MAGIC: MaybeUninit<u32> = MaybeUninit::uninit();
 
+/// Reboot the MCU
+///
+/// Triggers system reset. If `bootloader` is true, then a flag will be set
+/// such that after reset, before any code execution we will jump to the embedded
+/// MCU bootloader. Some USB hosts may have problems with enumerating the bootloader
+/// after a reset. If `usb_bus` is passed, then USB reenumeration will be triggered
+/// before system reset, which may prevent the issue.
 pub unsafe fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
     if bootloader {
         MAGIC.as_mut_ptr().write(MAGIC_JUMP_BOOTLOADER);
@@ -35,6 +42,7 @@ unsafe fn jump_bootloader() {
     }
 }
 
+/// Implements switching to USB DFU mode via rebooting to an embedded DFU bootloader
 pub struct DfuBootloader;
 
 impl DfuRuntimeOps for DfuBootloader {

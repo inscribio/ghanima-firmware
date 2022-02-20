@@ -29,8 +29,11 @@ pub enum Interrupt {
 /// Result of handling DMA interrupt
 #[derive(Debug, PartialEq, Eq)]
 pub enum InterruptResult {
+    /// Interrupt flag wasn't set, nothing has been done
     NotSet,
+    /// Interrupt handled and the flag has been cleared
     Done,
+    /// Interrupt error flag was set; flags have been cleared and interrupts disabled
     Error,
 }
 
@@ -66,14 +69,14 @@ pub trait DmaTx {
 
     /// Start transmiting data
     ///
-    /// If the previous transfer is not complete returns `TransferOngoing`, if it is
+    /// If the previous transfer is not complete returns [`TransferOngoing`], if it is
     /// complete but there is minimal waiting required (e.g. for a TX FIFO flag) then
-    /// returns `nb::Error::WouldBlock`.
+    /// returns [`nb::Error::WouldBlock`].
     fn start(&mut self) -> nb::Result<(), TransferOngoing>;
 
     /// Handle DMA TX complete interrupt
     ///
-    /// The return value has the same meaning as `DmaChannel::handle_interrupt`.
+    /// The return value has the same meaning as in [`DmaChannel::handle_interrupt`].
     fn on_interrupt(&mut self) -> InterruptResult;
 
     /// Transmit data (shorthand for copy to `buf_mut()` followed by `start()`)
@@ -91,7 +94,7 @@ pub trait DmaTx {
     }
 }
 
-// Trait representing buffered DMA receiver
+/// Trait representing DMA receiver
 pub trait DmaRx {
     /// Read the received data (if any)
     fn read<F: FnMut(&[u8])>(&mut self, reader: F);
@@ -131,6 +134,7 @@ macro_rules! dma_channels {
     ($($C:literal => $ch:ident),+ $(,)?) => {
         $(
             impl DmaChannel<$C> {
+                /// Access DMA register associated with this channel
                 // Safety: takes &mut, so it's not possible to use channel in multiple places?
                 pub fn ch(&mut self) -> &hal::pac::dma1::CH {
                     unsafe { &(*hal::pac::DMA1::ptr()).$ch }
@@ -139,6 +143,7 @@ macro_rules! dma_channels {
                 const OFFSET: usize = 4 * ($C - 1);
                 const MASK: u32 = 0b1111;
 
+                /// Read interrupt status flags for this channel
                 pub fn isr(&self) -> InterruptStatus {
                     let dma = unsafe { &*hal::pac::DMA1::ptr() };
                     let isr = dma.isr.read().bits();
@@ -146,6 +151,7 @@ macro_rules! dma_channels {
                     InterruptStatus(masked)
                 }
 
+                /// Clear interrupt flags for this channel
                 pub fn ifcr<F>(&mut self, f: F)
                 where
                     F: FnOnce(&mut InterruptClear) -> &mut InterruptClear
@@ -229,7 +235,7 @@ impl InterruptStatus {
         (self.0 & 0b1000) != 0
     }
 
-    /// Replace error flag with `Err`
+    /// Replace error flag with [`Err`]
     ///
     /// A DMA error is generated when redaing from or writing to a reserved address space.
     pub fn as_result(self) -> Result<Self, ()> {
@@ -246,21 +252,25 @@ impl InterruptStatus {
 }
 
 impl InterruptClear {
+    /// GIFx flag
     pub fn all(&mut self) -> &mut Self {
         self.0 |= 0b0001;
         self
     }
 
+    /// TCIFx flag
     pub fn complete(&mut self) -> &mut Self {
         self.0 |= 0b0010;
         self
     }
 
+    /// HTIFx flag
     pub fn half_complete(&mut self) -> &mut Self {
         self.0 |= 0b0100;
         self
     }
 
+    /// TEIFx flag
     pub fn error(&mut self) -> &mut Self {
         self.0 |= 0b1000;
         self

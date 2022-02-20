@@ -8,6 +8,7 @@ use hal::{gpio::{Analog, gpioa}, adc};
 type GpioX = gpioa::PA1<Analog>;
 type GpioY = gpioa::PA0<Analog>;
 
+/// Two-axis joystick read via ADC
 pub struct Joystick {
     adc: hal::adc::Adc,
     zero: (u16, u16),
@@ -16,6 +17,7 @@ pub struct Joystick {
 }
 
 impl Joystick {
+    /// Initialize and calibrate joystick's ADC
     pub fn new(adc: hal::pac::ADC, (x, y): (GpioX, GpioY), rcc: &mut hal::rcc::Rcc) -> Self {
         // Dedicated 14 MHz clock source is used. Conversion time is:
         // t_conv = (239.5 + 12.5) * (1/14e6) ~= 18 us
@@ -66,6 +68,7 @@ impl Joystick {
     // On left side:
     //   x: larger left, lower right
     //   y: larger up, lower down
+    /// Read joystick position as polar coordinates (R, 𝛗) with 𝛗 normalized to [0, 4) (quadrant)
     pub fn read_polar(&mut self) -> (f32, f32) {
         Self::to_polar(self.read_xy())
     }

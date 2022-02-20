@@ -4,6 +4,7 @@ use usbd_dfu_rt::DfuRuntimeClass;
 use crate::hal::usb;
 use crate::hal_ext::reboot;
 
+/// USB resources and class implementations
 pub struct Usb {
     pub dev: UsbDevice<'static, usb::UsbBusType>,
     pub serial: usbd_serial::SerialPort<'static, usb::UsbBusType>,
@@ -15,6 +16,7 @@ pub struct Usb {
 }
 
 impl Usb {
+    /// Periodic USB poll
     pub fn poll(&mut self) -> bool {
         self.dev.poll(&mut [&mut self.keyboard, &mut self.serial, &mut self.dfu])
     }

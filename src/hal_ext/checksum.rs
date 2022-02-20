@@ -3,10 +3,10 @@ use postcard::flavors::SerFlavor;
 
 /// Checksum generator
 ///
-/// In principle this is similar to `core::hash::Hasher` but allows to use output
+/// In principle this is similar to [`core::hash::Hasher`] but allows to use output
 /// different than u64.
 pub trait ChecksumGen {
-    /// Checksum type that can be serialized (e.g. `u32`)
+    /// Checksum type that can be serialized (e.g. [`u32`])
     type Output: PrimInt;
 
     /// Reset internal state to start generating checksum for new data
@@ -14,14 +14,15 @@ pub trait ChecksumGen {
 
     /// Push data from slice to the generator
     ///
-    /// Note that wiht this method one must ensure correct state by calling `reset`
-    /// before any `push` sequence followed by `get`.
+    /// Note that with this method one must ensure correct state by calling
+    /// [`Self::reset`] before any [`Self::push`] sequence followed by
+    /// [`Self::get`].
     fn push(&mut self, data: &[u8]);
 
-    /// Retrieve checksum generation result for all data since last `reset`
+    /// Retrieve checksum generation result for all data since last [`Self::reset`]
     ///
-    /// Note that wiht this method one must ensure correct state by calling `reset`
-    /// before any `push` sequence followed by `get`.
+    /// Note that wiht this method one must ensure correct state by calling
+    /// [`Self::reset`] before any [`Self::push`] sequence followed by [`Self::get`].
     fn get(&self) -> Self::Output;
 
     /// Push `data` and retrive the final checksum
@@ -92,7 +93,7 @@ pub enum Error {
 
 /// Encoder that appends checksum at the end of data
 ///
-/// This is a postcard serialization flavor that uses some `Checksum` encoder
+/// This is a postcard serialization flavor that uses some [`ChecksumGen`] encoder
 /// to append checksum at the end of the data. Checksum bytes are appended in
 /// **little-endian** order!
 pub struct ChecksumEncoder<'a, F, C>
@@ -109,6 +110,7 @@ where
     F: SerFlavor,
     C: ChecksumGen,
 {
+    /// Initialize the encoder with clear state
     pub fn new(flavor: F, state: &'a mut C) -> Self {
         state.reset();
         Self { flavor, state }

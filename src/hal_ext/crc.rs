@@ -8,6 +8,7 @@ pub struct Crc {
     variant: Variant,
 }
 
+/// CRC variat to be used
 pub enum Variant {
     // TODO: Other variants, or some way to use CRC16, as CRC32 is too much for short serial messages
     Crc32MPEG2,  // CRC-32-MPEG-2

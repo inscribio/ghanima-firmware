@@ -49,6 +49,7 @@ where
     P: PacketDeser,
     RX: DmaRx,
 {
+    /// Create new receiver
     pub fn new(rx: RX) -> Self {
         Self {
             rx,
@@ -56,7 +57,7 @@ where
         }
     }
 
-    /// Handle interrupts; on `InterruptResult::Done` new data may be available
+    /// Handle interrupts; on [`dma::InterruptResult::Done`] new data may be available
     pub fn on_interrupt(&mut self, checksum: &mut P::Checksum) -> dma::InterruptResult {
         // Data pushing logic must be in different struct as we need
         // to keep a mutable borrow to rx while in the callback.

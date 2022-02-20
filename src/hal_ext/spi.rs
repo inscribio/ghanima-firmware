@@ -18,10 +18,12 @@ pub struct SpiTx {
     ready: bool,
 }
 
+/// DMA transfer is still ongoing
 #[derive(Debug)]
 pub struct TransferOngoing;
 
 impl SpiTx {
+    /// Initialize SPI with only the MOSI pin being used
     pub fn new<MOSIPIN, F>(
         spi: hal::pac::SPI2,
         _mosi: MOSIPIN,

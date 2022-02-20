@@ -8,9 +8,10 @@ use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 /// Mark trait to define types used as checksumed packets in a protocol
 ///
 /// While this trait does not provide anything it is used to automatically
-/// implement `PacketSer` and `PacketDeser` for given type if it implements
+/// implement [`PacketSer`] and [`PacketDeser`] for given type if it implements
 /// proper serde traits.
 pub trait Packet {
+    /// Checksum generator used to add checksum to the data packets
     type Checksum: ChecksumGen;
 }
 

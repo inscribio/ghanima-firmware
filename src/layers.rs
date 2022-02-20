@@ -1,9 +1,12 @@
+//! Layout and functions of keys on the keyboard
+
 use keyberon::{
     action::{k, l, m, d, Action, Action::*, HoldTapConfig},
     key_code::KeyCode::*,
     layout::{Layers, Layout, layout},
 };
 
+/// Get keyboard layout
 pub fn layout() -> Layout {
     Layout::new(LAYERS)
 }

@@ -13,6 +13,7 @@ type TxPin = gpio::gpioa::PA2<gpio::Output<gpio::PushPull>>;
 type RxPin = gpio::gpioa::PA3<gpio::Output<gpio::PushPull>>;
 type Pin = gpio::Pin<gpio::Output<gpio::PushPull>>;
 
+/// UART pins that can be used as UART or as two PushPull GPIOs
 pub struct DebugPins {
     serial: Serial,
     mode: Mode,
@@ -25,6 +26,7 @@ enum Mode {
 }
 
 impl DebugPins {
+    /// Initialize debug pins
     pub fn new(uart: Uart, (tx, rx): (Tx, Rx), rcc: &mut hal::rcc::Rcc) -> Self {
         let serial = Serial::usart2(uart, (tx, rx), 115_200.bps(), rcc);
         Self { serial, mode: Mode::Serial }
@@ -154,6 +156,21 @@ impl DebugPins {
     }
 }
 
+/// Helper macro for debugging a set of MCU registers
+///
+/// Uses [`defmt::println`] to pretty-print 32-bit registers in binary format splitting
+/// nibbles/bytes using underscores for easier reading. Use as:
+///
+/// ```no_run
+/// # #[macro_use] extern crate ghanima;
+/// # use stm32f0xx_hal as hal;
+/// let dma = unsafe { &*hal::pac::DMA1::ptr() };
+/// let usart = unsafe { &*hal::pac::USART1::ptr() };
+/// debug_regs! {
+///     USART1: isr cr1 cr2 cr3 brr,
+///     DMA1: isr ch2.cr ch3.cr ch5.cr,
+/// };
+/// ```
 // FIXME: find way to use interned strings (=istr), stringify!/concat! do not work
 #[macro_export]
 macro_rules! debug_regs {

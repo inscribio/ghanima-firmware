@@ -1,3 +1,12 @@
+//! Ghanima keyboard firmware
+//!
+//! Ghanima is an ergonomic split USB keyboard based on the [`keyberon`] firmware.
+//! Additional features, beside regular keyboard functionality, include:
+//!
+//! * RGB LEDs under keys, with ability to control each individual LED
+//! * Optional Joystick support that can act as USB HID mouse or be used as an
+//!   encoder to control analog quantities, like e.g. system volume
+
 #![no_std]
 
 // Use std when running tests, see: https://stackoverflow.com/a/28186509

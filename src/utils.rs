@@ -1,7 +1,10 @@
+//! Miscellaneous utilities
+
 use core::convert::Infallible;
 
-/// Helper trait to resolve Infallible Results
+/// Helper trait to resolve [`Result`]s with unreachable [`Err`] variant
 pub trait InfallibleResult<T> {
+    /// Take the Ok value of an infallible [`Result`]
     fn infallible(self) -> T;
 }
 

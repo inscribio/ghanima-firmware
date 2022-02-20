@@ -1,4 +1,12 @@
+//! Main USB keyboard logic
+//!
+//! Implementation of split-keyboard logic based on the [`keyberon`] crate.
+//! Contains firmware extenstions such as communication between keyboard halves
+//! and handling of custom events.
+
+/// Keyboard matrix scanner with debouncing
 mod keys;
+/// Role negotiation between keyboard halves
 mod role;
 
 use core::convert::Infallible;
@@ -13,18 +21,24 @@ use role::Role;
 
 pub use keys::Keys;
 
+/// Transmitter of packets for communication between keyboard halves
 pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<Message, TX, N>;
+/// Receiver of packets for communication between keyboard halves
 pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<Message, RX, N, B>;
 
+/// Split keyboard
 pub struct Keyboard<ACT: 'static = Infallible> {
     keys: keys::Keys,
     fsm: role::Fsm,
     layout: layout::Layout<ACT>,
 }
 
+/// Messages used in communication between keyboard halves
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Message {
+    /// Negotiation of roles of each half
     Role(role::Message),
+    /// Raw key event transmitted to the half that is connected to USB from the other one
     #[serde(with = "EventDef")]
     Key(Event),
 }
@@ -42,6 +56,8 @@ enum EventDef {
 }
 
 impl<ACT: 'static> Keyboard<ACT> {
+    /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
+    /// (see [`Self::tick`])
     pub fn new(keys: keys::Keys, layout: layout::Layout<ACT>, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
@@ -51,6 +67,12 @@ impl<ACT: 'static> Keyboard<ACT> {
         }
     }
 
+    /// Periodic keyboard events processing
+    ///
+    /// This should be called in a fixed period. Will handle communication between keyboard
+    /// halves and resolve key events depending on keyboard layout. Requires information
+    /// about current USB state (connected/not connected). Returns keyboadr USB HID report
+    /// with the keys that are currently pressed.
     pub fn tick<TX, RX>(&mut self, tx: &mut TX, rx: &mut RX, usb_on: bool) -> KbHidReport
         where
         TX: ioqueue::TransmitQueue<Message>,

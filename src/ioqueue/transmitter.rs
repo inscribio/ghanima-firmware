@@ -44,6 +44,7 @@ where
     P: PacketSer,
     TX: DmaTx,
 {
+    /// Create new transmitter
     pub fn new(tx: TX) -> Self {
         Self {
             queue: ConstGenericRingBuffer::new(),
@@ -110,6 +111,7 @@ where
         nb::block!(self.tx.start()).unwrap();
     }
 
+    /// Perform interrupt processing, should be called in all relevant IRQ handlers
     pub fn on_interrupt(&mut self) -> dma::InterruptResult {
         self.tx.on_interrupt()
     }

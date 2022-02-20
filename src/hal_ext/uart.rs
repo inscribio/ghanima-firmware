@@ -15,18 +15,18 @@ type RxDma = dma::DmaChannel<3>;
 
 /// DMA UART
 pub struct Uart<RXBUF> {
+    /// UART TX half
     pub tx: Tx,
+    /// UART RX half
     pub rx: Rx<RXBUF>,
 }
 
 /// DMA UART TX half
 ///
-/// Transmits data over DMA. Use `transmit()` to copy data to the DMA buffer.
-/// After transfer completion DMA transfer complete interrupt will fire and
-/// the `finish()` *must* be called in the interrupt service routine.
-///
-/// Make sure to never send more than data than the buffer size of the RX half
-/// without an Idle line in between.
+/// Transmits data over DMA providing the [`dma::DmaTx`] interface. Designed
+/// to work well with [`Rx`]. Make sure to never send more than data than
+/// the buffer size of the RX half without an Idle line in between to avoid
+/// buffer overruns.
 // TODO: provide way to ensure idle line or update the receiver to also grab
 // the data on half/full transfer complete interrupts.
 pub struct Tx {
@@ -40,11 +40,12 @@ pub struct Tx {
 /// UART receiver using DMA with a circular buffer. DMA is configured to transfer
 /// BUF.len() data in circular mode. Receiver uses 2 interrupts:
 ///
-/// * UART Idle Line interrupt: used to detect when data transmission stops.
-///   `on_uart_interrupt` method should be called in the UART interrupt routine.
-/// * DMA transfer complete interrupt: call `on_transfer_complete` in the interrupt
-///   service routine - it is needed to correctly retrieve data after DMA wraps
-///   around the buffer.
+/// * UART Idle Line interrupt: used to detect when data transmission stops
+/// * DMA transfer complete interrupt: needed to correctly retrieve data after
+///   DMA wraps around the buffer
+///
+/// [`dma::DmaRx::on_interrupt`] should be called in both IRQs, it will detect
+/// the interrupt type by reading ISR flags.
 pub struct Rx<BUF> {
     dma: RxDma,
     buf: CircularBuffer<BUF>,
@@ -64,6 +65,7 @@ impl<BUF> Uart<BUF>
 where
     BUF: WriteBuffer<Word = u8>
 {
+    /// Configure DMA UART with given baud rate
     // TODO: use builder pattern or a config struct
     pub fn new(
         uart: UartRegs,
@@ -96,6 +98,7 @@ where
         }
     }
 
+    /// Split UART into separate TX/RX halves
     pub fn split(self) -> (Tx, Rx<BUF>) {
         (self.tx, self.rx)
     }
@@ -339,22 +342,34 @@ where
 }
 
 impl<'a> RxData<'a> {
+    /// Get RX data from circular buffer
+    ///
+    /// Returns two slices, because a circular buffer may have wrapped so the
+    /// data is not a continuous slice. If no wrapping occured the 2nd slice
+    /// will be empty, but user code should always just process both slices
+    /// in their order (i.e 1st slice then 2nd slice).
     pub fn data(&self) -> (&'a [u8], &'a [u8]) {
         (self.data1, self.data2)
     }
 
+    /// Number of bytes that have been overwritten (if not reading the circular
+    /// buffer fast enough)
     pub fn lost(&self) -> usize {
         self.overwritten
     }
 
+    /// How much bytes do we have before the first byte in [`RxData`] buffers
+    /// will be overwritten by DMA
     pub fn safety_margin(&self) -> usize {
         todo!()
     }
 
+    /// Iterate over bytes from both slices
     pub fn iter_all(&self) -> impl Iterator<Item = &'a u8> {
         self.data1.iter().chain(self.data2.iter())
     }
 
+    /// Total number of bytes in data slices
     pub fn len(&self) -> usize {
         self.data1.len() + self.data2.len()
     }
