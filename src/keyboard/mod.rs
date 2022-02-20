@@ -7,14 +7,14 @@ use serde::{Serialize, Deserialize};
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
 
-use crate::io;
+use crate::ioqueue;
 use crate::hal_ext::crc::Crc;
 use role::Role;
 
 pub use keys::Keys;
 
-pub type Transmitter<TX, const N: usize> = io::Transmitter<Message, TX, N>;
-pub type Receiver<RX, const N: usize, const B: usize> = io::Receiver<Message, RX, N, B>;
+pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<Message, TX, N>;
+pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<Message, RX, N, B>;
 
 pub struct Keyboard<ACT: 'static = Infallible> {
     keys: keys::Keys,
@@ -29,7 +29,7 @@ pub enum Message {
     Key(Event),
 }
 
-impl io::Packet for Message {
+impl ioqueue::Packet for Message {
     type Checksum = Crc;
 }
 
@@ -53,8 +53,8 @@ impl<ACT: 'static> Keyboard<ACT> {
 
     pub fn tick<TX, RX>(&mut self, tx: &mut TX, rx: &mut RX, usb_on: bool) -> KbHidReport
         where
-        TX: io::TransmitQueue<Message>,
-        RX: io::ReceiveQueue<Message>,
+        TX: ioqueue::TransmitQueue<Message>,
+        RX: ioqueue::ReceiveQueue<Message>,
     {
         let maybe_tx = |tx: &mut TX, msg: Option<role::Message>| {
             if let Some(msg) = msg {
