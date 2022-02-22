@@ -57,14 +57,18 @@ pub trait PacketDeserRef<'de>: Packet + Deserialize<'de> {
         acc: &'de mut Accumulator<N>,
         checksum: &'chk mut Self::Checksum,
         data: &'dat [u8],
-    ) -> (Option<Self>, &'dat [u8]) {
+    ) -> (Option<Result<Self, DeserError>>, &'dat [u8]) {
         let result = acc.feed::<Self>(checksum, data);
 
-        use FeedResult::*;
+        use FeedResult as R;
+        use DeserError as E;
         let (msg, new_window) = match result {
-            Consumed => (None, &[][..]),
-            Success { msg, remaining } => (Some(msg), remaining),
-            OverFull(r) | CobsDecodingError(r) | ChecksumError(r) | DeserError(r) => (None, r),
+            R::Consumed => (None, &[][..]),
+            R::Success { msg, remaining } => (Some(Ok(msg)), remaining),
+            R::OverFull(r) => (Some(Err(E::OverFull)), r),
+            R::CobsDecodingError(r) => (Some(Err(E::CobsDecodingError)), r),
+            R::ChecksumError(r) => (Some(Err(E::ChecksumError)), r),
+            R::DeserError(r) => (Some(Err(E::DeserError)), r),
         };
 
         (msg, new_window)
@@ -95,6 +99,19 @@ pub trait PacketDeserRef<'de>: Packet + Deserialize<'de> {
 
 }
 
+/// Type of error when deserializing a packet
+#[derive(Debug)]
+pub enum DeserError {
+    /// No sentinel found and data too long to fit in internal buffer
+    OverFull,
+    /// Found sentinel byte but COBS decoding on the packet failed
+    CobsDecodingError,
+    /// COBS decoding succeeded, but checksum verification failed
+    ChecksumError,
+    /// Failed to deserialize message from the data even though checksum was correct
+    DeserError,
+}
+
 /// Clone of postcard::CobsAccumulator but with checksum decoding
 pub struct Accumulator<const N: usize> {
     buf: [u8; N],
@@ -110,27 +127,12 @@ pub struct Iterator<'acc, 'chk, 'dat, P: PacketDeser, const N: usize> {
 }
 
 impl<'acc, 'chk, 'dat, P: PacketDeser, const N: usize> core::iter::Iterator for Iterator<'acc, 'chk, 'dat, P, N> {
-    type Item = P;
+    type Item = Result<P, DeserError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while !self.window.is_empty() {
-            let result = self.acc.feed::<P>(self.checksum, self.window);
-
-            use FeedResult::*;
-            let (msg, new_window) = match result {
-                Consumed => return None,
-                Success { msg, remaining } => (Some(msg), remaining),
-                OverFull(r) | CobsDecodingError(r) | ChecksumError(r) | DeserError(r) => (None, r),
-            };
-
-            self.window = new_window;
-
-            if let Some(msg) = msg {
-                return Some(msg);
-            }
-        }
-
-        None
+        let (msg, new_window) = P::get_from_slice(self.acc, self.checksum, self.window);
+        self.window = new_window;
+        msg
     }
 }
 
@@ -308,6 +310,7 @@ mod tests {
             0x00, 0x2,
         ];
         let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
+            .filter_map(|r| r.ok())
             .collect::<Vec<_>>();
         assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 2]);
     }
@@ -324,6 +327,7 @@ mod tests {
             0x00, 0x2,
         ];
         let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
+            .filter_map(|r| r.ok())
             .collect::<Vec<_>>();
         assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 1]);
     }
@@ -386,22 +390,22 @@ mod tests {
             9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
             0xc5, 0xab, 0x20, 0xd6,
             0,
-            0x11, 0x22, 0x33, 0x44, 0
+            4, 0x22, 0x33, 0x44, 0
         ];
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
-        assert!(msg.is_none());
+        assert!(matches!(msg.unwrap(), Err(DeserError::CobsDecodingError)));
         assert_eq!(buf, [
             17, 0xad, 0xba, 9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
-            0xc5, 0xab, 0x20, 0xd6, 0, 0x11, 0x22, 0x33, 0x44, 0
+            0xc5, 0xab, 0x20, 0xd6, 0, 4, 0x22, 0x33, 0x44, 0
         ]);
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
-        assert_eq!(msg.unwrap(), MessageWithSimpleRef { id: 0xbaad, name: "Yossarian" });
-        assert_eq!(buf, [0x11, 0x22, 0x33, 0x44, 0]);
+        assert_eq!(msg.unwrap().unwrap(), MessageWithSimpleRef { id: 0xbaad, name: "Yossarian" });
+        assert_eq!(buf, [4, 0x22, 0x33, 0x44, 0]);
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
-        assert!(msg.is_none());
+        assert!(matches!(msg.unwrap(), Err(DeserError::ChecksumError)));
         assert_eq!(buf, []);
     }
 }

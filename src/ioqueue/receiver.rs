@@ -84,17 +84,19 @@ where
     }
 
     pub fn push(&mut self, data: &[u8], checksum: &mut P::Checksum) {
-        for p in MarkedPacket::<P>::iter_from_slice(&mut self.accumulator, checksum, data) {
-            // Ignore packets with the same ID as the last packet, assuming it's a retransmission.
-            let ignore = match self.id_counter {
-                Some(id) => p.id == id,
-                None => false,
-            };
+        MarkedPacket::<P>::iter_from_slice(&mut self.accumulator, checksum, data)
+            .filter_map(|res| res.ok())
+            .for_each(|p| {
+                // Ignore packets with the same ID as the last packet, assuming it's a retransmission.
+                let ignore = match self.id_counter {
+                    Some(id) => p.id == id,
+                    None => false,
+                };
 
-            if !ignore {
-                self.id_counter = Some(p.id);
-                self.queue.push(p.packet);
-            }
-        }
+                if !ignore {
+                    self.id_counter = Some(p.id);
+                    self.queue.push(p.packet);
+                }
+            })
     }
 }
