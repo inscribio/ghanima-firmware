@@ -1,9 +1,10 @@
-use ringbuffer::{ConstGenericRingBuffer, RingBufferRead, RingBufferWrite};
+use defmt::Format;
+use ringbuffer::{ConstGenericRingBuffer, RingBufferRead, RingBufferWrite, RingBuffer};
 use serde::Deserialize;
 
 use crate::hal_ext::dma::{self, DmaRx};
 use super::{PacketId, ReceiveQueue};
-use super::packet::{Packet, PacketDeser, Accumulator};
+use super::packet::{Packet, PacketDeser, Accumulator, DeserError};
 
 #[derive(Deserialize)]
 struct MarkedPacket<P: Packet> {
@@ -31,6 +32,17 @@ struct RxState<P, const N: usize, const B: usize> {
     queue: ConstGenericRingBuffer<P, N>,
     accumulator: Accumulator<B>,
     id_counter: Option<PacketId>,
+    stats: Stats,
+}
+
+#[derive(Debug, Format, Default, Clone, PartialEq)]
+pub struct Stats {
+    pub queue_overflows: u32,
+    pub accumulator_overflows: u32,
+    pub cobs_errors: u32,
+    pub checksum_errors: u32,
+    pub deser_errors: u32,
+    pub ignored_retransmissions: u32,
 }
 
 impl<P, RX, const N: usize, const B: usize> ReceiveQueue<P> for Receiver<P, RX, N, B>
@@ -69,6 +81,10 @@ where
     pub fn queue(&mut self) -> &mut impl RingBufferRead<P> {
         &mut self.state.queue
     }
+
+    pub fn stats(&self) -> &Stats {
+        &self.state.stats
+    }
 }
 
 impl<P, const N: usize, const B: usize> RxState<P, N, B>
@@ -80,12 +96,25 @@ where
             queue: ConstGenericRingBuffer::new(),
             accumulator: Accumulator::new(),
             id_counter: None,
+            stats: Default::default(),
         }
     }
 
     pub fn push(&mut self, data: &[u8], checksum: &mut P::Checksum) {
+        let inc = |val: &mut u32| *val = val.saturating_add(1);
         MarkedPacket::<P>::iter_from_slice(&mut self.accumulator, checksum, data)
-            .filter_map(|res| res.ok())
+            .filter_map(|res| {
+                if let Err(ref err) = res {
+                    let cnt = match err {
+                        DeserError::OverFull => &mut self.stats.accumulator_overflows,
+                        DeserError::CobsDecodingError => &mut self.stats.cobs_errors,
+                        DeserError::ChecksumError => &mut self.stats.checksum_errors,
+                        DeserError::DeserError => &mut self.stats.deser_errors,
+                    };
+                    inc(cnt);
+                }
+                res.ok()
+            })
             .for_each(|p| {
                 // Ignore packets with the same ID as the last packet, assuming it's a retransmission.
                 let ignore = match self.id_counter {
@@ -95,7 +124,12 @@ where
 
                 if !ignore {
                     self.id_counter = Some(p.id);
+                    if self.queue.is_full() {
+                        inc(&mut self.stats.queue_overflows);
+                    }
                     self.queue.push(p.packet);
+                } else {
+                    inc(&mut self.stats.ignored_retransmissions);
                 }
             })
     }

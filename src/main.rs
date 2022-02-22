@@ -17,7 +17,7 @@ mod app {
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}, reboot};
-    use lib::{keyboard, layers};
+    use lib::{keyboard, layers, ioqueue};
 
     const DEBOUNCE_COUNT: u16 = 5;
 
@@ -331,6 +331,18 @@ mod app {
         while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
     }
 
+    #[task(shared = [serial_rx], local = [stats: Option<ioqueue::Stats> = None])]
+    fn debug_report(mut cx: debug_report::Context) {
+        let old = cx.local.stats.get_or_insert_with(|| Default::default());
+        let new = cx.shared.serial_rx.lock(|rx| {
+            rx.stats().clone()
+        });
+        if &new != old {
+            defmt::warn!("RX stats: {}", new);
+            *old = new;
+        }
+    }
+
     #[task(binds = TIM15, priority = 2, local = [timer, t: usize = 0])]
     fn tick(cx: tick::Context) {
         // Clears interrupt flag
@@ -343,6 +355,10 @@ mod app {
             }
 
             keyboard_tick::spawn().unwrap();
+
+            if *t % 1000 == 0 {
+                debug_report::spawn().unwrap();
+            }
         }
     }
 

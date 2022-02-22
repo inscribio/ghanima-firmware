@@ -15,7 +15,7 @@ mod receiver;
 mod transmitter;
 
 pub use packet::Packet;
-pub use receiver::Receiver;
+pub use receiver::{Receiver, Stats};
 pub use transmitter::Transmitter;
 
 type PacketId = u16;
