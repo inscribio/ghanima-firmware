@@ -88,7 +88,7 @@ mod app {
         let dma = dev.DMA1.split(&mut rcc);
 
         // CRC
-        let crc = crc::Crc::new(dev.CRC, &mut rcc, crc::Variant::Crc32MPEG2);
+        let mut crc = crc::Crc::new(dev.CRC, &mut rcc);
 
         // Determine board side
         let board_side = ifree(|cs| gpiob.pb13.into_floating_input(cs));
