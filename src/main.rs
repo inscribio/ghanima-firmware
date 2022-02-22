@@ -121,7 +121,7 @@ mod app {
             (board_tx, board_rx),
             (dma.ch2, dma.ch3),
             (&mut cx.local.serial_tx_buf[..], &mut cx.local.serial_rx_buf[..]),
-            115_200.bps(),
+            460_800.bps(),
             &mut rcc,
         ).split();
         let mut dbg = debug::DebugPins::new(dev.USART2, (debug_tx, debug_rx), &mut rcc);
