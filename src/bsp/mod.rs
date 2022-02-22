@@ -22,6 +22,8 @@ pub const NCOLS: usize = 6;
 pub const NCOLS_THUMB: usize = 4;
 /// Number of key rows
 pub const NROWS: usize = 5;
+/// Number of LEDs on each half (this is also the number of keys)
+pub const NLEDS: usize = 28;
 
 /// Type of GPIOs connected to key matrix columns
 pub type ColPin = gpio::Pin<gpio::Input<gpio::PullUp>>;

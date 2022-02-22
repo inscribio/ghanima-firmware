@@ -16,7 +16,6 @@ sa::const_assert_eq!(T0L_BITS + T0H_BITS, T1L_BITS + T1H_BITS);
 const SERIAL_BITS: usize = T0L_BITS + T0H_BITS;
 
 // Data for each LED with 3x8=24-bit RGB color, with each bit serialized as X bits.
-const LEDS_COUNT: usize = 28;
 const RGB_BITS: usize = 3 * 8;
 const fn led_bits(leds_count: usize) -> usize {
     leds_count * RGB_BITS * SERIAL_BITS
@@ -37,27 +36,28 @@ const fn bytes_for_bits(bits: usize) -> usize {
     (bits + 7) / 8
 }
 
-/// Size of [`Buffer`] in bytes
-pub const BUFFER_SIZE: usize = bytes_for_bits(all_bits(LEDS_COUNT));
-/// Buffer that can be used for serialized LED data
-pub type Buffer = [u8; BUFFER_SIZE];
-/// Zero-initialized [`Buffer`]
-pub const BUFFER_ZERO: Buffer = [0u8; BUFFER_SIZE];
 const SERIAL_SIZE: usize = bytes_for_bits(SERIAL_BITS);
 
 /// Structure holding RGB LED colors for the whole board
 ///
 /// Provides methods to serialize RGB data into format suitable for transmission
 /// via SPI configured with frequency of [`SPI_FREQ`].
-pub struct Leds {
-    pub leds: [RGB8; LEDS_COUNT],
+pub struct Leds<const N: usize> {
+    pub leds: [RGB8; N],
 }
 
-impl Leds {
+impl<const N: usize> Leds<N> {
+    /// Size of buffer needed for serialized LED data
+    pub const BUFFER_SIZE: usize = bytes_for_bits(all_bits(N));
+    // /// Zero-initialized buffer for serialized data
+    // pub const fn buffer_zeroed() -> [u8; Leds::<{ N }>::BUFFER_SIZE] {
+    //     [0u8; Leds::BUFFER_SIZE]
+    // }
+
     /// Intialize with all LEDs diabled (black)
     pub const fn new() -> Self {
         Self {
-            leds: [RGB8::new(0, 0, 0); LEDS_COUNT],
+            leds: [RGB8::new(0, 0, 0); N],
         }
     }
 
@@ -105,18 +105,14 @@ impl Leds {
     }
 
     /// Serialize all RGB values to given buffer
-    pub fn serialize(&mut self, buf: &mut [u8; BUFFER_SIZE]) {
-        self.serialize_to_slice(&mut buf[..])
-    }
-
-    /// Serialize all RGB values to given buffer
     ///
     /// # Panics
     ///
     /// If the buffer is not large enough - it must be at least [`BUFFER_SIZE`] bytes.
-    pub fn serialize_to_slice(&mut self, buf: &mut [u8]) {
+    pub fn serialize_to_slice(&mut self, buf: &mut [u8]) -> usize {
         let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.leds.len()))/8];
         Self::serialize_colors(&self.leds, data);
+        Self::BUFFER_SIZE
     }
 
     const fn gamma_correction(pixel: u8) -> u8 {
@@ -165,7 +161,7 @@ mod tests {
 
     #[test]
     fn const_led_bits() {
-        assert_eq!(led_bits(LEDS_COUNT), 2688);
+        assert_eq!(led_bits(28), 2688);
     }
 
     #[test]
@@ -175,7 +171,7 @@ mod tests {
             (false, true) | (true, false) => 840,
             (false, false) => 0,
         };
-        assert_eq!(all_bits(LEDS_COUNT), 2688 + reset_bits);
+        assert_eq!(all_bits(28), 2688 + reset_bits);
     }
 
     #[test]
@@ -185,14 +181,14 @@ mod tests {
             (false, true) | (true, false) => 441,  // bits: 840 + 2688 = 3528
             (false, false) => 336,  // bits: 2688
         };
-        assert_eq!(BUFFER_SIZE, bytes);
+        assert_eq!(Leds::<28>::BUFFER_SIZE, bytes);
     }
 
     #[test]
     fn serialize_one() {
         let leds = [RGB8::new(0xff, 0xaa, 0x31)];
         let mut buf = [0u8; 3 * 8 / 2];
-        Leds::serialize_colors(&leds, &mut buf);
+        Leds::<28>::serialize_colors(&leds, &mut buf);
         let expected = [
             // green: 0xaa = 0b10101010
             0b1100_1000, 0b1100_1000, 0b1100_1000, 0b1100_1000,
@@ -208,7 +204,7 @@ mod tests {
     fn serialize_multiple() {
         let leds = [RGB8::new(0xff, 0xaa, 0x31), RGB8::new(0xaa, 0x31, 0xff)];
         let mut buf = [0u8; (3 * 8 / 2) * 2];
-        Leds::serialize_colors(&leds, &mut buf);
+        Leds::<28>::serialize_colors(&leds, &mut buf);
         let expected = [
             0b1100_1000, 0b1100_1000, 0b1100_1000, 0b1100_1000, // 0xaa
             0b1100_1100, 0b1100_1100, 0b1100_1100, 0b1100_1100, // 0xff

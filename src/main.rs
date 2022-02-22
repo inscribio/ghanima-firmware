@@ -15,7 +15,7 @@ mod app {
     use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
 
     use super::lib;
-    use lib::bsp::{debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
+    use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}, reboot};
     use lib::{keyboard, layers};
 
@@ -23,6 +23,7 @@ mod app {
 
     type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
     type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
+    type Leds = ws2812b::Leds<{ bsp::NLEDS }>;
 
     #[shared]
     struct Shared {
@@ -38,7 +39,7 @@ mod app {
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
-        ws2812: ws2812b::Leds,
+        ws2812: Leds,
         keyboard: keyboard::Keyboard,
     }
 
@@ -48,7 +49,7 @@ mod app {
 
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
-        led_buf: ws2812b::Buffer = ws2812b::BUFFER_ZERO,
+        led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
         serial_tx_buf: [u8; 64] = [0; 64],
         serial_rx_buf: [u8; 128] = [0; 128],
     ])]
@@ -136,7 +137,7 @@ mod app {
         let mut spi_tx = spi::SpiTx::new(dev.SPI2, rgb_tx, dma.ch5, &mut cx.local.led_buf[..], 3.mhz(), &mut rcc);
         let mut ws2812 = ws2812b::Leds::new();
         // Send a first transfer with all leds disabled ASAP
-        spi_tx.push(|buf| { ws2812.serialize_to_slice(buf); ws2812b::BUFFER_SIZE }).unwrap();
+        spi_tx.push(|buf| ws2812.serialize_to_slice(buf)).unwrap();
         spi_tx.start().unwrap();
 
         // configure periodic timer
@@ -247,7 +248,7 @@ mod app {
         (spi_tx, dbg).lock(|spi_tx, dbg| {
             dbg.with_rx_high(|| {
                 // TODO: try to use .serialize()
-                spi_tx.push(|buf| { ws2812.serialize_to_slice(buf); ws2812b::BUFFER_SIZE })
+                spi_tx.push(|buf| ws2812.serialize_to_slice(buf))
                     .expect("Trying to serialize new data but DMA transfer is not finished");
             });
 
