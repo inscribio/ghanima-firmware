@@ -16,7 +16,7 @@ mod app {
 
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}, reboot};
+    use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}};
     use lib::{keyboard, layers, ioqueue};
 
     const DEBOUNCE_COUNT: u16 = 5;
@@ -27,7 +27,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb: Usb,
+        usb: Usb<()>,
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
@@ -88,7 +88,7 @@ mod app {
         let dma = dev.DMA1.split(&mut rcc);
 
         // CRC
-        let mut crc = crc::Crc::new(dev.CRC, &mut rcc);
+        let crc = crc::Crc::new(dev.CRC, &mut rcc);
 
         // Determine board side
         let board_side = ifree(|cs| gpiob.pb13.into_floating_input(cs));
@@ -153,24 +153,7 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        // USB classes
-        let usb_serial = usbd_serial::SerialPort::new(usb_bus);
-        // let usb_cdc = usbd_serial::CdcAcmClass::new(usb_bus, 64);
-        let usb_dfu = usbd_dfu_rt::DfuRuntimeClass::new(usb_bus, reboot::DfuBootloader);
-        let usb_keyboard = keyberon::new_class(usb_bus, ());
-
-        // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
-        // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
-        let generic_keyboard = UsbVidPid(0x16c0, 0x27db);
-        let usb_dev = UsbDeviceBuilder::new(&usb_bus, generic_keyboard)
-            .manufacturer("inscrib.io")
-            .product(match board_side {
-                BoardSide::Left => "ghanima keyboard (L)",
-                BoardSide::Right => "ghanima keyboard (R)"
-            })
-            .serial_number(env!("CARGO_PKG_VERSION"))
-            .composite_with_iads()
-            .build();
+        let usb = Usb::new(usb_bus, &board_side, ());
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
@@ -190,12 +173,7 @@ mod app {
         }
 
         let shared = Shared {
-            usb: Usb {
-                dev: usb_dev,
-                serial: usb_serial,
-                dfu: usb_dfu,
-                keyboard: usb_keyboard,
-            },
+            usb,
             spi_tx,
             dbg,
             joy,
