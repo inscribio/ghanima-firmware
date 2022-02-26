@@ -5,7 +5,7 @@ authors = ["Jędrzej Boczar <jedrzej.boczar@gmail.com>"]
 edition = "2021"
 
 [features]
-default = []
+default = ["idle_sleep"]
 idle_sleep = []
 crystal = []
 
