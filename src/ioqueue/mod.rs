@@ -8,11 +8,11 @@
 //! packet queues with compile-time configurable sizes.
 
 /// Serialization/deserialization of packets with checksum
-mod packet;
+pub mod packet;
 /// Packet reception queue
-mod receiver;
+pub mod receiver;
 /// Packet transmission queue
-mod transmitter;
+pub mod transmitter;
 
 pub use packet::Packet;
 pub use receiver::{Receiver, Stats};
