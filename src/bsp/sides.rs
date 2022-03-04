@@ -116,7 +116,7 @@ impl BoardSide {
         }
     }
 
-    fn n_cols(row: u8) -> u8 {
+    pub fn n_cols(row: u8) -> u8 {
         let is_thumb = row == (NROWS as u8 - 1);
         if is_thumb { NCOLS_THUMB as u8 } else { NCOLS as u8 }
     }
