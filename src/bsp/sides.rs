@@ -21,7 +21,7 @@ impl BoardSide {
         }
     }
 
-    fn coordinates_valid(&self, row: u8, col: u8) -> bool {
+    const fn coordinates_valid(&self, row: u8, col: u8) -> bool {
         let (row, col) = ((row as usize), (col as usize));
         let row_valid = row < NROWS;
         let is_thumb = row == NROWS - 1;
@@ -34,7 +34,7 @@ impl BoardSide {
     }
 
     /// Keyboard matrix coordinates have to be transformed to global representation
-    pub fn transform_coordinates(&self, (row, col): (u8, u8)) -> (u8, u8) {
+    pub const fn transform_coordinates(&self, (row, col): (u8, u8)) -> (u8, u8) {
         let (row, col) = match self {
             Self::Left => (row, col),
             Self::Right => (row, 2 * NCOLS as u8 - 1 - col),
@@ -49,7 +49,7 @@ impl BoardSide {
     /// Returns key coordinates (X, Y) relative to the position of key in row=3 col=0
     /// (which has coordinates x=0, y=0). For the right half most keys will have negative
     /// X coordinate.
-    pub fn key_position(&self, (row, col): (u8, u8)) -> (f32, f32) {
+    pub const fn key_position(&self, (row, col): (u8, u8)) -> (f32, f32) {
         match self {
             Self::Left => match (row, col) {
                 (0, 0) => (  0.00,  57.15),
@@ -116,7 +116,7 @@ impl BoardSide {
         }
     }
 
-    pub fn n_cols(row: u8) -> u8 {
+    pub const fn n_cols(row: u8) -> u8 {
         let is_thumb = row == (NROWS as u8 - 1);
         if is_thumb { NCOLS_THUMB as u8 } else { NCOLS as u8 }
     }
@@ -124,7 +124,7 @@ impl BoardSide {
     /// Get RGB LED position (number in the chain) for a given key
     ///
     /// Row and column must be valid, side-local key coordinates.
-    pub fn led_number(&self, (row, col): (u8, u8)) -> u8 {
+    pub const fn led_number(&self, (row, col): (u8, u8)) -> u8 {
         // Both sides are routed in the same way
         // LED numbers in odd rows increase with column, and decrease in even rows
         let rows_before = row * NCOLS as u8;
@@ -137,7 +137,7 @@ impl BoardSide {
     }
 
     /// Get side-local key coordinates for given RGB LED
-    pub fn led_coords(&self, led: u8) -> (u8, u8) {
+    pub const fn led_coords(&self, led: u8) -> (u8, u8) {
         let row = led / (NCOLS as u8);
         let led_rem = led % (NCOLS as u8);
         let col = if row % 2 == 0 {
