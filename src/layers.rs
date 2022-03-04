@@ -1,10 +1,16 @@
 //! Layout and functions of keys on the keyboard
 
 use keyberon::{
-    action::{k, l, m, d, Action, Action::*, HoldTapConfig},
+    action::{self, k, Action::*, HoldTapConfig},
     key_code::KeyCode::*,
-    layout::{Layers, Layout, layout},
+    layout::{self, layout},
 };
+
+use crate::keyboard::Action as CustomAction;
+
+pub type Layout = layout::Layout<CustomAction>;
+pub type Layers = layout::Layers<CustomAction>;
+type Action = action::Action<CustomAction>;
 
 /// Get keyboard layout
 pub fn layout() -> Layout {

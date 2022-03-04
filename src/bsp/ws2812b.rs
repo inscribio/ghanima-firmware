@@ -134,6 +134,12 @@ impl<const N: usize> Leds<N> {
         GAMMA[pixel as usize]
     }
 
+    pub fn set_gamma_corrected(&mut self, index: usize, rgb: &RGB8) {
+        self.leds[index].r = Self::gamma_correction(rgb.r);
+        self.leds[index].g = Self::gamma_correction(rgb.g);
+        self.leds[index].b = Self::gamma_correction(rgb.b);
+    }
+
     /// Set colors to a pattern suitable for testing LEDs
     pub fn set_test_pattern(&mut self, t: usize, brightness: u8) {
         let reflect = |v: usize| {

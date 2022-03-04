@@ -4,8 +4,12 @@
 //! Contains firmware extensions such as communication between keyboard halves
 //! and handling of custom events.
 
+/// Special keyboard actions
+mod actions;
 /// Keyboard matrix scanner with debouncing
 mod keys;
+/// Keyboard lightning control and configuration
+mod leds;
 /// Role negotiation between keyboard halves
 mod role;
 
@@ -19,6 +23,7 @@ use crate::ioqueue;
 use crate::hal_ext::crc::Crc;
 use role::Role;
 
+pub use actions::Action;
 pub use keys::Keys;
 
 /// Transmitter of packets for communication between keyboard halves
@@ -27,10 +32,10 @@ pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<Message, TX, N>;
 pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<Message, RX, N, B>;
 
 /// Split keyboard
-pub struct Keyboard<ACT: 'static = Infallible> {
+pub struct Keyboard {
     keys: keys::Keys,
     fsm: role::Fsm,
-    layout: layout::Layout<ACT>,
+    layout: layout::Layout<Action>,
 }
 
 /// Messages used in communication between keyboard halves
@@ -55,10 +60,10 @@ enum EventDef {
     Release(u8, u8),
 }
 
-impl<ACT: 'static> Keyboard<ACT> {
+impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<ACT>, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
             keys,
@@ -128,12 +133,20 @@ impl<ACT: 'static> Keyboard<ACT> {
         let custom = self.layout.tick();
         match custom {
             layout::CustomEvent::NoEvent => {},
-            _ => todo!("Handle custom events"),
+            layout::CustomEvent::Press(act) => self.handle_action(act, true),
+            layout::CustomEvent::Release(act) => self.handle_action(act, false),
         }
 
         // Generate USB report
         // TODO: auto-enable NumLock by checking leds state
         self.layout.keycodes().collect()
+    }
+
+    fn handle_action(&mut self, action: &Action, press: bool) {
+        match action {
+            Action::Led(led) => todo!(),
+            Action::Mouse(mouse) => todo!(),
+        }
     }
 }
 
@@ -186,5 +199,4 @@ mod tests {
             &[0x00, 0x02, 0x80, 0x71, 0x00]
         );
     }
-
 }

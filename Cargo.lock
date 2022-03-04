@@ -313,6 +313,7 @@ dependencies = [
  "crc",
  "defmt",
  "defmt-rtt",
+ "either",
  "embedded-dma",
  "embedded-hal",
  "generic-array",
