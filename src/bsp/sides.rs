@@ -45,6 +45,7 @@ impl BoardSide {
 
     /// Get relative key position for this side
     ///
+    /// Row and column must be valid, side-local key coordinates.
     /// Returns key coordinates (X, Y) relative to the position of key in row=3 col=0
     /// (which has coordinates x=0, y=0). For the right half most keys will have negative
     /// X coordinate.
@@ -114,6 +115,39 @@ impl BoardSide {
             },
         }
     }
+
+    fn n_cols(row: u8) -> u8 {
+        let is_thumb = row == (NROWS as u8 - 1);
+        if is_thumb { NCOLS_THUMB as u8 } else { NCOLS as u8 }
+    }
+
+    /// Get RGB LED position (number in the chain) for a given key
+    ///
+    /// Row and column must be valid, side-local key coordinates.
+    pub fn led_number(&self, (row, col): (u8, u8)) -> u8 {
+        // Both sides are routed in the same way
+        // LED numbers in odd rows increase with column, and decrease in even rows
+        let rows_before = row * NCOLS as u8;
+        let this_row = if row % 2 == 0 {
+            (Self::n_cols(row) - 1) - col
+        } else {
+            col
+        };
+        rows_before + this_row
+    }
+
+    /// Get side-local key coordinates for given RGB LED
+    pub fn led_coords(&self, led: u8) -> (u8, u8) {
+        let row = led / (NCOLS as u8);
+        let led_rem = led % (NCOLS as u8);
+        let col = if row % 2 == 0 {
+            (Self::n_cols(row) - 1) - led_rem
+        } else {
+            led_rem
+        };
+        (row, col)
+    }
+
 }
 
 #[cfg(test)]
@@ -179,5 +213,27 @@ mod tests {
         valid_coordinates(&side, 4..=4, 12..=12, false);
         // out of range
         valid_coordinates(&side, 5..=6, 0..=12, false);
+    }
+
+    #[test]
+    fn led_number_coords_conversion() {
+        for side in [BoardSide::Left, BoardSide::Right] {
+            let verify = |coords: (u8, u8), led: u8| {
+                assert_eq!(side.led_number(coords), led, "Wrong conversion from coordinates to led number");
+                assert_eq!(side.led_coords(led), coords, "Wrong conversion from led number to coordinates");
+            };
+            verify((0, 5), 0);
+            verify((0, 2), 3);
+            verify((0, 0), 5);
+            verify((1, 0), 6);
+            verify((1, 1), 7);
+            verify((1, 5), 11);
+            verify((2, 4), 13);
+            verify((2, 0), 17);
+            verify((3, 1), 19);
+            verify((4, 3), 24);
+            verify((4, 2), 25);
+            verify((4, 0), 27);
+        }
     }
 }
