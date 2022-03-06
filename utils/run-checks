@@ -1,7 +1,31 @@
 #!/usr/bin/env bash
 
+usage() {
+	cat <<EOF
+Usage:
+  $(basename "$0") [<cargo_test_args>...]
+  $(basename "$0") watch [<cargo_test_args>...]
+
+Run 'cargo check' followed by 'cargo test'. All following arguments are passed
+to 'cargo test' command. This means that '--' is needed to pass arguments to
+the test runner instead of cargo itself.
+
+Second form works as the first one but starts 'cargo watch' that will execute
+tests on each file change.
+EOF
+}
+
 # Avoid linking errors for tests on host
 export DEFMT_LOG=off
 
-cargo check && \
-	cargo test --target x86_64-unknown-linux-gnu "$@"
+case "$1" in
+	-h|--help) usage; ;;
+	watch)
+		shift
+		cargo watch -x "test --target x86_64-unknown-linux-gnu $*"
+		;;
+	*)
+		cargo check && \
+			cargo test --target x86_64-unknown-linux-gnu "$@"
+		;;
+esac
