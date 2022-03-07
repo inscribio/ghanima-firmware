@@ -15,20 +15,13 @@ pub struct KeyboardState {
 }
 
 bitfield! {
+    #[derive(Clone, Copy, PartialEq)]
     pub struct KeyboardLedsState(u8);
     pub num_lock, set_num_lock: 0;
     pub caps_lock, set_caps_lock: 1;
     pub scroll_lock, set_scroll_lock: 2;
     pub compose, set_compose: 3;
     pub kana, set_kana: 4;
-}
-
-impl keyberon::keyboard::Leds for KeyboardLedsState {
-    fn num_lock(&mut self, status: bool) { self.set_num_lock(status); }
-    fn caps_lock(&mut self, status: bool) { self.set_caps_lock(status); }
-    fn scroll_lock(&mut self, status: bool) { self.set_scroll_lock(status); }
-    fn compose(&mut self, status: bool) { self.set_compose(status); }
-    fn kana(&mut self, status: bool) { self.set_kana(status); }
 }
 
 impl Condition {
@@ -84,6 +77,20 @@ impl Keys {
             }
         }
     }
+}
+
+impl KeyboardLedsState {
+    pub fn new() -> Self {
+        Self(0)
+    }
+}
+
+impl keyberon::keyboard::Leds for KeyboardLedsState {
+    fn num_lock(&mut self, status: bool) { self.set_num_lock(status); }
+    fn caps_lock(&mut self, status: bool) { self.set_caps_lock(status); }
+    fn scroll_lock(&mut self, status: bool) { self.set_scroll_lock(status); }
+    fn compose(&mut self, status: bool) { self.set_compose(status); }
+    fn kana(&mut self, status: bool) { self.set_kana(status); }
 }
 
 #[cfg(test)]

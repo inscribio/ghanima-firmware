@@ -9,7 +9,7 @@ mod actions;
 /// Keyboard matrix scanner with debouncing
 mod keys;
 /// Keyboard lightning control and configuration
-mod leds;
+pub mod leds;
 /// Role negotiation between keyboard halves
 mod role;
 
@@ -18,6 +18,7 @@ use core::convert::Infallible;
 use serde::{Serialize, Deserialize};
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
+use usb_device::device::UsbDeviceState;
 
 use crate::ioqueue;
 use crate::hal_ext::crc::Crc;
@@ -25,6 +26,7 @@ use role::Role;
 
 pub use actions::Action;
 pub use keys::Keys;
+pub use leds::Leds;
 
 /// Transmitter of packets for communication between keyboard halves
 pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<Message, TX, N>;
@@ -35,6 +37,7 @@ pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<Messag
 pub struct Keyboard {
     keys: keys::Keys,
     fsm: role::Fsm,
+    leds: leds::PatternController<'static>,
     layout: layout::Layout<Action>,
 }
 
@@ -63,12 +66,13 @@ enum EventDef {
 impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, led_config: leds::LedConfigurations, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
             keys,
             fsm: role::Fsm::with(side, timeout_ticks),
-            layout
+            layout,
+            leds: leds::PatternController::new(side, &led_config[0]),
         }
     }
 
@@ -142,9 +146,25 @@ impl Keyboard {
         self.layout.keycodes().collect()
     }
 
+    /// Get up-to-date [`Leds`] that is ready to be serialized
+    pub fn update_leds(&mut self, time: f32, usb_state: UsbDeviceState, leds: leds::KeyboardLedsState) -> &Leds {
+        self.leds.tick(time, &leds::KeyboardState {
+            leds: leds,
+            usb_on: usb_state == UsbDeviceState::Configured,
+            role: self.fsm.role(),
+            layer: 0, // TODO: get current layer number
+        })
+    }
+
     fn handle_action(&mut self, action: &Action, press: bool) {
+        use actions::{LedAction, Inc};
         match action {
-            Action::Led(led) => todo!(),
+            Action::Led(led) => match led {
+                LedAction::Cycle(inc) => {
+                    todo!()
+                },
+                LedAction::Brightness(_) => todo!(),
+            },
             Action::Mouse(mouse) => todo!(),
         }
     }

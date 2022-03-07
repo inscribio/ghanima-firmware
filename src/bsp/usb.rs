@@ -49,6 +49,10 @@ where
         Self { dev, serial, keyboard, dfu }
     }
 
+    pub fn keyboard_leds(&mut self) -> &L {
+        self.keyboard.device_mut().leds_mut()
+    }
+
     /// Periodic USB poll
     pub fn poll(&mut self) -> bool {
         self.dev.poll(&mut [&mut self.keyboard, &mut self.serial, &mut self.dfu])

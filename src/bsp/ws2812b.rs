@@ -109,7 +109,7 @@ impl<const N: usize> Leds<N> {
     /// # Panics
     ///
     /// If the buffer is not large enough - it must be at least [`Self::BUFFER_SIZE`] bytes.
-    pub fn serialize_to_slice(&mut self, buf: &mut [u8]) -> usize {
+    pub fn serialize_to_slice(&self, buf: &mut [u8]) -> usize {
         let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.leds.len()))/8];
         Self::serialize_colors(&self.leds, data);
         Self::BUFFER_SIZE

@@ -1,14 +1,14 @@
 use rgb::RGB8;
 
-use crate::bsp::NLEDS;
-use crate::bsp::ws2812b::Leds;
-use crate::bsp::sides::BoardSide;
+use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
 use super::{LedConfig, Pattern, Repeat, Phase, Transition, Interpolation};
 use super::condition::KeyboardState;
 
+pub type Leds = ws2812b::Leds<NLEDS>;
+
 /// Generates LED colors according to current [`LedConfig`]
 pub struct PatternController<'a> {
-    leds: Leds<NLEDS>,
+    leds: Leds,
     config: &'a LedConfig,
     patterns: [PatternExecutor<'a>; NLEDS],
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
@@ -31,7 +31,17 @@ struct PatternIter<'a> {
 }
 
 impl<'a> PatternController<'a> {
-    fn tick(&mut self, time: f32, state: &KeyboardState) {
+    pub fn new(side: BoardSide, config: &'a LedConfig) -> Self {
+        Self {
+            leds: Leds::new(),
+            config,
+            side,
+            patterns: Default::default(),
+            pattern_candidates: Default::default(),
+        }
+    }
+
+    pub fn tick(&mut self, time: f32, state: &KeyboardState) -> &Leds {
         // Reset led pattern candidates
         self.pattern_candidates.fill(None);
 
@@ -57,6 +67,8 @@ impl<'a> PatternController<'a> {
             let color = self.patterns[led].tick(time);
             self.leds.set_gamma_corrected(led, &color);
         }
+
+        &self.leds
     }
 }
 

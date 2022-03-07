@@ -5,8 +5,10 @@ use keyberon::{
     key_code::KeyCode::*,
     layout::{self, layout},
 };
+use rgb::RGB8;
 
 use crate::keyboard::Action as CustomAction;
+use crate::keyboard::leds::*;
 
 pub type Layout = layout::Layout<CustomAction>;
 pub type Layers = layout::Layers<CustomAction>;
@@ -15,6 +17,11 @@ type Action = action::Action<CustomAction>;
 /// Get keyboard layout
 pub fn layout() -> Layout {
     Layout::new(LAYERS)
+}
+
+/// Get keyboard layout
+pub fn led_configs() -> LedConfigurations {
+    LEDS
 }
 
 macro_rules! ht {
@@ -46,3 +53,118 @@ static LAYERS: Layers = layout! {
         [ A B C D 1 n n 2 I J K L ]
     }
 };
+
+static LEDS: LedConfigurations = &[
+    LedConfig {
+        default: &[
+            LedRule {
+                keys: Keys::All,
+                condition: Condition::Always,
+                pattern: Pattern {
+                    repeat: Repeat::Reflect,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(255, 0, 0),
+                            duration: 1.0,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 255, 0),
+                            duration: 1.0,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 0, 255),
+                            duration: 1.0,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::Rows(&[1, 3]),
+                condition: Condition::Always,
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(0, 0, 0),
+                            duration: 0.5,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(150, 150, 150),
+                            duration: 0.5,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::Cols(&[1, 4]),
+                condition: Condition::Always,
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(0, 0, 0),
+                            duration: 3.0,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 200, 200),
+                            duration: 3.0,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::Keys(&[(4, 3)]),
+                condition: Condition::Always,
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(255, 0, 0),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(255, 255, 0),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 255, 0),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 255, 255),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 0, 255),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(255, 0, 255),
+                            duration: 0.2,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+        ],
+        layers: &[
+            &[],
+        ],
+    },
+];

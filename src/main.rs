@@ -27,20 +27,20 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb: Usb<()>,
+        usb: Usb<keyboard::leds::KeyboardLedsState>,
         dbg: debug::DebugPins,
         joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
+        // TODO: split Keyboard from PatternController not to lock both
+        keyboard: keyboard::Keyboard,
     }
 
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
-        ws2812: Leds,
-        keyboard: keyboard::Keyboard,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -135,10 +135,6 @@ mod app {
         // HAL provides only a blocking interface, so we must configure everything on our own
         let rgb_tx = ifree(|cs| gpiob.pb15.into_alternate_af0(cs));  // SPI2_MOSI
         let mut spi_tx = spi::SpiTx::new(dev.SPI2, rgb_tx, dma.ch5, &mut cx.local.led_buf[..], 3.mhz(), &mut rcc);
-        let mut ws2812 = ws2812b::Leds::new();
-        // Send a first transfer with all leds disabled ASAP
-        spi_tx.push(|buf| ws2812.serialize_to_slice(buf)).unwrap();
-        spi_tx.start().unwrap();
 
         // configure periodic timer
         let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
@@ -153,16 +149,24 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let usb = Usb::new(usb_bus, &board_side, ());
+        let mut usb = Usb::new(usb_bus, &board_side, keyboard::leds::KeyboardLedsState::new());
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
         let serial_rx = keyboard::Receiver::new(serial_rx);
-        let keyboard = keyboard::Keyboard::new(
+        let mut keyboard = keyboard::Keyboard::new(
             keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
             layers::layout(),
+            layers::led_configs(),
             1000,
         );
+
+        // Send a first transfer with all leds disabled ASAP
+        spi_tx.push(|buf| {
+            let leds = keyboard.update_leds(0.0, UsbDeviceState::Default, *usb.keyboard_leds());
+            leds.serialize_to_slice(buf)
+        }).unwrap();
+        spi_tx.start().unwrap();
 
         dbg.with_tx_high(|| {
             defmt::info!("Liftoff!");
@@ -180,12 +184,11 @@ mod app {
             serial_tx,
             serial_rx,
             crc,
+            keyboard,
         };
 
         let local = Local {
             timer,
-            ws2812,
-            keyboard,
         };
 
         let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
@@ -193,47 +196,42 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(shared = [spi_tx, joy, dbg], local = [ws2812])]
+    #[task(shared = [keyboard, usb, spi_tx, joy, dbg])]
     fn update_leds(cx: update_leds::Context, t: usize) {
         let update_leds::SharedResources {
             spi_tx,
             mut joy,
             mut dbg,
+            mut keyboard,
+            mut usb,
         } = cx.shared;
-        let ws2812 = cx.local.ws2812;
+
+        let t = t as f32 / 1000.0;
 
         // Read joystick
         let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
             joy.lock(|j| j.read_polar())
         }));
 
-        // Calculate brightness
-        let brightness = dbg.lock(|dbg| dbg.with_rx_high(|| {
-            if r > 300.0 {
-                ((angle / 4.0).min(1.0).max(0.0) * 255 as f32) as u8
-            } else {
-                0
-            }
-        }));
+        let (usb_state, kb_leds) = usb.lock(|usb| (usb.dev.state(), *usb.keyboard_leds()));
+        keyboard.lock(|keyboard| {
+            let leds = dbg.lock(|dbg| dbg.with_tx_high(|| {
+                keyboard.update_leds(t, usb_state, kb_leds)
+            }));
 
-        // Update LED colors given time and desired brightness
-        dbg.lock(|dbg| dbg.with_tx_high(|| {
-            ws2812.set_test_pattern(t, brightness);
-        }));
+            // Prepare data to send and start DMA transfer
+            (spi_tx, dbg).lock(|spi_tx, dbg| {
+                dbg.with_rx_high(|| {
+                    // TODO: try to use .serialize()
+                    spi_tx.push(|buf| leds.serialize_to_slice(buf))
+                        .expect("Trying to serialize new data but DMA transfer is not finished");
+                });
 
-
-        // Prepare data to send and start DMA transfer
-        (spi_tx, dbg).lock(|spi_tx, dbg| {
-            dbg.with_rx_high(|| {
-                // TODO: try to use .serialize()
-                spi_tx.push(|buf| ws2812.serialize_to_slice(buf))
-                    .expect("Trying to serialize new data but DMA transfer is not finished");
+                 spi_tx.start()
+                     .expect("If we were able to serialize we must be able to start!");
+                 dbg.set_tx(true);
             });
-
-             spi_tx.start()
-                 .expect("If we were able to serialize we must be able to start!");
-             dbg.set_tx(true);
-        });
+        })
     }
 
     #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
@@ -282,21 +280,22 @@ mod app {
         });
     }
 
-    #[task(shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    #[task(shared = [serial_tx, serial_rx, crc, usb, keyboard]/* , local = [keyboard] */)]
     fn keyboard_tick(cx: keyboard_tick::Context) {
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
             crc,
             mut usb,
+            mut keyboard,
         } = cx.shared;
-        let keyboard = cx.local.keyboard;
+        // let keyboard = cx.local.keyboard;
 
         // Check current USB state for role negotiation
         let usb_on = usb.lock(|usb| usb.dev.state() == UsbDeviceState::Configured);
 
         // Run keyboard logic and get the USB report
-        let report = (&mut tx, rx).lock(|tx, rx| keyboard.tick(tx, rx, usb_on));
+        let report = (&mut tx, rx, keyboard).lock(|tx, rx, keyboard| keyboard.tick(tx, rx, usb_on));
 
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
@@ -329,10 +328,12 @@ mod app {
             *t += 1;
 
             if *t % 10 == 0 {
-                update_leds::spawn(*t / 10).unwrap();
+                // ignore error if we're too slow
+                update_leds::spawn(*t).ok();
             }
 
-            keyboard_tick::spawn().unwrap();
+            // FIXME: need to split Keyboard from Leds, because now this task sometimes fails to spawn
+            keyboard_tick::spawn().ok();
 
             if *t % 1000 == 0 {
                 debug_report::spawn().unwrap();

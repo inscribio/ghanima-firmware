@@ -47,8 +47,8 @@ mod condition;
 /// Pattern iteration and color generation logic
 mod pattern;
 
-pub use pattern::PatternController;
-pub use condition::KeyboardState;
+pub use pattern::{PatternController, Leds};
+pub use condition::{KeyboardState, KeyboardLedsState};
 
 use rgb::RGB8;
 use super::role::Role;
@@ -61,8 +61,8 @@ pub type LedConfigurations = &'static [LedConfig];
 /// Configuration of keyboard LED lightning
 #[derive(Debug)]
 pub struct LedConfig {
-    default: LayerRules,
-    layers: &'static [LayerRules],
+    pub default: LayerRules,
+    pub layers: &'static [LayerRules],
 }
 
 /// List of LED pattern rules for a single layer
@@ -72,11 +72,11 @@ pub type LayerRules = &'static [LedRule];
 #[derive(Debug)]
 pub struct LedRule {
     /// Keys to which the rule applies
-    keys: Keys,
+    pub keys: Keys,
     /// Condition required for the rule to be active
-    condition: Condition,
+    pub condition: Condition,
     /// Color pattern used for a LED when the rule applies
-    pattern: Pattern,
+    pub pattern: Pattern,
 }
 
 /// Defines which keys to match (rows/cols must be valid)
@@ -124,18 +124,18 @@ pub enum KeyboardLed {
 /// Defines lightning pattern
 #[derive(Debug)]
 pub struct Pattern {
-    repeat: Repeat,
+    pub repeat: Repeat,
     // Note: first transition should usually have duration 0
-    transitions: &'static [Transition],
-    phase: Phase,
+    pub transitions: &'static [Transition],
+    pub phase: Phase,
 }
 
 /// Pattern phase shift depending on key position
 // TODO: rethink
 #[derive(Debug, PartialEq)]
 pub struct Phase {
-    x: f32,
-    y: f32,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// Defines how the pattern should be repeated
@@ -152,9 +152,9 @@ pub enum Repeat {
 /// Single color transition in a pattern
 #[derive(Debug, PartialEq)]
 pub struct Transition {
-    color: RGB8,
-    duration: f32,
-    interpolation: Interpolation,
+    pub color: RGB8,
+    pub duration: f32,
+    pub interpolation: Interpolation,
 }
 
 /// Color interpolation behavior
