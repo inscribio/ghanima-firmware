@@ -54,7 +54,9 @@ impl<'a> PatternController<'a> {
             for rule in rules {
                 rule.keys.for_each(|row, col| {
                     if rule.condition.applies(state) {
-                        let led_num = self.side.led_number((row, col));
+                        // Keys iterator iterates only over non-joystick coordinates
+                        let led_num = self.side.led_number((row, col))
+                            .unwrap();
                         self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
                     }
                 });

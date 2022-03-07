@@ -116,6 +116,7 @@ impl BoardSide {
         }
     }
 
+    /// Get number of "column-slots" in given row (see [`NCOLS_THUMB`])
     pub const fn n_cols(row: u8) -> u8 {
         let is_thumb = row == (NROWS as u8 - 1);
         if is_thumb { NCOLS_THUMB as u8 } else { NCOLS as u8 }
@@ -124,16 +125,21 @@ impl BoardSide {
     /// Get RGB LED position (number in the chain) for a given key
     ///
     /// Row and column must be valid, side-local key coordinates.
-    pub const fn led_number(&self, (row, col): (u8, u8)) -> u8 {
-        // Both sides are routed in the same way
-        // LED numbers in odd rows increase with column, and decrease in even rows
-        let rows_before = row * NCOLS as u8;
-        let this_row = if row % 2 == 0 {
-            (Self::n_cols(row) - 1) - col
+    pub const fn led_number(&self, (row, col): (u8, u8)) -> Option<u8> {
+        // Special case for joystick which has no LED
+        if row == 4 && col == 4 {
+            return None
         } else {
-            col
-        };
-        rows_before + this_row
+            // Both sides are routed in the same way
+            // LED numbers in odd rows increase with column, and decrease in even rows
+            let rows_before = row * NCOLS as u8;
+            let this_row = if row % 2 == 0 {
+                (Self::n_cols(row) - 1) - col
+            } else {
+                col
+            };
+            Some(rows_before + this_row)
+        }
     }
 
     /// Get side-local key coordinates for given RGB LED
@@ -219,7 +225,7 @@ mod tests {
     fn led_number_coords_conversion() {
         for side in [BoardSide::Left, BoardSide::Right] {
             let verify = |coords: (u8, u8), led: u8| {
-                assert_eq!(side.led_number(coords), led, "Wrong conversion from coordinates to led number");
+                assert_eq!(side.led_number(coords), Some(led), "Wrong conversion from coordinates to led number");
                 assert_eq!(side.led_coords(led), coords, "Wrong conversion from led number to coordinates");
             };
             verify((0, 5), 0);
@@ -234,6 +240,8 @@ mod tests {
             verify((4, 3), 24);
             verify((4, 2), 25);
             verify((4, 0), 27);
+            // Special case: joystick key shares LED with key (4, 0)
+            assert_eq!(side.led_number((4, 4)), None);
         }
     }
 }

@@ -45,6 +45,7 @@ impl Condition {
 }
 
 impl Keys {
+    /// Internal iterator over key coordinates
     pub fn for_each<F: FnMut(u8, u8)>(&self, mut f: F) {
         // FIXME: any better implementation?
         match self {

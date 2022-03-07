@@ -18,7 +18,11 @@ use crate::hal::gpio;
 
 /// Number of columns keyboard half
 pub const NCOLS: usize = 6;
-/// Number of columns in the thumb cluster
+/// Number of "column-slots" in the thumb cluster
+///
+/// Note that joystick uses a separate column, but shares the "column-slot".
+/// This count is the physical number of places where keys can exist, as
+/// joystick replaces key (4, 0).
 pub const NCOLS_THUMB: usize = 4;
 /// Number of key rows
 pub const NROWS: usize = 5;

@@ -80,6 +80,9 @@ pub struct LedRule {
 }
 
 /// Defines which keys to match (rows/cols must be valid)
+///
+/// Note that joystick is not considered as a key, because it has no LED
+/// associated.
 #[derive(Debug)]
 pub enum Keys {
     /// All keys on this layer
