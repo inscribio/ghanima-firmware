@@ -118,44 +118,45 @@ impl<'a> PatternExecutor<'a> {
         }
     }
 
+    /// Interpolate between two colors: c1 happens at t1, c2 at t1+duration
+    fn interpolate(time_delta: u16, duration: u16, c1: RGB8, c2: RGB8) -> RGB8 {
+        // Must hold any u16 so +1 bit for sign
+        type Fix = fixed::types::I17F15;
+
+        // Calculate transition-local time in relation to transition duration
+        let ratio = Fix::from_num(time_delta) / Fix::from_num(duration);
+
+        let channel = |a: u8, b: u8| {
+            let (a, b) = (Fix::from_num(a), Fix::from_num(b));
+            let c = a + (b - a) * ratio;
+            c.round().to_num::<u8>()
+        };
+
+        RGB8::new(
+            channel(c1.r, c2.r),
+            channel(c1.g, c2.g),
+            channel(c1.b, c2.b),
+        )
+    }
+
     /// Calculate color at current time
     fn get_color(start_time: u32, curr_time: u32, pattern: &PatternIter<'a>) -> Option<RGB8> {
         let transition = pattern.curr()?;
 
-        // Calculate transition-local time in relation to transition duration
         debug_assert!(curr_time >= start_time && curr_time < start_time + transition.duration as u32);
-        let t = if pattern.is_rev() {
-            (start_time + transition.duration as u32) - curr_time
-        } else {
-            curr_time - start_time
-        } as u16;
-
         let curr = transition.color;
+
         let color = match transition.interpolation {
             Interpolation::Piecewise => curr,
             Interpolation::Linear => {
                 let prev = pattern.prev().map(|t| t.color)
                     .unwrap_or(RGB8::new(0, 0, 0));
-                let (prev, curr) = if pattern.is_rev() {
-                    (curr, prev)
+                let (prev, curr, time) = if pattern.is_rev() {
+                    (curr, prev, (start_time + transition.duration as u32) - curr_time)
                 } else {
-                    (prev, curr)
+                    (prev, curr, curr_time - start_time)
                 };
-
-                // Must hold any u16 so +1 bit for sign
-                type Fix = fixed::types::I17F15;
-                let ratio = Fix::from_num(t) / Fix::from_num(transition.duration);
-
-                let interpolate = |a: u8, b: u8| {
-                    let (a, b) = (Fix::from_num(a), Fix::from_num(b));
-                    let c = a + (b - a) * ratio;
-                    c.round().to_num::<u8>()
-                };
-                RGB8::new(
-                    interpolate(prev.r, curr.r),
-                    interpolate(prev.g, curr.g),
-                    interpolate(prev.b, curr.b),
-                )
+                Self::interpolate(time as u16, transition.duration, prev, curr)
             },
         };
 
