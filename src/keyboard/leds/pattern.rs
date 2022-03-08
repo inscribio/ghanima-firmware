@@ -1,7 +1,7 @@
 use rgb::RGB8;
 
 use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
-use super::{LedConfig, Pattern, Repeat, Phase, Transition, Interpolation};
+use super::{LedConfig, Pattern, Repeat, Transition, Interpolation};
 use super::condition::KeyboardState;
 
 pub type Leds = ws2812b::Leds<NLEDS>;
@@ -260,6 +260,8 @@ impl<'a> PatternIter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::keyboard::leds::Phase;
+
     use super::*;
 
     // Verify tuples (prev_index, curr_index, is_rev), .advance() in between.

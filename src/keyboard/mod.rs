@@ -13,12 +13,9 @@ pub mod leds;
 /// Role negotiation between keyboard halves
 mod role;
 
-use core::convert::Infallible;
-
 use serde::{Serialize, Deserialize};
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
-use usb_device::device::UsbDeviceState;
 
 use crate::bsp::sides::BoardSide;
 use crate::ioqueue;
@@ -157,16 +154,16 @@ impl Keyboard {
         self.layout.keycodes().collect()
     }
 
-    fn handle_action(&mut self, action: &Action, press: bool) {
-        use actions::{LedAction, Inc};
+    fn handle_action(&mut self, action: &Action, _press: bool) {
+        use actions::{LedAction};
         match action {
             Action::Led(led) => match led {
-                LedAction::Cycle(inc) => {
+                LedAction::Cycle(_inc) => {
                     todo!()
                 },
                 LedAction::Brightness(_) => todo!(),
             },
-            Action::Mouse(mouse) => todo!(),
+            Action::Mouse(_mouse) => todo!(),
         }
     }
 }
@@ -186,12 +183,15 @@ impl KeyboardLeds {
     }
 
     pub fn handle_action(&mut self, action: &actions::LedAction, press: bool) {
-        match action {
-            actions::LedAction::Cycle(inc) => {
-                let new = inc.update(&mut self.configs);
-                self.controller.set_config(new);
-            },
-            actions::LedAction::Brightness(_) => todo!(),
+        // On release
+        if !press {
+            match action {
+                actions::LedAction::Cycle(inc) => {
+                    let new = inc.update(&mut self.configs);
+                    self.controller.set_config(new);
+                },
+                actions::LedAction::Brightness(_) => todo!(),
+            }
         }
     }
 }

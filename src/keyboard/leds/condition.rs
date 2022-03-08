@@ -1,6 +1,6 @@
 use bitfield::bitfield;
 
-use crate::bsp::{NLEDS, NCOLS, NCOLS_THUMB, NROWS};
+use crate::bsp::NROWS;
 use crate::bsp::sides::BoardSide;
 use crate::keyboard::role::Role;
 use super::{Keys, Condition, KeyboardLed};

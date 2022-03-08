@@ -7,6 +7,7 @@ pub use hw::Crc;
 #[cfg(test)]
 pub use mock::Crc;
 
+#[cfg_attr(test, allow(dead_code))]
 mod hw {
     use super::*;
 

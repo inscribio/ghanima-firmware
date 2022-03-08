@@ -169,12 +169,7 @@ impl StateMachine<Context> {
 mod tests {
     use super::*;
     use core::fmt::Display;
-    use core::marker::PhantomData;
-    use std::string::{String, ToString};
     use std::collections::VecDeque;
-    use std::cell::RefCell;
-    use std::boxed::Box;
-    use std::rc::Rc;
     use std::vec::Vec;
 
     impl Clone for States {
