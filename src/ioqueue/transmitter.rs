@@ -125,6 +125,9 @@ mod tests {
     use crate::hal_ext::dma::mock::DmaTxMock;
     use crate::hal_ext::checksum_mock::Crc32;
 
+    // Explicit type because using just [] yields "multiple `impl`s of PartialEq" because of the crate `fixed`
+    const EMPTY: [u8; 0] = [];
+
     #[derive(Serialize)]
     struct Message(u16, u8);
 
@@ -139,9 +142,9 @@ mod tests {
         let dma = DmaTxMock::<_, 30>::new(true, |data| sent.set(data));
         let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
         tx.push(Message(0xaabb, 0xcc));
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
 
         // Before COBS = id(00 00) 0(bb aa) 1(cc) crc32(23 09 66 61)
         let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
@@ -149,7 +152,7 @@ mod tests {
         tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
         tx.tick(&mut crc);
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
     }
 
     #[test]
@@ -161,7 +164,7 @@ mod tests {
 
         for _ in 0..3 {
             tx.push(Message(0xaabb, 0xcc));
-            assert_eq!(sent.take(), []);
+            assert_eq!(sent.take(), EMPTY);
         }
         let cobs = [
             1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0,     // id(00 00)
@@ -172,7 +175,7 @@ mod tests {
         tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
         tx.tick(&mut crc);
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
     }
 
     #[test]
@@ -184,7 +187,7 @@ mod tests {
 
         for _ in 0..3 {
             tx.push(Message(0xaabb, 0xcc));
-            assert_eq!(sent.take(), []);
+            assert_eq!(sent.take(), EMPTY);
         }
         let cobs = [
             1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0,     // id(00 00)
@@ -200,7 +203,7 @@ mod tests {
         assert_eq!(sent.take(), cobs[22..]);
         // no more data to send
         tx.tick(&mut crc);
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
     }
 
     #[test]
@@ -214,11 +217,11 @@ mod tests {
         let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
 
         tx.tick(&mut crc);
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
         tx.on_interrupt();
         tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
         tx.tick(&mut crc);
-        assert_eq!(sent.take(), []);
+        assert_eq!(sent.take(), EMPTY);
     }
 }

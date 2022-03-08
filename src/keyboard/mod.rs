@@ -147,7 +147,7 @@ impl Keyboard {
     }
 
     /// Get up-to-date [`Leds`] that is ready to be serialized
-    pub fn update_leds(&mut self, time: f32, usb_state: UsbDeviceState, leds: leds::KeyboardLedsState) -> &Leds {
+    pub fn update_leds(&mut self, time: u32, usb_state: UsbDeviceState, leds: leds::KeyboardLedsState) -> &Leds {
         self.leds.tick(time, &leds::KeyboardState {
             leds: leds,
             usb_on: usb_state == UsbDeviceState::Configured,

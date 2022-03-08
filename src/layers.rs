@@ -65,17 +65,17 @@ static LEDS: LedConfigurations = &[
                     transitions: &[
                         Transition {
                             color: RGB8::new(255, 0, 0),
-                            duration: 1.0,
+                            duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 255, 0),
-                            duration: 1.0,
+                            duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 0, 255),
-                            duration: 1.0,
+                            duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
                     ],
@@ -90,12 +90,12 @@ static LEDS: LedConfigurations = &[
                     transitions: &[
                         Transition {
                             color: RGB8::new(0, 0, 0),
-                            duration: 0.5,
+                            duration: 500,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(150, 150, 150),
-                            duration: 0.5,
+                            duration: 500,
                             interpolation: Interpolation::Linear,
                         },
                     ],
@@ -110,12 +110,12 @@ static LEDS: LedConfigurations = &[
                     transitions: &[
                         Transition {
                             color: RGB8::new(0, 0, 0),
-                            duration: 3.0,
+                            duration: 3000,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 200, 200),
-                            duration: 3.0,
+                            duration: 3000,
                             interpolation: Interpolation::Linear,
                         },
                     ],
@@ -130,32 +130,32 @@ static LEDS: LedConfigurations = &[
                     transitions: &[
                         Transition {
                             color: RGB8::new(255, 0, 0),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(255, 255, 0),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 255, 0),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 255, 255),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(0, 0, 255),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
                             color: RGB8::new(255, 0, 255),
-                            duration: 0.2,
+                            duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                     ],

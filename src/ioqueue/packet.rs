@@ -406,6 +406,7 @@ mod tests {
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
         assert!(matches!(msg.unwrap(), Err(DeserError::ChecksumError)));
-        assert_eq!(buf, []);
+        let empty: [u8; 0] = [];  // multiple `impl`s of PartialEq because of the crate `fixed`
+        assert_eq!(buf, empty);
     }
 }

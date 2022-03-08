@@ -155,8 +155,11 @@ pub enum Repeat {
 /// Single color transition in a pattern
 #[derive(Debug, PartialEq)]
 pub struct Transition {
+    /// "Destination" color
     pub color: RGB8,
-    pub duration: f32,
+    /// Duration in milliseconds (max duration ~65.5 seconds)
+    pub duration: u16,
+    /// Color interpolation type
     pub interpolation: Interpolation,
 }
 

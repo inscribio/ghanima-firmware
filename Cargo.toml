@@ -44,7 +44,7 @@ keyberon = { git = "https://github.com/TeXitoi/keyberon.git", rev = "58ac73cfcd0
 
 static_assertions = "1.1"
 generic-array = "0.14"
-# fixed = "1.11"
+fixed = "1.13"
 bitfield = "0.13"
 heapless = "0.7"
 serde = { version = "1.0", default-features = false, features = ["derive"] }

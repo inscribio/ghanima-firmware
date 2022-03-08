@@ -163,7 +163,7 @@ mod app {
 
         // Send a first transfer with all leds disabled ASAP
         spi_tx.push(|buf| {
-            let leds = keyboard.update_leds(0.0, UsbDeviceState::Default, *usb.keyboard_leds());
+            let leds = keyboard.update_leds(0, UsbDeviceState::Default, *usb.keyboard_leds());
             leds.serialize_to_slice(buf)
         }).unwrap();
         spi_tx.start().unwrap();
@@ -206,8 +206,6 @@ mod app {
             mut usb,
         } = cx.shared;
 
-        let t = t as f32 / 1000.0;
-
         // Read joystick
         let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
             joy.lock(|j| j.read_polar())
@@ -216,12 +214,12 @@ mod app {
         let (usb_state, kb_leds) = usb.lock(|usb| (usb.dev.state(), *usb.keyboard_leds()));
         keyboard.lock(|keyboard| {
             let leds = dbg.lock(|dbg| dbg.with_tx_high(|| {
-                keyboard.update_leds(t, usb_state, kb_leds)
+                keyboard.update_leds(t as u32, usb_state, kb_leds)
             }));
 
             // Prepare data to send and start DMA transfer
             (spi_tx, dbg).lock(|spi_tx, dbg| {
-                dbg.with_rx_high(|| {
+                dbg.with_tx_high(|| {
                     // TODO: try to use .serialize()
                     spi_tx.push(|buf| leds.serialize_to_slice(buf))
                         .expect("Trying to serialize new data but DMA transfer is not finished");
@@ -229,7 +227,7 @@ mod app {
 
                  spi_tx.start()
                      .expect("If we were able to serialize we must be able to start!");
-                 dbg.set_tx(true);
+                 dbg.set_rx(true);
             });
         })
     }
@@ -242,7 +240,7 @@ mod app {
                .transpose()
                .expect("Unexpected interrupt");
         });
-        cx.shared.dbg.lock(|d| d.set_tx(false));
+        cx.shared.dbg.lock(|d| d.set_rx(false));
     }
 
     #[task(binds = DMA1_CH2_3, priority = 3, shared = [crc, serial_tx, serial_rx])]
