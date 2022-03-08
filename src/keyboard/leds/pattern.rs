@@ -85,7 +85,20 @@ impl<'a> PatternExecutor<'a> {
     pub fn update(&mut self, time: f32, pattern: Option<&'a Pattern>) {
         // Keep previous pattern if it is same one as current one (compare pointers only)
         let keep = match (self.pattern.as_ref(), pattern) {
-            (Some(this), Some(other)) => core::ptr::eq(this.pattern(), other),
+            (Some(this), Some(other)) => {
+                // Compare patterns by pointer address to determine if they are different.
+                let are_same = core::ptr::eq(this.pattern(), other);
+                match (are_same, &this.pattern().repeat, &other.repeat) {
+                    // Always keep previous if the new one is the same as the current one.
+                    (true, _, _) => true,
+                    // If both are Once then interrupt the current one and use the new one.
+                    (false, Repeat::Once, Repeat::Once) => false,
+                    // If only current is Once than keep it until it has finished.
+                    (false, Repeat::Once, _) => !this.finished(),
+                    // Otherwise use the new one
+                    (false, _, _) => false,
+                }
+            },
             (None, None) => true,
             _ => false,
         };
@@ -181,6 +194,10 @@ impl<'a> PatternIter<'a> {
 
     pub fn curr(&self) -> Option<&'a Transition> {
         self.pattern.transitions.get(self.index)
+    }
+
+    pub fn finished(&self) -> bool {
+        self.curr().is_none()
     }
 
     pub fn advance(&mut self) {
@@ -334,21 +351,43 @@ mod tests {
         assert!(exec.pattern.is_none());
         assert_eq!(exec.start_time, 0.0);
 
-        exec.update(2.0, Some(&PATTERNS[0]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-        assert_eq!(exec.start_time, 2.0);
-
-        exec.update(3.0, Some(&PATTERNS[0]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-        assert_eq!(exec.start_time, 2.0);
-
-        exec.update(4.0, Some(&PATTERNS[0]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-        assert_eq!(exec.start_time, 2.0);
-
-        exec.update(5.0, Some(&PATTERNS[1]));
+        exec.update(2.0, Some(&PATTERNS[1]));
         assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
+        assert_eq!(exec.start_time, 2.0);
+
+        exec.update(3.0, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
+        assert_eq!(exec.start_time, 2.0);
+
+        exec.update(4.0, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
+        assert_eq!(exec.start_time, 2.0);
+
+        exec.update(5.0, Some(&PATTERNS[2]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[2]));
         assert_eq!(exec.start_time, 5.0);
+    }
+
+    #[test]
+    fn pattern_executor_keep_until_finished() {
+        let mut exec = PatternExecutor::default();
+        assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
+
+        exec.update(0.0, Some(&PATTERNS[0]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
+
+        exec.tick(0.1); exec.update(0.1, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
+
+        exec.tick(1.1); exec.update(1.1, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
+
+        exec.tick(2.1); exec.update(2.1, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
+
+        // Now the new pattern will be set as pattern 0 has finished.
+        exec.tick(3.1); exec.update(3.1, Some(&PATTERNS[1]));
+        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
     }
 
     fn test_pattern_executor_advance(pattern: &Pattern, seq: &[(f32, (f32, Option<usize>))]) {
