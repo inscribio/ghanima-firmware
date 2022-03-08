@@ -112,9 +112,9 @@ impl Keyboard {
                     maybe_tx(tx, self.fsm.on_rx(msg));
                 },
                 Message::Key(event) => {
-                    match &event {
-                        &Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
-                        &Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
+                    match event {
+                        Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
+                        Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
                     }
                     // Only master cares for key presses from the other half
                     if self.fsm.role() == Role::Master {

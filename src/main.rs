@@ -149,7 +149,7 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let usb = Usb::new(usb_bus, &board_side, keyboard::leds::KeyboardLedsState::new());
+        let usb = Usb::new(usb_bus, &board_side, Default::default());
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);

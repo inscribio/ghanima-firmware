@@ -36,7 +36,7 @@ where
         data
     }
 
-    fn get_data<'a>(buf: &'a [u8], wrap_count: u8, head: u16, tail: u16) -> (&'a [u8], &'a [u8], usize) {
+    fn get_data(buf: &[u8], wrap_count: u8, head: u16, tail: u16) -> (&[u8], &[u8], usize) {
         let (h, t) = (head as usize, tail as usize);
         let nil = &[][..];
 

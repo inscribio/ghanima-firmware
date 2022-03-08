@@ -40,7 +40,7 @@ pub trait ChecksumGen {
 
     /// Reinterpret checksum as little-endian byte slice
     #[inline(always)]
-    fn as_le_bytes<'a>(checksum: &'a mut Self::Output) -> &'a [u8] {
+    fn as_le_bytes(checksum: &mut Self::Output) -> &[u8] {
         // Use little-endian byte order (same as postcard would use)
         *checksum = checksum.to_le();
         // NOTE(safety): reinterpreting primitive integer, we know it's byte size

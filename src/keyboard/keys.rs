@@ -18,7 +18,7 @@ impl Keys {
         rows: [RowPin; NROWS],
         debounce_cnt: u16,
     ) -> Self {
-        let initial = || matrix::PressedKeys::default();
+        let initial = matrix::PressedKeys::default;
         Self {
             side,
             matrix: matrix::Matrix::new(cols, rows).infallible(),

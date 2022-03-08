@@ -157,9 +157,9 @@ impl StateMachine<Context> {
 
     /// Get current role of this board
     pub fn role(&self) -> Role {
-        match self.state() {
-            &States::AsMaster => Role::Master,
-            &States::WantsMaster if self.context.is_alone => Role::Master,
+        match *self.state() {
+            States::AsMaster => Role::Master,
+            States::WantsMaster if self.context.is_alone => Role::Master,
             _ => Role::Slave,
         }
     }

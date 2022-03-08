@@ -71,11 +71,11 @@ mod hw {
         }
 
         fn push(&mut self, data: &[u8]) {
-            let mut chunks16 = data.chunks_exact(2);
+            let chunks16 = data.chunks_exact(2);
             let tail = chunks16.remainder();
 
             // Feed most of the buffer as 16-bit values for faster calculation
-            while let Some(chunk) = chunks16.next() {
+            for chunk in chunks16 {
                 let hword = u16::from_be_bytes(chunk.try_into().unwrap());
                 self.crc.dr16().write(|w| w.dr16().bits(hword));
             }

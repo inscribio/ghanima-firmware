@@ -128,7 +128,7 @@ impl BoardSide {
     pub const fn led_number(&self, (row, col): (u8, u8)) -> Option<u8> {
         // Special case for joystick which has no LED
         if row == 4 && col == 4 {
-            return None
+            None
         } else {
             // Both sides are routed in the same way
             // LED numbers in odd rows increase with column, and decrease in even rows

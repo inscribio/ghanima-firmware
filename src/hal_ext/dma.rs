@@ -89,7 +89,7 @@ pub trait DmaTx {
         self.push(|buf| {
             buf[..data.len()].copy_from_slice(data);
             data.len()
-        }).map_err(|e| nb::Error::Other(e))?;
+        }).map_err(nb::Error::Other)?;
         self.start()
     }
 }

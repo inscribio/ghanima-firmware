@@ -155,7 +155,7 @@ impl dma::DmaTx for SpiTx {
         if !self.is_ready() {
             return Err(dma::TransferOngoing);
         }
-        let len = writer(&mut self.buf);
+        let len = writer(self.buf);
         self.configure_dma_transfer(len);
         Ok(())
     }

@@ -48,7 +48,7 @@ impl<'a> PatternController<'a> {
 
         // Scan the rules that we might consider, rules on end of list overwrite previous ones.
         let rule_candidates = [
-            &self.config.default,
+            self.config.default,
             self.config.layers[state.layer as usize],
         ];
         for rules in rule_candidates {
@@ -91,7 +91,7 @@ impl<'a> PatternController<'a> {
 impl<'a> PatternExecutor<'a> {
     /// Set new pattern and reset its start time
     fn reset(&mut self, time: u32, pattern: Option<&'a Pattern>) {
-        self.pattern = pattern.map(|p| PatternIter::new(p));
+        self.pattern = pattern.map(PatternIter::new);
         self.start_time = time;
     }
 
@@ -164,7 +164,7 @@ impl<'a> PatternExecutor<'a> {
             Interpolation::Piecewise => curr,
             Interpolation::Linear => {
                 let prev = pattern.prev().map(|t| t.color)
-                    .unwrap_or(RGB8::new(0, 0, 0));
+                    .unwrap_or_else(|| RGB8::new(0, 0, 0));
                 let (prev, curr, time) = if pattern.is_rev() {
                     (curr, prev, (start_time + transition.duration as u32) - curr_time)
                 } else {
@@ -186,7 +186,7 @@ impl<'a> PatternExecutor<'a> {
                 Self::get_color(self.start_time, time, pattern)
             })
             // Fall back to "no color", a.k.a. RGB black
-            .unwrap_or(RGB8::new(0, 0, 0))
+            .unwrap_or_else(|| RGB8::new(0, 0, 0))
     }
 }
 
@@ -222,7 +222,7 @@ impl<'a> PatternIter<'a> {
     }
 
     pub fn advance(&mut self) {
-        if self.pattern.transitions.len() == 0 {
+        if self.pattern.transitions.is_empty() {
             return
         }
 

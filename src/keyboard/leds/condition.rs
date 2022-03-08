@@ -16,7 +16,7 @@ pub struct KeyboardState {
 }
 
 bitfield! {
-    #[derive(Clone, Copy, PartialEq)]
+    #[derive(Clone, Copy, Default, PartialEq)]
     pub struct KeyboardLedsState(u8);
     impl Debug;
     pub num_lock, set_num_lock: 0;
@@ -79,12 +79,6 @@ impl Keys {
                 }
             }
         }
-    }
-}
-
-impl KeyboardLedsState {
-    pub fn new() -> Self {
-        Self(0)
     }
 }
 

@@ -160,7 +160,7 @@ impl dma::DmaTx for Tx {
         if !self.is_ready() {
             return Err(dma::TransferOngoing);
         }
-        let len = writer(&mut self.buf);
+        let len = writer(self.buf);
         self.configure_dma_transfer(len);
         Ok(())
     }
@@ -265,8 +265,7 @@ where
         let buf_len = unsafe { self.buf.write_buffer().1 as u16 };
         let remaining = self.dma.ch().ndtr.read().ndt().bits();
         // Tail is where DMA is currently writing
-        let tail = buf_len - remaining;
-        tail
+        buf_len - remaining
     }
 
     fn consume(&mut self) -> RxData {
@@ -372,6 +371,11 @@ impl<'a> RxData<'a> {
     /// Total number of bytes in data slices
     pub fn len(&self) -> usize {
         self.data1.len() + self.data2.len()
+    }
+
+    /// Test whether there is no data
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
