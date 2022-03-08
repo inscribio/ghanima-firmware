@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use crate::utils::CircularIter;
+
 /// Additional key actions
 pub enum Action {
     /// Modify LED lightning
@@ -51,4 +53,13 @@ pub enum Inc {
     Up,
     /// Down/Decrease/Previous/Decrement
     Down,
+}
+
+impl Inc {
+    pub fn update<'a, T>(&self, iter: &mut CircularIter<'a, T>) -> &'a T {
+        match self {
+            Inc::Up => iter.next().unwrap(),
+            Inc::Down => iter.next_back().unwrap(),
+        }
+    }
 }
