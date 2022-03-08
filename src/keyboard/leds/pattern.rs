@@ -41,7 +41,8 @@ impl<'a> PatternController<'a> {
         }
     }
 
-    pub fn tick(&mut self, time: u32, state: &KeyboardState) -> &Leds {
+    /// Update currently applicable patterns based on keyboard state
+    pub fn update_patterns(&mut self, time: u32, state: &KeyboardState) {
         // Reset led pattern candidates
         self.pattern_candidates.fill(None);
 
@@ -63,14 +64,27 @@ impl<'a> PatternController<'a> {
             }
         }
 
-        // Update pattern using the final pattern candidates, then calculate current colors.
         for led in 0..NLEDS {
             self.patterns[led].update(time, self.pattern_candidates[led]);
+        }
+    }
+
+    /// Generate colors for current time, returning [`Leds`] ready for serialization
+    pub fn tick(&mut self, time: u32) -> &Leds {
+        for led in 0..NLEDS {
             let color = self.patterns[led].tick(time);
             self.leds.set_gamma_corrected(led, &color);
         }
 
         &self.leds
+    }
+
+    /// Change current configuration
+    ///
+    /// Note that [`PatternController::update_patterns`] must be called to actually
+    /// reset patterns to use the new configuration.
+    pub fn set_config(&mut self, config: &'a LedConfig) {
+        self.config = config;
     }
 }
 

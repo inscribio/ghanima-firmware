@@ -7,7 +7,7 @@ use stm32f0 as _;
 use stm32f0xx_hal as hal;
 use ghanima as lib;
 
-#[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN])]
+#[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN, USART3_4])]
 mod app {
     use cortex_m::interrupt::free as ifree;
     use super::hal;
@@ -34,13 +34,13 @@ mod app {
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
-        // TODO: split Keyboard from PatternController not to lock both
-        keyboard: keyboard::Keyboard,
+        leds: keyboard::KeyboardLeds,
     }
 
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
+        keyboard: keyboard::Keyboard,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -149,27 +149,33 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let mut usb = Usb::new(usb_bus, &board_side, keyboard::leds::KeyboardLedsState::new());
+        let usb = Usb::new(usb_bus, &board_side, keyboard::leds::KeyboardLedsState::new());
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
         let serial_rx = keyboard::Receiver::new(serial_rx);
-        let mut keyboard = keyboard::Keyboard::new(
+        let keyboard = keyboard::Keyboard::new(
             keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
             layers::layout(),
-            layers::led_configs(),
             1000,
         );
 
-        // Send a first transfer with all leds disabled ASAP
+        // Keyboard RGB LEDs controller
+        let mut leds = keyboard::KeyboardLeds::new(board_side, layers::led_configs());
+        // Send a first transfer ASAP with all LEDs in initial state
         spi_tx.push(|buf| {
-            let leds = keyboard.update_leds(0, UsbDeviceState::Default, *usb.keyboard_leds());
-            leds.serialize_to_slice(buf)
+            leds.controller_mut()
+                .tick(0)
+                .serialize_to_slice(buf)
         }).unwrap();
         spi_tx.start().unwrap();
 
         dbg.with_tx_high(|| {
             defmt::info!("Liftoff!");
+            defmt::debug!("Size of: layout={=usize} led_configs={=usize}",
+                core::mem::size_of_val(&layers::layout()),
+                core::mem::size_of_val(layers::led_configs()),
+            );
         });
 
         if !joy.detect() {
@@ -184,11 +190,12 @@ mod app {
             serial_tx,
             serial_rx,
             crc,
-            keyboard,
+            leds,
         };
 
         let local = Local {
             timer,
+            keyboard,
         };
 
         let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
@@ -196,32 +203,111 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(shared = [keyboard, usb, spi_tx, joy, dbg])]
+    #[task(binds = TIM15, priority = 3, local = [timer, t: usize = 0])]
+    fn tick(cx: tick::Context) {
+        // Clears interrupt flag
+        if cx.local.timer.wait().is_ok() {
+            let t = cx.local.t;
+            *t += 1;
+
+            if *t % 10 == 0 {
+                // ignore error if we're too slow
+                update_leds::spawn(*t).ok();
+            }
+
+            keyboard_tick::spawn(*t).unwrap();
+
+            if *t % 1000 == 0 {
+                debug_report::spawn().unwrap();
+            }
+        }
+    }
+
+    /// USB poll
+    ///
+    /// On an USB interrput we need to handle all classes and receive/send proper data.
+    /// This is always a response to USB host polling because host initializes all transactions.
+    #[task(binds = USB, priority = 2, shared = [usb])]
+    fn usb_poll(mut cx: usb_poll::Context) {
+        cx.shared.usb.lock(|usb| {
+            // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
+            // If there was data packet to any class this will return true.
+            let _was_packet = usb.poll();
+            usb.serial.flush().ok();
+        });
+    }
+
+    #[task(priority = 2, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
+        let keyboard_tick::SharedResources {
+            serial_tx: mut tx,
+            serial_rx: rx,
+            crc,
+            mut usb,
+        } = cx.shared;
+        let keyboard = cx.local.keyboard;
+
+        // Retrieve current USB state
+        let (usb_state, usb_leds) = usb.lock(|usb| {
+            (usb.dev.state(), *usb.keyboard_leds())
+        });
+        let usb_on = usb_state == UsbDeviceState::Configured;
+
+        // Run keyboard logic and get the USB report
+        let report = (&mut tx, rx).lock(|tx, rx| keyboard.tick(tx, rx, usb_on));
+
+        // Update LED patterns
+        let state = keyboard::leds::KeyboardState {
+            leds: usb_leds,
+            usb_on,
+            role: keyboard.role(),
+            layer: 0,  // FIXME: get current keyberon layer number
+        };
+        update_led_patterns::spawn(t, state).unwrap();
+
+        // Transmit any serial messages
+        (tx, crc).lock(|tx, crc| tx.tick(crc));
+
+        // Set current USB report to the new one, finish if there is no change
+        if !usb_on || !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
+            return;
+        }
+        // Spin until we are able to send the report. Important: lock separately in each loop iterations!
+        while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
+    }
+
+    /// Apply state updates from keyboard_tick
+    ///
+    /// This has the same priority as update_leds but we use a queue to eventually apply all
+    /// the updates.
+    #[task(priority = 1, shared = [leds], capacity = 4)]
+    fn update_led_patterns(cx: update_led_patterns::Context, t: usize, state: keyboard::leds::KeyboardState) {
+        let mut leds = cx.shared.leds;
+        leds.lock(|leds| {
+            leds.controller_mut()
+                .update_patterns(t as u32, &state)
+        });
+    }
+
+    #[task(priority = 1, shared = [spi_tx, dbg, leds])]
     fn update_leds(cx: update_leds::Context, t: usize) {
         let update_leds::SharedResources {
             spi_tx,
-            mut joy,
             mut dbg,
-            mut keyboard,
-            mut usb,
+            mut leds,
         } = cx.shared;
 
-        // Read joystick
-        let (r, angle) = dbg.lock(|dbg| dbg.with_tx_high(|| {
-            joy.lock(|j| j.read_polar())
-        }));
-
-        let (usb_state, kb_leds) = usb.lock(|usb| (usb.dev.state(), *usb.keyboard_leds()));
-        keyboard.lock(|keyboard| {
-            let leds = dbg.lock(|dbg| dbg.with_tx_high(|| {
-                keyboard.update_leds(t as u32, usb_state, kb_leds)
+        // Get new LED colors
+        leds.lock(|leds| {
+            let colors = dbg.lock(|dbg| dbg.with_tx_high(|| {
+                leds.controller_mut().tick(t as u32)
             }));
 
             // Prepare data to send and start DMA transfer
             (spi_tx, dbg).lock(|spi_tx, dbg| {
                 dbg.with_tx_high(|| {
                     // TODO: try to use .serialize()
-                    spi_tx.push(|buf| leds.serialize_to_slice(buf))
+                    spi_tx.push(|buf| colors.serialize_to_slice(buf))
                         .expect("Trying to serialize new data but DMA transfer is not finished");
                 });
 
@@ -229,10 +315,23 @@ mod app {
                      .expect("If we were able to serialize we must be able to start!");
                  dbg.set_rx(true);
             });
-        })
+        });
     }
 
-    #[task(binds = DMA1_CH4_5_6_7, priority = 3, shared = [spi_tx, dbg])]
+
+    #[task(priority = 1, shared = [serial_rx], local = [stats: Option<ioqueue::Stats> = None])]
+    fn debug_report(mut cx: debug_report::Context) {
+        let old = cx.local.stats.get_or_insert_with(|| Default::default());
+        let new = cx.shared.serial_rx.lock(|rx| {
+            rx.stats().clone()
+        });
+        if &new != old {
+            defmt::warn!("RX stats: {}", new);
+            *old = new;
+        }
+    }
+
+    #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx, dbg])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
         cx.shared.spi_tx.lock(|spi_tx| {
            spi_tx.on_interrupt()
@@ -243,7 +342,7 @@ mod app {
         cx.shared.dbg.lock(|d| d.set_rx(false));
     }
 
-    #[task(binds = DMA1_CH2_3, priority = 3, shared = [crc, serial_tx, serial_rx])]
+    #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx])]
     fn dma_uart_callback(cx: dma_uart_callback::Context) {
         let tx = cx.shared.serial_tx;
         let rx = cx.shared.serial_rx;
@@ -266,7 +365,7 @@ mod app {
         });
     }
 
-    #[task(binds = USART1, priority = 3, shared = [crc, serial_rx], local = [
+    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx], local = [
            empty_count: usize = 0,
     ])]
     fn uart_interrupt(cx: uart_interrupt::Context) {
@@ -275,81 +374,6 @@ mod app {
         (rx, crc).lock(|rx, mut crc| {
             rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
-        });
-    }
-
-    #[task(shared = [serial_tx, serial_rx, crc, usb, keyboard]/* , local = [keyboard] */)]
-    fn keyboard_tick(cx: keyboard_tick::Context) {
-        let keyboard_tick::SharedResources {
-            serial_tx: mut tx,
-            serial_rx: rx,
-            crc,
-            mut usb,
-            mut keyboard,
-        } = cx.shared;
-        // let keyboard = cx.local.keyboard;
-
-        // Check current USB state for role negotiation
-        let usb_on = usb.lock(|usb| usb.dev.state() == UsbDeviceState::Configured);
-
-        // Run keyboard logic and get the USB report
-        let report = (&mut tx, rx, keyboard).lock(|tx, rx, keyboard| keyboard.tick(tx, rx, usb_on));
-
-        // Transmit any serial messages
-        (tx, crc).lock(|tx, crc| tx.tick(crc));
-
-        // Set current USB report to the new one, finish if there is no change
-        if !usb_on || !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
-            return;
-        }
-        // Spin until we are able to send the report. Important: lock separately in each loop iterations!
-        while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
-    }
-
-    #[task(shared = [serial_rx], local = [stats: Option<ioqueue::Stats> = None])]
-    fn debug_report(mut cx: debug_report::Context) {
-        let old = cx.local.stats.get_or_insert_with(|| Default::default());
-        let new = cx.shared.serial_rx.lock(|rx| {
-            rx.stats().clone()
-        });
-        if &new != old {
-            defmt::warn!("RX stats: {}", new);
-            *old = new;
-        }
-    }
-
-    #[task(binds = TIM15, priority = 2, local = [timer, t: usize = 0])]
-    fn tick(cx: tick::Context) {
-        // Clears interrupt flag
-        if cx.local.timer.wait().is_ok() {
-            let t = cx.local.t;
-            *t += 1;
-
-            if *t % 10 == 0 {
-                // ignore error if we're too slow
-                update_leds::spawn(*t).ok();
-            }
-
-            // FIXME: need to split Keyboard from Leds, because now this task sometimes fails to spawn
-            keyboard_tick::spawn().ok();
-
-            if *t % 1000 == 0 {
-                debug_report::spawn().unwrap();
-            }
-        }
-    }
-
-    /// USB poll
-    ///
-    /// On an USB interrput we need to handle all classes and receive/send proper data.
-    /// This is always a response to USB host polling because host initializes all transactions.
-    #[task(binds = USB, priority = 2, shared = [usb])]
-    fn usb_poll(mut cx: usb_poll::Context) {
-        cx.shared.usb.lock(|usb| {
-            // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
-            // If there was data packet to any class this will return true.
-            let _was_packet = usb.poll();
-            usb.serial.flush().ok();
         });
     }
 
