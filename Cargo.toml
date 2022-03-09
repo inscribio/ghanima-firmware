@@ -22,11 +22,20 @@ incremental = true
 debug-assertions = true
 overflow-checks = true
 
+[profile.test]
+# running tests on host, so prioritize fast build time
+opt-level = 0
+debug = 2
+incremental = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+
 [profile.release]
 opt-level = "s"
 lto = "fat"
 debug = 2  # symbols don't increase the size on flash
-incremental = true
+incremental = false
 debug-assertions = false
 overflow-checks = false
 
