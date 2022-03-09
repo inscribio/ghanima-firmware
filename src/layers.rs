@@ -313,8 +313,6 @@ static LEDS: LedConfigurations = &[
                 },
             },
         ],
-        layers: &[
-            &[],
-        ],
+        layers: &[],
     },
 ];

@@ -161,7 +161,7 @@ impl Keyboard {
             leds,
             usb_on: usb_state == UsbDeviceState::Configured,
             role: self.fsm.role(),
-            layer: 0,  // FIXME: get current keyberon layer number
+            layer: self.layout.current_layer() as u8,
             pressed: self.keys.pressed(),
         };
 

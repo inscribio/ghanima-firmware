@@ -48,22 +48,22 @@ impl<'a> PatternController<'a> {
         self.pattern_candidates.fill(None);
 
         // Scan the rules that we might consider, rules on end of list overwrite previous ones.
-        let rule_candidates = [
-            self.config.default,
-            self.config.layers[state.layer as usize],
-        ];
-        for rules in rule_candidates {
-            for rule in rules {
-                rule.keys.for_each(|row, col| {
-                    // Keys iterator iterates only over non-joystick coordinates
-                    let led_num = BoardSide::led_number((row, col))
-                        .unwrap();
-                    if rule.condition.applies(&state, &self.side, led_num) {
-                        self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
-                    }
-                });
-            }
-        }
+        let layer_rules = self.config.layers.get(state.layer as usize);
+        core::iter::once(self.config.default)
+            // Optionally overwritten by layer rules
+            .chain(layer_rules.copied())
+            .for_each(|rules| {
+                for rule in rules {
+                    rule.keys.for_each(|row, col| {
+                        // Keys iterator iterates only over non-joystick coordinates
+                        let led_num = BoardSide::led_number((row, col))
+                            .unwrap();
+                        if rule.condition.applies(&state, &self.side, led_num) {
+                            self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
+                        }
+                    });
+                }
+            });
 
         for led in 0..NLEDS {
             self.patterns[led].update(time, self.pattern_candidates[led]);
