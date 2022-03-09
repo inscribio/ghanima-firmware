@@ -48,7 +48,7 @@ pub struct KeyboardLeds {
 }
 
 /// Messages used in communication between keyboard halves
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub enum Message {
     /// Negotiation of roles of each half
     Role(role::Message),

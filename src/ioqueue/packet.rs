@@ -136,7 +136,7 @@ impl<'acc, 'chk, 'dat, P: PacketDeser, const N: usize> core::iter::Iterator for 
     }
 }
 
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub enum FeedResult<'a, P> {
     /// Consumed all data, still pending
     Consumed,

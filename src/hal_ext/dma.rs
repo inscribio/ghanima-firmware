@@ -13,11 +13,13 @@ pub trait DmaSplit {
 pub struct DmaChannel<const C: u8>;
 
 /// ISR flags for a single DMA channel
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct InterruptStatus(u8);
 
 /// IFCR flags for a single DMA channel
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct InterruptClear(u8);
 
 /// DMA Interrupt type to handle (error is always checked)
@@ -27,7 +29,7 @@ pub enum Interrupt {
 }
 
 /// Result of handling DMA interrupt
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum InterruptResult {
     /// Interrupt flag wasn't set, nothing has been done
     NotSet,

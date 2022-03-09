@@ -7,7 +7,7 @@ use crate::keyboard::role::Role;
 use super::{Keys, Condition, KeyboardLed};
 
 /// Collection of keyboard state variables that can be used as conditions
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct KeyboardState {
     pub leds: KeyboardLedsState,
     pub usb_on: bool,
@@ -23,7 +23,6 @@ pub struct KeyboardStateEvents(KeyboardState);
 bitfield! {
     #[derive(Clone, Copy, Default, PartialEq)]
     pub struct KeyboardLedsState(u8);
-    impl Debug;
     pub num_lock, set_num_lock: 0;
     pub caps_lock, set_caps_lock: 1;
     pub scroll_lock, set_scroll_lock: 2;

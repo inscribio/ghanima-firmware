@@ -7,7 +7,8 @@ use crate::bsp::sides::BoardSide;
 pub type Fsm = StateMachine<Context>;
 
 /// Role negotiation messages
-#[derive(Serialize, Deserialize, Debug, Format, PartialEq)]
+#[derive(Serialize, Deserialize, Format, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Message {
     /// Used to request establishing master role when USB is on
     EstablishMaster,
@@ -18,7 +19,7 @@ pub enum Message {
 }
 
 /// Describes current role of keyboard half
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Role {
     /// Board should act as master: process keyboard events, send USB HID reports,
     /// send commands to slave over serial, etc.

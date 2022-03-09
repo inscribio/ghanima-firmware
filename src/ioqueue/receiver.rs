@@ -35,7 +35,7 @@ struct RxState<P, const N: usize, const B: usize> {
     stats: Stats,
 }
 
-#[derive(Debug, Format, Default, Clone, PartialEq)]
+#[derive(Format, Default, Clone, PartialEq)]
 pub struct Stats {
     pub queue_overflows: u32,
     pub accumulator_overflows: u32,

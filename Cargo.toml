@@ -24,7 +24,7 @@ overflow-checks = true
 lto = false
 
 [profile.dev]
-opt-level = "z"
+opt-level = "s"
 lto = "fat"  # won't fit in flash without fat lto
 debug = 2
 incremental = false

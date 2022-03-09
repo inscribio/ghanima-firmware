@@ -59,7 +59,6 @@ use super::role::Role;
 pub type LedConfigurations = &'static [LedConfig];
 
 /// Configuration of keyboard LED lightning
-#[derive(Debug)]
 pub struct LedConfig {
     pub default: LayerRules,
     pub layers: &'static [LayerRules],
@@ -69,7 +68,6 @@ pub struct LedConfig {
 pub type LayerRules = &'static [LedRule];
 
 /// Rule defining LED pattern for given keys if condition applies
-#[derive(Debug)]
 pub struct LedRule {
     /// Keys to which the rule applies
     pub keys: Keys,
@@ -83,7 +81,6 @@ pub struct LedRule {
 ///
 /// Note that joystick is not considered as a key, because it has no LED
 /// associated.
-#[derive(Debug)]
 pub enum Keys {
     /// All keys on this layer
     All,
@@ -97,7 +94,7 @@ pub enum Keys {
 }
 
 /// Condition for the rule to be used
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum Condition {
     /// Always applies
     Always,
@@ -114,7 +111,7 @@ pub enum Condition {
 }
 
 /// Standard keyboard LED
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum KeyboardLed {
     NumLock,
     CapsLock,
@@ -124,7 +121,6 @@ pub enum KeyboardLed {
 }
 
 /// Defines lightning pattern
-#[derive(Debug)]
 pub struct Pattern {
     pub repeat: Repeat,
     pub transitions: &'static [Transition],
@@ -133,14 +129,13 @@ pub struct Pattern {
 
 /// Pattern phase shift depending on key position
 // TODO: rethink
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Phase {
     pub x: f32,
     pub y: f32,
 }
 
 /// Defines how the pattern should be repeated
-#[derive(Debug)]
 pub enum Repeat {
     /// Run the pattern once, then stop
     Once,
@@ -151,7 +146,8 @@ pub enum Repeat {
 }
 
 /// Single color transition in a pattern
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Transition {
     /// "Destination" color
     pub color: RGB8,
@@ -165,7 +161,8 @@ pub struct Transition {
 }
 
 /// Color interpolation behavior
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Interpolation {
     /// Instantly change from previous color to this one
     Piecewise,

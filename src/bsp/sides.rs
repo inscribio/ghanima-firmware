@@ -5,7 +5,8 @@ use crate::utils::InfallibleResult;
 use super::{NCOLS, NCOLS_THUMB, NROWS};
 
 /// Side of a half of a split-keyboard
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
+#[cfg_attr(test, derive(Debug))]
 pub enum BoardSide {
     Left,
     Right,

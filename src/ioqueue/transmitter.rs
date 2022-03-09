@@ -105,10 +105,10 @@ where
 
             // Indicate how many bytes have been written
             n - window.len()
-        }).unwrap();  // Infallible as we've already checked that tx.is_ready()
+        }).map_err(|_| ()).unwrap();  // Infallible as we've already checked that tx.is_ready()
 
         // Start the transfer, should never fail because we check that tx.is_ready()
-        nb::block!(self.tx.start()).unwrap();
+        nb::block!(self.tx.start()).map_err(|_| ()).unwrap();
     }
 
     /// Perform interrupt processing, should be called in all relevant IRQ handlers

@@ -264,7 +264,7 @@ mod app {
         });
 
         // Update LED patterns
-        update_led_patterns::spawn(t, state).unwrap();
+        update_led_patterns::spawn(t, state).map_err(|_| ()).unwrap();
 
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
@@ -318,7 +318,7 @@ mod app {
                 });
 
                  spi_tx.start()
-                     .expect("If we were able to serialize we must be able to start!");
+                    .expect("If we were able to serialize we must be able to start!");
                  dbg.set_rx(true);
             });
         });

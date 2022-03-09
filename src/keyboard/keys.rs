@@ -12,7 +12,7 @@ pub struct Keys {
 }
 
 /// Bit-set storing key states as bit-flags in the order of LEDs
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct PressedLedKeys(u32);
 
 impl Keys {
