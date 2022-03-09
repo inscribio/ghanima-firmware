@@ -203,7 +203,7 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM15, priority = 3, local = [timer, t: usize = 0])]
+    #[task(binds = TIM15, priority = 4, local = [timer, t: usize = 0])]
     fn tick(cx: tick::Context) {
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
@@ -212,13 +212,19 @@ mod app {
 
             if *t % 10 == 0 {
                 // ignore error if we're too slow
-                update_leds::spawn(*t).ok();
+                if update_leds::spawn(*t).is_err() {
+                    defmt::warn!("Spawn failed: update_leds");
+                };
             }
 
-            keyboard_tick::spawn(*t).unwrap();
+            if keyboard_tick::spawn(*t).is_err() {
+                defmt::error!("Spawn failed: keyboard_tick");
+            }
 
             if *t % 1000 == 0 {
-                debug_report::spawn().unwrap();
+                if debug_report::spawn().is_err() {
+                    defmt::warn!("Spawn failed: debug_report");
+                }
             }
         }
     }
@@ -227,7 +233,7 @@ mod app {
     ///
     /// On an USB interrput we need to handle all classes and receive/send proper data.
     /// This is always a response to USB host polling because host initializes all transactions.
-    #[task(binds = USB, priority = 2, shared = [usb])]
+    #[task(binds = USB, priority = 3, shared = [usb])]
     fn usb_poll(mut cx: usb_poll::Context) {
         cx.shared.usb.lock(|usb| {
             // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
@@ -237,7 +243,7 @@ mod app {
         });
     }
 
-    #[task(priority = 2, capacity = 2, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
     fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
@@ -270,7 +276,9 @@ mod app {
         if !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
             return
         }
-        // Spin until we are able to send the report. Important: lock separately in each loop iterations!
+        // Spin until we are able to send the report.
+        // Important: lock separately in each loop iterations and use higher priority for usb_poll
+        // to avoid not-so-dead locks (tick may be running all the time preventing usb_poll).
         while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
     }
 
@@ -352,11 +360,11 @@ mod app {
                 .as_option().transpose().expect("Unexpected interrupt");
 
             if rx_done.is_some() {
-                defmt::debug!("UART RX done");
+                defmt::trace!("UART RX done");
             }
 
             if tx_done.is_some() {
-                defmt::debug!("UART TX done");
+                defmt::trace!("UART TX done");
             }
 
             rx_done.or(tx_done).expect("No interrupt handled!");
