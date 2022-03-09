@@ -166,7 +166,7 @@ static LEDS: LedConfigurations = &[
             },
             LedRule {
                 keys: Keys::All,
-                condition: Condition::Pressed,
+                condition: Condition::Pressed(true),
                 pattern: Pattern {
                     repeat: Repeat::Once,
                     transitions: &[
@@ -191,7 +191,7 @@ static LEDS: LedConfigurations = &[
             },
             LedRule {
                 keys: Keys::Rows(&[0]),
-                condition: Condition::KeyPressed(3, 8),
+                condition: Condition::KeyPressed(true, (3, 8)),
                 pattern: Pattern {
                     repeat: Repeat::Once,
                     transitions: &[
@@ -209,6 +209,21 @@ static LEDS: LedConfigurations = &[
                             color: RGB8::new(0, 0, 0),
                             duration: 300,
                             interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::Keys(&[(3, 3)]),
+                condition: Condition::Pressed(false),
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(MAX, MAX, 0),
+                            duration: 0,
+                            interpolation: Interpolation::Piecewise,
                         },
                     ],
                     phase: Phase { x: 0.0, y: 0.0 },

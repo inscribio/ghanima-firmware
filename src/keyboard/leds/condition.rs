@@ -44,13 +44,13 @@ impl Condition {
             },
             Condition::UsbOn(usb_on) => usb_on == &state.usb_on,
             Condition::Role(role) => role == &state.role,
-            Condition::Pressed => state.pressed.is_pressed(led),
-            Condition::KeyPressed(row, col) => {
+            Condition::Pressed(pressed) => state.pressed.is_pressed(led) == *pressed,
+            Condition::KeyPressed(pressed, (row, col)) => {
                 let coords = side.coords_to_local((*row, *col));
                 BoardSide::led_number(coords)
                     // FIXME: not possible to trigger on joystick press
                     // nor on keys from other side
-                    .map(|led| state.pressed.is_pressed(led))
+                    .map(|led| state.pressed.is_pressed(led) == *pressed)
                     .unwrap_or(false)
             },
         }

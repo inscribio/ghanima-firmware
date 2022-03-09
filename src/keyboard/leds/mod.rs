@@ -92,6 +92,7 @@ pub enum Keys {
     /// All keys from given columns
     Cols(&'static [u8]),
     /// Specific keys
+    // FIXME: should work on global coordinates instead of side-local
     Keys(&'static [(u8, u8)]),
 }
 
@@ -106,10 +107,10 @@ pub enum Condition {
     UsbOn(bool),
     /// Apply if the keyboard half acts as a master
     Role(Role),
-    /// Apply when this key is pressed
-    Pressed,
-    /// Apply when given key is pressed
-    KeyPressed(u8, u8),
+    /// Apply when this key has given pressed state
+    Pressed(bool),
+    /// Apply when given key has given pressed state
+    KeyPressed(bool, (u8, u8)),
 }
 
 /// Standard keyboard LED
