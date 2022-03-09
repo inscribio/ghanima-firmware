@@ -239,7 +239,6 @@ mod app {
             // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
             // If there was data packet to any class this will return true.
             let _was_packet = usb.poll();
-            usb.serial.flush().ok();
         });
     }
 

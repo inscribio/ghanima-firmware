@@ -60,8 +60,6 @@ embedded-dma = "0.2"
 usb-device = "0.2"
 usbd-hid = "0.5"
 usbd-dfu-rt = "0.1"
-# usbd-serial = "0.1"
-usbd-serial = { git = "https://github.com/TDHolmes/usbd-serial.git", rev = "35d53d74d39ec521cba64577e26075b103ff83bc" }
 
 # TODO: use official version when 0.2 is released
 keyberon = { git = "https://github.com/TeXitoi/keyberon.git", rev = "58ac73cfcd09659bf31ee405ff9f5e23b0edc527" }
