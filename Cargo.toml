@@ -14,14 +14,6 @@ name = "ghanima"
 test = false
 bench = false
 
-[profile.dev]
-opt-level = "s"
-lto = "fat"  # won't fit in flash without fat lto
-debug = 2
-incremental = true
-debug-assertions = true
-overflow-checks = true
-
 [profile.test]
 # running tests on host, so prioritize fast build time
 opt-level = 0
@@ -31,6 +23,14 @@ debug-assertions = true
 overflow-checks = true
 lto = false
 
+[profile.dev]
+opt-level = "z"
+lto = "fat"  # won't fit in flash without fat lto
+debug = 2
+incremental = false
+debug-assertions = true
+overflow-checks = true
+
 [profile.release]
 opt-level = "s"
 lto = "fat"
@@ -38,6 +38,12 @@ debug = 2  # symbols don't increase the size on flash
 incremental = false
 debug-assertions = false
 overflow-checks = false
+
+# Compiler sometimes hangs when using "s" with "fixed" (https://gitlab.com/tspiteri/fixed/-/issues/45)
+[profile.release.package.fixed]
+opt-level = 3
+[profile.dev.package.fixed]
+opt-level = 3
 
 [dependencies]
 cortex-m = "0.7"
