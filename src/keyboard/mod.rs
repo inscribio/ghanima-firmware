@@ -5,7 +5,7 @@
 //! and handling of custom events.
 
 /// Special keyboard actions
-mod actions;
+pub mod actions;
 /// Keyboard matrix scanner with debouncing
 mod keys;
 /// Keyboard lightning control and configuration
@@ -24,8 +24,8 @@ use crate::hal_ext::crc::Crc;
 use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
+use actions::Action;
 
-pub use actions::Action;
 pub use keys::Keys;
 pub use leds::Leds;
 
