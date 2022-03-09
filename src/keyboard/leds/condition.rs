@@ -2,18 +2,23 @@ use bitfield::bitfield;
 
 use crate::bsp::NROWS;
 use crate::bsp::sides::BoardSide;
+use crate::keyboard::keys::PressedLedKeys;
 use crate::keyboard::role::Role;
 use super::{Keys, Condition, KeyboardLed};
 
 /// Collection of keyboard state variables that can be used as conditions
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct KeyboardState {
     pub leds: KeyboardLedsState,
     pub usb_on: bool,
     pub role: Role,
     pub layer: u8,
-    // pressed keys: array of 64 (u8, u8)? keyberon uses something like this
+    pub pressed: PressedLedKeys,
 }
+
+/// Used to keep track of "event flags" for
+#[derive(Clone)]
+pub struct KeyboardStateEvents(KeyboardState);
 
 bitfield! {
     #[derive(Clone, Copy, Default, PartialEq)]
@@ -27,7 +32,7 @@ bitfield! {
 }
 
 impl Condition {
-    pub fn applies(&self, state: &KeyboardState) -> bool {
+    pub fn applies(&self, state: &KeyboardState, side: &BoardSide, led: u8) -> bool {
         match self {
             Condition::Always => true,
             Condition::Led(led) => match led {
@@ -39,9 +44,15 @@ impl Condition {
             },
             Condition::UsbOn(usb_on) => usb_on == &state.usb_on,
             Condition::Role(role) => role == &state.role,
-            Condition::OnPress => todo!(),
-            Condition::Pressed => todo!(),
-            Condition::OnRelease => todo!(),
+            Condition::Pressed => state.pressed.is_pressed(led),
+            Condition::KeyPressed(row, col) => {
+                let coords = side.coords_to_local((*row, *col));
+                BoardSide::led_number(coords)
+                    // FIXME: not possible to trigger on joystick press
+                    // nor on keys from other side
+                    .map(|led| state.pressed.is_pressed(led))
+                    .unwrap_or(false)
+            },
         }
     }
 }

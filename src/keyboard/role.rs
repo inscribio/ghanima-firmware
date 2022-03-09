@@ -18,7 +18,7 @@ pub enum Message {
 }
 
 /// Describes current role of keyboard half
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Role {
     /// Board should act as master: process keyboard events, send USB HID reports,
     /// send commands to slave over serial, etc.

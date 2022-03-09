@@ -16,12 +16,14 @@ mod role;
 use serde::{Serialize, Deserialize};
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
+use usb_device::device::UsbDeviceState;
 
 use crate::bsp::sides::BoardSide;
 use crate::ioqueue;
 use crate::hal_ext::crc::Crc;
 use crate::utils::CircularIter;
 use role::Role;
+use leds::KeyboardState;
 
 pub use actions::Action;
 pub use keys::Keys;
@@ -89,9 +91,14 @@ impl Keyboard {
     /// This should be called in a fixed period. Will handle communication between keyboard
     /// halves and resolve key events depending on keyboard layout. Requires information
     /// about current USB state (connected/not connected). Returns keyboard USB HID report
-    /// with the keys that are currently pressed.
-    pub fn tick<TX, RX>(&mut self, tx: &mut TX, rx: &mut RX, usb_on: bool) -> KbHidReport
-        where
+    /// with the keys that are currently pressed and [`KeyboardState`] for LED controller.
+    pub fn tick<TX, RX>(
+        &mut self,
+        (tx, rx): (&mut TX, &mut RX),
+        usb_state: UsbDeviceState,
+        leds: leds::KeyboardLedsState
+    ) -> (KbHidReport, KeyboardState)
+    where
         TX: ioqueue::TransmitQueue<Message>,
         RX: ioqueue::ReceiveQueue<Message>,
     {
@@ -102,7 +109,7 @@ impl Keyboard {
         };
 
         // First update USB state in FSM
-        maybe_tx(tx, self.fsm.usb_state(usb_on));
+        maybe_tx(tx, self.fsm.usb_state(usb_state == UsbDeviceState::Configured));
 
         // Process RX data
         while let Some(msg) = rx.get() {
@@ -149,9 +156,20 @@ impl Keyboard {
             layout::CustomEvent::Release(act) => self.handle_action(act, false),
         }
 
+        // Collect keyboard state
+        let state = leds::KeyboardState {
+            leds,
+            usb_on: usb_state == UsbDeviceState::Configured,
+            role: self.fsm.role(),
+            layer: 0,  // FIXME: get current keyberon layer number
+            pressed: self.keys.pressed(),
+        };
+
         // Generate USB report
         // TODO: auto-enable NumLock by checking leds state
-        self.layout.keycodes().collect()
+        let report = self.layout.keycodes().collect();
+
+        (report, state)
     }
 
     fn handle_action(&mut self, action: &Action, _press: bool) {

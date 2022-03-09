@@ -20,6 +20,7 @@ pub struct PatternController<'a> {
 struct PatternExecutor<'a> {
     pattern: Option<PatternIter<'a>>,
     start_time: u32,
+    once_should_reset: bool,
 }
 
 /// Abstracts the logic of iterating over subsequent pattern transitions
@@ -42,7 +43,7 @@ impl<'a> PatternController<'a> {
     }
 
     /// Update currently applicable patterns based on keyboard state
-    pub fn update_patterns(&mut self, time: u32, state: &KeyboardState) {
+    pub fn update_patterns(&mut self, time: u32, state: KeyboardState) {
         // Reset led pattern candidates
         self.pattern_candidates.fill(None);
 
@@ -54,10 +55,10 @@ impl<'a> PatternController<'a> {
         for rules in rule_candidates {
             for rule in rules {
                 rule.keys.for_each(|row, col| {
-                    if rule.condition.applies(state) {
-                        // Keys iterator iterates only over non-joystick coordinates
-                        let led_num = self.side.led_number((row, col))
-                            .unwrap();
+                    // Keys iterator iterates only over non-joystick coordinates
+                    let led_num = BoardSide::led_number((row, col))
+                        .unwrap();
+                    if rule.condition.applies(&state, &self.side, led_num) {
                         self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
                     }
                 });
@@ -93,28 +94,42 @@ impl<'a> PatternExecutor<'a> {
     fn reset(&mut self, time: u32, pattern: Option<&'a Pattern>) {
         self.pattern = pattern.map(PatternIter::new);
         self.start_time = time;
+        self.once_should_reset = false;
     }
 
     /// Update pattern if it is different than the current one
     pub fn update(&mut self, time: u32, pattern: Option<&'a Pattern>) {
-        // Keep previous pattern if it is same one as current one (compare pointers only)
         let keep = match (self.pattern.as_ref(), pattern) {
             (Some(this), Some(other)) => {
                 // Compare patterns by pointer address to determine if they are different.
                 let are_same = core::ptr::eq(this.pattern(), other);
                 match (are_same, &this.pattern().repeat, &other.repeat) {
+                    // Only restart a Once pattern if there was another pattern that we ignored.
+                    (true, Repeat::Once, Repeat::Once) => !self.once_should_reset,
                     // Always keep previous if the new one is the same as the current one.
+                    // FIXME: cannot restart Once pattern on multiple short key presses
                     (true, _, _) => true,
                     // If both are Once then interrupt the current one and use the new one.
                     (false, Repeat::Once, Repeat::Once) => false,
                     // If only current is Once than keep it until it has finished.
-                    (false, Repeat::Once, _) => !this.finished(),
+                    (false, Repeat::Once, _) => {
+                        self.once_should_reset = true;
+                        !this.finished()
+                    },
                     // Otherwise use the new one
                     (false, _, _) => false,
                 }
             },
+            (Some(this), None) => match this.pattern().repeat {
+                // Keep current pattern until finished
+                Repeat::Once => {
+                    self.once_should_reset = true;
+                    !this.finished()
+                },
+                _ => false,
+            }
             (None, None) => true,
-            _ => false,
+            (None, Some(_)) => false,
         };
         if !keep {
             self.reset(time, pattern);
@@ -364,53 +379,79 @@ mod tests {
         },
     ];
 
-    #[test]
-    fn pattern_executor_update_only_if_pattern_changed() {
+    enum UpdateStep {
+        Tick(u32),
+        Update(u32, Option<usize>),
+        Expect(u32, Option<usize>),
+    }
+
+    fn test_pattern_update(seq: &[UpdateStep]) {
         let mut exec = PatternExecutor::default();
         assert!(exec.pattern.is_none());
         assert_eq!(exec.start_time, 0);
 
-        exec.update(1000, None);
-        assert!(exec.pattern.is_none());
-        assert_eq!(exec.start_time, 0);
+        for (i, step) in seq.iter().enumerate() {
+            match step {
+                UpdateStep::Tick(t) => { exec.tick(*t); },
+                UpdateStep::Update(t, pattern) => exec.update(*t, pattern.map(|pi| &PATTERNS[pi])),
+                UpdateStep::Expect(t, pattern) => {
+                    match pattern {
+                        None => assert!(exec.pattern.is_none(), "step {}", i),
+                        Some(pi) => {
+                            let pattern = exec.pattern.as_ref().unwrap().pattern;
+                            let found = PATTERNS.iter().position(|p| core::ptr::eq(pattern, p));
+                            assert_eq!(found, Some(*pi), "step {}", i)
+                        },
+                    }
+                    assert_eq!(exec.start_time, *t, "step {}", i);
+                },
+            }
+        }
+    }
 
-        exec.update(2000, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
-        assert_eq!(exec.start_time, 2000);
-
-        exec.update(3000, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
-        assert_eq!(exec.start_time, 2000);
-
-        exec.update(4000, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
-        assert_eq!(exec.start_time, 2000);
-
-        exec.update(5000, Some(&PATTERNS[2]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[2]));
-        assert_eq!(exec.start_time, 5000);
+    #[test]
+    fn pattern_executor_update_start_time_on_new_pattern() {
+        // Start time should change only after a new pattern has been set.
+        use UpdateStep::*;
+        test_pattern_update(&[
+            Update(10, None),    Tick(11), Expect( 0, None),
+            Update(20, Some(1)), Tick(21), Expect(20, Some(1)),
+            Update(30, Some(1)), Tick(31), Expect(20, Some(1)),
+            Update(40, Some(1)), Tick(41), Expect(20, Some(1)),
+            Update(50, Some(2)), Tick(51), Expect(50, Some(2)),
+        ]);
     }
 
     #[test]
     fn pattern_executor_keep_until_finished() {
-        let mut exec = PatternExecutor::default();
+        // New pattern should not be set if the current one is Repeat::Once.
         assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
+        use UpdateStep::*;
+        test_pattern_update(&[
+            Update(   0, Some(0)), Tick(   1), Expect(   0, Some(0)),
+            Update( 100, Some(1)), Tick( 101), Expect(   0, Some(0)),
+            Update(1100, Some(1)), Tick(1101), Expect(1000, Some(0)),
+            Update(2100, Some(1)), Tick(2101), Expect(2000, Some(0)),
+            Update(3100, Some(1)), Tick(3101), Expect(3000, Some(0)),
+            // Now the new pattern will be set as pattern 0 has finished.
+            Update(3200, Some(1)), Expect(3200, Some(1)),
+        ]);
+    }
 
-        exec.update(0, Some(&PATTERNS[0]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-
-        exec.tick(100); exec.update(100, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-
-        exec.tick(1100); exec.update(1100, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-
-        exec.tick(2100); exec.update(2100, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[0]));
-
-        // Now the new pattern will be set as pattern 0 has finished.
-        exec.tick(3100); exec.update(3100, Some(&PATTERNS[1]));
-        assert!(core::ptr::eq(exec.pattern.as_ref().unwrap().pattern, &PATTERNS[1]));
+    #[test]
+    fn pattern_update_restart_interrupted() {
+        // Repeat::Once pattern should be restarted if there was a change during its execution.
+        assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
+        use UpdateStep::*;
+        test_pattern_update(&[
+            Update(   0, Some(0)), Tick(   1), Expect(   0, Some(0)),
+            Update( 100, Some(0)), Tick( 101), Expect(   0, Some(0)),
+            // New pattern for a moment but pattern 0 is kept.
+            Update(1100, Some(1)), Tick(1101), Expect(1000, Some(0)),
+            // Now back to pattern 0 - it will be restarted to start_time from Update.
+            Update(2100, Some(0)), Tick(2101), Expect(2100, Some(0)),
+            Update(3100, Some(0)), Tick(3101), Expect(3100, Some(0)),
+        ]);
     }
 
     fn test_pattern_executor_advance(pattern: &Pattern, seq: &[(u32, (u32, Option<usize>))]) {

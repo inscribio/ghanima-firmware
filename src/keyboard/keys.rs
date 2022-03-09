@@ -1,6 +1,6 @@
 use keyberon::{matrix, debounce, layout};
 
-use crate::bsp::{NCOLS, NROWS, ColPin, RowPin, sides::BoardSide};
+use crate::bsp::{NCOLS, NROWS, NLEDS, ColPin, RowPin, sides::BoardSide};
 use crate::utils::InfallibleResult;
 
 /// Keyboard key matrix scanner
@@ -8,7 +8,12 @@ pub struct Keys {
     matrix: matrix::Matrix<ColPin, RowPin, NCOLS, NROWS>,
     debouncer: debounce::Debouncer<matrix::PressedKeys<NCOLS, NROWS>>,
     side: BoardSide,
+    pressed: PressedLedKeys,
 }
+
+/// Bit-set storing key states as bit-flags in the order of LEDs
+#[derive(Debug, Clone, Copy)]
+pub struct PressedLedKeys(u32);
 
 impl Keys {
     /// Initialize key matrix scanner with debouncing that requires `debounce_cnt` stable states
@@ -24,6 +29,7 @@ impl Keys {
             matrix: matrix::Matrix::new(cols, rows).infallible(),
             // TODO: could use better debouncing logic
             debouncer: debounce::Debouncer::new(initial(), initial(), debounce_cnt),
+            pressed: PressedLedKeys(0),
         }
     }
 
@@ -32,13 +38,42 @@ impl Keys {
         let scan = self.matrix.get().infallible();
         self.debouncer.events(scan)
             .map(|e| {
+                self.pressed.update(&e);
                 // Matrix produces local coordinates; make them global.
-                e.transform(|i, j| self.side.transform_coordinates((i, j)))
+                e.transform(|i, j| self.side.coords_to_global((i, j)))
             })
     }
 
     /// Get board side
     pub fn side(&self) -> &BoardSide {
         &self.side
+    }
+
+    pub fn pressed(&self) -> PressedLedKeys {
+        self.pressed
+    }
+}
+
+impl PressedLedKeys {
+    /// Get pressed state of key above given LED
+    pub fn is_pressed(&self, led: u8) -> bool {
+        debug_assert!(led < NLEDS as u8);
+        (self.0 & (1 << led)) != 0
+    }
+
+    fn update(&mut self, event: &layout::Event) {
+        let (row, col, state) = match event {
+            layout::Event::Press(i, j) => (i, j, true),
+            layout::Event::Release(i, j) => (i, j, false),
+        };
+        // Ignore joystick key
+        if let Some(led) = BoardSide::led_number((*row, *col)) {
+            let bitmask = 1 << led;
+            if state {
+                self.0 |= bitmask;
+            } else {
+                self.0 &= !bitmask;
+            }
+        }
     }
 }

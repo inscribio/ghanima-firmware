@@ -237,7 +237,7 @@ mod app {
         });
     }
 
-    #[task(priority = 2, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    #[task(priority = 2, capacity = 2, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
     fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
@@ -251,26 +251,24 @@ mod app {
         let (usb_state, usb_leds) = usb.lock(|usb| {
             (usb.dev.state(), *usb.keyboard_leds())
         });
-        let usb_on = usb_state == UsbDeviceState::Configured;
 
         // Run keyboard logic and get the USB report
-        let report = (&mut tx, rx).lock(|tx, rx| keyboard.tick(tx, rx, usb_on));
+        let (report, state) = (&mut tx, rx).lock(|tx, rx| {
+            keyboard.tick((tx, rx), usb_state, usb_leds)
+        });
 
         // Update LED patterns
-        let state = keyboard::leds::KeyboardState {
-            leds: usb_leds,
-            usb_on,
-            role: keyboard.role(),
-            layer: 0,  // FIXME: get current keyberon layer number
-        };
         update_led_patterns::spawn(t, state).unwrap();
 
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
         // Set current USB report to the new one, finish if there is no change
-        if !usb_on || !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
-            return;
+        if usb_state != UsbDeviceState::Configured {
+            return
+        }
+        if !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
+            return
         }
         // Spin until we are able to send the report. Important: lock separately in each loop iterations!
         while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
@@ -285,7 +283,7 @@ mod app {
         let mut leds = cx.shared.leds;
         leds.lock(|leds| {
             leds.controller_mut()
-                .update_patterns(t as u32, &state)
+                .update_patterns(t as u32, state)
         });
     }
 

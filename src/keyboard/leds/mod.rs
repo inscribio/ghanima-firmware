@@ -100,18 +100,16 @@ pub enum Keys {
 pub enum Condition {
     /// Always applies
     Always,
-    /// Apply this rule if given LED is on
+    /// Apply this rule if host PC specifies that given LED is on
     Led(KeyboardLed),
     /// Apply if USB is (dis-)connected
     UsbOn(bool),
     /// Apply if the keyboard half acts as a master
     Role(Role),
-    /// Apply at the moment of key press (for animations)
-    OnPress,
-    /// Apply while the key is being pressed
+    /// Apply when this key is pressed
     Pressed,
-    /// Apply on key release (for animations)
-    OnRelease,
+    /// Apply when given key is pressed
+    KeyPressed(u8, u8),
 }
 
 /// Standard keyboard LED

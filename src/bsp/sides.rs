@@ -33,13 +33,27 @@ impl BoardSide {
         row_valid && col_valid
     }
 
+    const fn reflect_col(col: u8) -> u8 {
+        2 * NCOLS as u8 - 1 - col
+    }
+
     /// Keyboard matrix coordinates have to be transformed to global representation
-    pub const fn transform_coordinates(&self, (row, col): (u8, u8)) -> (u8, u8) {
-        let (row, col) = match self {
-            Self::Left => (row, col),
-            Self::Right => (row, 2 * NCOLS as u8 - 1 - col),
+    pub const fn coords_to_global(&self, (row, col): (u8, u8)) -> (u8, u8) {
+        let col = match self {
+            Self::Left => col,
+            Self::Right => Self::reflect_col(col),
         };
         debug_assert!(self.coordinates_valid(row, col));
+        (row, col)
+    }
+
+    /// Keyboard matrix coordinates have to be transformed to global representation
+    pub const fn coords_to_local(&self, (row, col): (u8, u8)) -> (u8, u8) {
+        debug_assert!(self.coordinates_valid(row, col));
+        let col = match self {
+            Self::Left => col,
+            Self::Right => Self::reflect_col(col),
+        };
         (row, col)
     }
 
@@ -125,7 +139,7 @@ impl BoardSide {
     /// Get RGB LED position (number in the chain) for a given key
     ///
     /// Row and column must be valid, side-local key coordinates.
-    pub const fn led_number(&self, (row, col): (u8, u8)) -> Option<u8> {
+    pub const fn led_number((row, col): (u8, u8)) -> Option<u8> {
         // Special case for joystick which has no LED
         if row == 4 && col == 4 {
             None
@@ -143,7 +157,7 @@ impl BoardSide {
     }
 
     /// Get side-local key coordinates for given RGB LED
-    pub const fn led_coords(&self, led: u8) -> (u8, u8) {
+    pub const fn led_coords(led: u8) -> (u8, u8) {
         let row = led / (NCOLS as u8);
         let led_rem = led % (NCOLS as u8);
         let col = if row % 2 == 0 {
@@ -160,23 +174,32 @@ impl BoardSide {
 mod tests {
     use super::*;
 
+    fn test_coordinates_translation(side: BoardSide, coords: &[((u8, u8), (u8, u8))]) {
+        for (local, global) in coords {
+            assert_eq!(side.coords_to_global(*local), *global);
+            assert_eq!(side.coords_to_local(*global), *local);
+        }
+    }
+
     #[test]
     fn left_no_coordinates_translation() {
-        let side = BoardSide::Left;
-        assert_eq!(side.transform_coordinates((0, 0)), (0, 0));
-        assert_eq!(side.transform_coordinates((1, 3)), (1, 3));
-        assert_eq!(side.transform_coordinates((3, 5)), (3, 5));
-        assert_eq!(side.transform_coordinates((4, 2)), (4, 2));
+        test_coordinates_translation(BoardSide::Left, &[
+            ((0, 0), (0, 0)),
+            ((1, 3), (1, 3)),
+            ((3, 5), (3, 5)),
+            ((4, 2), (4, 2)),
+        ]);
     }
 
 
     #[test]
     fn right_coordinates_translation() {
-        let side = BoardSide::Right;
-        assert_eq!(side.transform_coordinates((0, 0)), (0, 11));
-        assert_eq!(side.transform_coordinates((1, 3)), (1, 8));
-        assert_eq!(side.transform_coordinates((3, 5)), (3, 6));
-        assert_eq!(side.transform_coordinates((4, 2)), (4, 9));
+        test_coordinates_translation(BoardSide::Right, &[
+            ((0, 0), (0, 11)),
+            ((1, 3), (1, 8)),
+            ((3, 5), (3, 6)),
+            ((4, 2), (4, 9)),
+        ]);
     }
 
     type Range = std::ops::RangeInclusive<u8>;
@@ -223,25 +246,23 @@ mod tests {
 
     #[test]
     fn led_number_coords_conversion() {
-        for side in [BoardSide::Left, BoardSide::Right] {
-            let verify = |coords: (u8, u8), led: u8| {
-                assert_eq!(side.led_number(coords), Some(led), "Wrong conversion from coordinates to led number");
-                assert_eq!(side.led_coords(led), coords, "Wrong conversion from led number to coordinates");
-            };
-            verify((0, 5), 0);
-            verify((0, 2), 3);
-            verify((0, 0), 5);
-            verify((1, 0), 6);
-            verify((1, 1), 7);
-            verify((1, 5), 11);
-            verify((2, 4), 13);
-            verify((2, 0), 17);
-            verify((3, 1), 19);
-            verify((4, 3), 24);
-            verify((4, 2), 25);
-            verify((4, 0), 27);
-            // Special case: joystick key shares LED with key (4, 0)
-            assert_eq!(side.led_number((4, 4)), None);
-        }
+        let verify = |coords: (u8, u8), led: u8| {
+            assert_eq!(BoardSide::led_number(coords), Some(led), "Wrong conversion from coordinates to led number");
+            assert_eq!(BoardSide::led_coords(led), coords, "Wrong conversion from led number to coordinates");
+        };
+        verify((0, 5), 0);
+        verify((0, 2), 3);
+        verify((0, 0), 5);
+        verify((1, 0), 6);
+        verify((1, 1), 7);
+        verify((1, 5), 11);
+        verify((2, 4), 13);
+        verify((2, 0), 17);
+        verify((3, 1), 19);
+        verify((4, 3), 24);
+        verify((4, 2), 25);
+        verify((4, 0), 27);
+        // Special case: joystick key shares LED with key (4, 0)
+        assert_eq!(BoardSide::led_number((4, 4)), None);
     }
 }

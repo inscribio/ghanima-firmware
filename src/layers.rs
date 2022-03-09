@@ -54,6 +54,8 @@ static LAYERS: Layers = layout! {
     }
 };
 
+const MAX: u8 = 150;
+
 static LEDS: LedConfigurations = &[
     LedConfig {
         default: &[
@@ -64,17 +66,17 @@ static LEDS: LedConfigurations = &[
                     repeat: Repeat::Reflect,
                     transitions: &[
                         Transition {
-                            color: RGB8::new(255, 0, 0),
+                            color: RGB8::new(MAX, 0, 0),
                             duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 255, 0),
+                            color: RGB8::new(0, MAX, 0),
                             duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 0, 255),
+                            color: RGB8::new(0, 0, MAX),
                             duration: 1000,
                             interpolation: Interpolation::Linear,
                         },
@@ -94,7 +96,7 @@ static LEDS: LedConfigurations = &[
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(150, 150, 150),
+                            color: RGB8::new(MAX, 0, MAX),
                             duration: 500,
                             interpolation: Interpolation::Linear,
                         },
@@ -114,7 +116,7 @@ static LEDS: LedConfigurations = &[
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 200, 200),
+                            color: RGB8::new(0, MAX, MAX),
                             duration: 3000,
                             interpolation: Interpolation::Linear,
                         },
@@ -129,33 +131,83 @@ static LEDS: LedConfigurations = &[
                     repeat: Repeat::Wrap,
                     transitions: &[
                         Transition {
-                            color: RGB8::new(255, 0, 0),
+                            color: RGB8::new(MAX, 0, 0),
                             duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(255, 255, 0),
+                            color: RGB8::new(MAX, MAX, 0),
                             duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 255, 0),
+                            color: RGB8::new(0, MAX, 0),
                             duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 255, 255),
+                            color: RGB8::new(0, MAX, MAX),
                             duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(0, 0, 255),
+                            color: RGB8::new(0, 0, MAX),
                             duration: 200,
                             interpolation: Interpolation::Linear,
                         },
                         Transition {
-                            color: RGB8::new(255, 0, 255),
+                            color: RGB8::new(MAX, 0, MAX),
                             duration: 200,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::All,
+                condition: Condition::Pressed,
+                pattern: Pattern {
+                    repeat: Repeat::Once,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(255, 255, 255),
+                            duration: 300,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(255, 255, 255),
+                            duration: 100,
+                            interpolation: Interpolation::Piecewise,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 0, 0),
+                            duration: 300,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 },
+                },
+            },
+            LedRule {
+                keys: Keys::Rows(&[0]),
+                condition: Condition::KeyPressed(3, 8),
+                pattern: Pattern {
+                    repeat: Repeat::Once,
+                    transitions: &[
+                        Transition {
+                            color: RGB8::new(MAX, 0, MAX),
+                            duration: 300,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: RGB8::new(MAX, 0, MAX),
+                            duration: 100,
+                            interpolation: Interpolation::Piecewise,
+                        },
+                        Transition {
+                            color: RGB8::new(0, 0, 0),
+                            duration: 300,
                             interpolation: Interpolation::Linear,
                         },
                     ],
