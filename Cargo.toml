@@ -15,11 +15,20 @@ test = false
 bench = false
 
 [profile.dev]
-opt-level = 2
+opt-level = "s"
+lto = "fat"  # won't fit in flash without fat lto
+debug = 2
+incremental = true
+debug-assertions = true
+overflow-checks = true
 
 [profile.release]
-debug = true  # symbols don't increase the size on flash
-lto = true
+opt-level = "s"
+lto = "fat"
+debug = 2  # symbols don't increase the size on flash
+incremental = true
+debug-assertions = false
+overflow-checks = false
 
 [dependencies]
 cortex-m = "0.7"
