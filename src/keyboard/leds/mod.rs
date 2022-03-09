@@ -126,7 +126,6 @@ pub enum KeyboardLed {
 #[derive(Debug)]
 pub struct Pattern {
     pub repeat: Repeat,
-    // Note: first transition should usually have duration 0
     pub transitions: &'static [Transition],
     pub phase: Phase,
 }
@@ -156,6 +155,9 @@ pub struct Transition {
     /// "Destination" color
     pub color: RGB8,
     /// Duration in milliseconds (max duration ~65.5 seconds)
+    ///
+    /// Duration 0 means that this transition will never end, so it can be
+    /// used to specify constant color.
     pub duration: u16,
     /// Color interpolation type
     pub interpolation: Interpolation,

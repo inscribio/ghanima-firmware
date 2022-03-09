@@ -139,6 +139,10 @@ impl<'a> PatternExecutor<'a> {
     /// Advance transitions until the one that should be running now
     fn advance_pattern(start_time: &mut u32, curr_time: u32, pattern: &mut PatternIter<'a>) {
         while let Some(transition) = pattern.curr() {
+            // Duration 0 means that this is endless transition
+            if transition.duration == 0 {
+                return;
+            }
             if curr_time < *start_time + transition.duration as u32 {
                 break;
             }
@@ -171,6 +175,11 @@ impl<'a> PatternExecutor<'a> {
     /// Calculate color at current time
     fn get_color(start_time: u32, curr_time: u32, pattern: &PatternIter<'a>) -> Option<RGB8> {
         let transition = pattern.curr()?;
+
+        // Non-transition, just use static color.
+        if transition.duration == 0 {
+            return Some(transition.color);
+        }
 
         debug_assert!(curr_time >= start_time && curr_time < start_time + transition.duration as u32);
         let curr = transition.color;
