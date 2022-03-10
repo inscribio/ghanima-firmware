@@ -10,6 +10,8 @@ pub mod actions;
 mod keys;
 /// Keyboard lightning control and configuration
 pub mod leds;
+/// Mouse emulation
+pub mod mouse;
 /// Role negotiation between keyboard halves
 mod role;
 

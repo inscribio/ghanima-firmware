@@ -45,6 +45,8 @@ pub enum MouseMovement {
     Right,
     WheelUp,
     WheelDown,
+    PanLeft,
+    PanRight,
 }
 
 /// Changing value of a variable with integer steps
