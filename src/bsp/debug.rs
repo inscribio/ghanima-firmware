@@ -19,6 +19,14 @@ pub struct DebugPins {
     mode: Mode,
 }
 
+/// [`DebugPins`] usable only as GPIO that can be used without mutable reference
+///
+/// This is mainly useful to avoid using locks when debugging via GPIOs.
+/// Note that, because this interface can be used via shared references,
+/// there is no guarantee that usage from other threads won't mess up GPIO
+/// states set in the current thread.
+pub struct DebugGpio(());
+
 #[derive(PartialEq)]
 enum Mode {
     Serial,
@@ -30,6 +38,11 @@ impl DebugPins {
     pub fn new(uart: Uart, (tx, rx): (Tx, Rx), rcc: &mut hal::rcc::Rcc) -> Self {
         let serial = Serial::usart2(uart, (tx, rx), 115_200.bps(), rcc);
         Self { serial, mode: Mode::Serial }
+    }
+
+    pub fn into_gpio(self) -> DebugGpio {
+        self.reconfigure(Mode::Gpio);
+        DebugGpio(())
     }
 
     #[inline(always)]
@@ -153,6 +166,66 @@ impl DebugPins {
         } else {
             pin.set_low().infallible()
         };
+    }
+}
+
+impl DebugGpio {
+    fn tx(&self) -> Pin {
+        let pin: TxPin = unsafe { MaybeUninit::uninit().assume_init() };
+        pin.downgrade()
+    }
+
+    fn rx(&self) -> Pin {
+        let pin: RxPin = unsafe { MaybeUninit::uninit().assume_init() };
+        pin.downgrade()
+    }
+
+    /// Set TX pin value
+    #[inline(always)]
+    pub fn set_tx(&self, value: bool) {
+        DebugPins::set_pin_value(&mut self.tx(), value);
+    }
+
+    /// Set RX pin value
+    #[inline(always)]
+    pub fn set_rx(&self, value: bool) {
+        DebugPins::set_pin_value(&mut self.rx(), value);
+    }
+
+    /// Run given callback with TX pin set high
+    #[inline(always)]
+    pub fn with_tx_high<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T
+    {
+        DebugPins::with_pin_value(self.tx(), true, f)
+    }
+
+    /// Run given callback with TX pin set low
+    #[inline(always)]
+    pub fn with_tx_low<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T
+    {
+        DebugPins::with_pin_value(self.tx(), false, f)
+    }
+
+    /// Run given callback with RX pin set high
+    #[inline(always)]
+    pub fn with_rx_high<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T
+    {
+        DebugPins::with_pin_value(self.rx(), true, f)
+    }
+
+    /// Run given callback with RX pin set low
+    #[inline(always)]
+    pub fn with_rx_low<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T
+    {
+        DebugPins::with_pin_value(self.rx(), false, f)
     }
 }
 
