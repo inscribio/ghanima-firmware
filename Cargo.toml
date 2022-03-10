@@ -8,6 +8,7 @@ edition = "2021"
 default = ["idle_sleep"]
 idle_sleep = []
 crystal = []
+debug_tasks = []
 
 [[bin]]
 name = "ghanima"

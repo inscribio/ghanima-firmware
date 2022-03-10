@@ -25,18 +25,9 @@ mod app {
     type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
     type Leds = ws2812b::Leds<{ bsp::NLEDS }>;
 
-    macro_rules! dbg {
-        (@task_enter, $dbg:expr) => { $dbg.set_rx(true) };
-        (@task_leave, $dbg:expr) => { $dbg.set_rx(false) };
-        (@mark_start, $dbg:expr) => { $dbg.set_tx(true) };
-        (@mark_end, $dbg:expr) => { $dbg.set_tx(false) };
-        (@with_mark, $dbg:expr, $call:expr) => { $dbg.with_tx_high($call) };
-    }
-
     #[shared]
     struct Shared {
         usb: Usb<keyboard::leds::KeyboardLedsState>,
-        dbg: debug::DebugGpio,
         joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
@@ -132,7 +123,7 @@ mod app {
             460_800.bps(),
             &mut rcc,
         ).split();
-        let dbg = debug::DebugPins::new(dev.USART2, (debug_tx, debug_rx), &mut rcc).into_gpio();
+        debug::tasks::init((debug_tx, debug_rx));
 
         // ADC
         let joy_x = ifree(|cs| gpioa.pa0.into_analog(cs));
@@ -178,7 +169,7 @@ mod app {
         }).unwrap();
         spi_tx.start().unwrap();
 
-        dbg!(@with_mark, dbg, || {
+        debug::tasks::trace::run(|| {
             defmt::info!("Liftoff!");
             defmt::debug!("Size of: layout={=usize} led_configs={=usize}",
                 core::mem::size_of_val(&layers::layout()),
@@ -193,7 +184,6 @@ mod app {
         let shared = Shared {
             usb,
             spi_tx,
-            dbg,
             joy,
             serial_tx,
             serial_rx,
@@ -211,9 +201,9 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM15, priority = 4, shared = [&dbg], local = [timer, t: usize = 0])]
+    #[task(binds = TIM15, priority = 4, local = [timer, t: usize = 0])]
     fn tick(cx: tick::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
             let t = cx.local.t;
@@ -236,27 +226,27 @@ mod app {
                 }
             }
         }
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
     /// USB poll
     ///
     /// On an USB interrput we need to handle all classes and receive/send proper data.
     /// This is always a response to USB host polling because host initializes all transactions.
-    #[task(binds = USB, priority = 3, shared = [usb, &dbg])]
+    #[task(binds = USB, priority = 3, shared = [usb])]
     fn usb_poll(mut cx: usb_poll::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         cx.shared.usb.lock(|usb| {
             // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
             // If there was data packet to any class this will return true.
             let _was_packet = usb.poll();
         });
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
-    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb, &dbg], local = [keyboard])]
+    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
     fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
@@ -284,38 +274,38 @@ mod app {
 
         // Set current USB report to the new one, finish if there is no change
         if usb_state != UsbDeviceState::Configured {
-            dbg!(@task_leave, cx.shared.dbg);
+            debug::tasks::task::exit();
             return
         }
         if !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
-            dbg!(@task_leave, cx.shared.dbg);
+            debug::tasks::task::exit();
             return
         }
         // Spin until we are able to send the report.
         // Important: lock separately in each loop iterations and use higher priority for usb_poll
         // to avoid not-so-dead locks (tick may be running all the time preventing usb_poll).
         while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
     /// Apply state updates from keyboard_tick
     ///
     /// This has the same priority as update_leds but we use a queue to eventually apply all
     /// the updates.
-    #[task(priority = 1, shared = [leds, &dbg], capacity = 4)]
+    #[task(priority = 1, shared = [leds], capacity = 4)]
     fn update_led_patterns(cx: update_led_patterns::Context, t: usize, state: keyboard::leds::KeyboardState) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let mut leds = cx.shared.leds;
         leds.lock(|leds| {
             leds.controller_mut()
                 .update_patterns(t as u32, state)
         });
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
-    #[task(priority = 1, shared = [spi_tx, leds, &dbg])]
+    #[task(priority = 1, shared = [spi_tx, leds])]
     fn update_leds(cx: update_leds::Context, t: usize) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let update_leds::SharedResources {
             mut spi_tx,
             mut leds,
@@ -324,13 +314,13 @@ mod app {
 
         // Get new LED colors
         leds.lock(|leds| {
-            let colors = dbg!(@with_mark, cx.shared.dbg, || {
+            let colors = debug::tasks::trace::run(|| {
                 leds.controller_mut().tick(t as u32)
             });
 
             // Prepare data to send and start DMA transfer
             spi_tx.lock(|spi_tx| {
-                dbg!(@with_mark, cx.shared.dbg, || {
+                debug::tasks::trace::run(|| {
                     // TODO: try to use .serialize()
                     spi_tx.push(|buf| colors.serialize_to_slice(buf))
                         .expect("Trying to serialize new data but DMA transfer is not finished");
@@ -338,16 +328,16 @@ mod app {
 
                  spi_tx.start()
                     .expect("If we were able to serialize we must be able to start!");
-                 dbg!(@mark_start, cx.shared.dbg);
+                debug::tasks::trace::start();
             });
         });
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
 
-    #[task(priority = 1, shared = [serial_rx, &dbg], local = [stats: Option<ioqueue::Stats> = None])]
+    #[task(priority = 1, shared = [serial_rx], local = [stats: Option<ioqueue::Stats> = None])]
     fn debug_report(mut cx: debug_report::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let old = cx.local.stats.get_or_insert_with(|| Default::default());
         let new = cx.shared.serial_rx.lock(|rx| {
             rx.stats().clone()
@@ -356,25 +346,25 @@ mod app {
             defmt::warn!("RX stats: {}", new);
             *old = new;
         }
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
-    #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx, &dbg])]
+    #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         cx.shared.spi_tx.lock(|spi_tx| {
            spi_tx.on_interrupt()
                .as_option()
                .transpose()
                .expect("Unexpected interrupt");
         });
-        dbg!(@mark_end, cx.shared.dbg);
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::trace::end();
+        debug::tasks::task::exit();
     }
 
-    #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx, &dbg])]
+    #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx])]
     fn dma_uart_callback(cx: dma_uart_callback::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let tx = cx.shared.serial_tx;
         let rx = cx.shared.serial_rx;
         let crc = cx.shared.crc;
@@ -394,26 +384,29 @@ mod app {
 
             rx_done.or(tx_done).expect("No interrupt handled!");
         });
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
-    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, &dbg], local = [
+    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx], local = [
            empty_count: usize = 0,
     ])]
     fn uart_interrupt(cx: uart_interrupt::Context) {
-        dbg!(@task_enter, cx.shared.dbg);
+        debug::tasks::task::enter();
         let rx = cx.shared.serial_rx;
         let crc = cx.shared.crc;
         (rx, crc).lock(|rx, mut crc| {
             rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
         });
-        dbg!(@task_leave, cx.shared.dbg);
+        debug::tasks::task::exit();
     }
 
-    #[idle(shared = [&dbg])]
+    #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
+            if cfg!(feature = "debug_tasks") {
+                debug::tasks::task::idle();
+            }
             if cfg!(feature = "idle_sleep") {
                 rtic::export::wfi();
             } else {
