@@ -79,7 +79,7 @@ enum EventDef {
 impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, profiles: &'static mouse::MouseSpeedProfiles, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, profiles: &'static mouse::MouseConfig, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
             keys,

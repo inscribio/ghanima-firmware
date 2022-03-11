@@ -8,19 +8,22 @@ use super::actions::{MouseAction, MouseButton, MouseMovement};
 pub struct Mouse {
     buttons: MouseButtons,
     movement: MovementButtons,
-    x: AxisAccumulator<'static>,
-    y: AxisAccumulator<'static>,
-    // TODO: way to invert scrolling
-    wheel: AxisAccumulator<'static>,
-    pan: AxisAccumulator<'static>,
+    xy: PlaneAccumulator<'static>,
+    scroll: PlaneAccumulator<'static>,
 }
 
 /// Speed profiles for mouse emulation
-pub struct MouseSpeedProfiles {
-    pub x: &'static SpeedProfile,
-    pub y: &'static SpeedProfile,
-    pub wheel: &'static SpeedProfile,
-    pub pan: &'static SpeedProfile,
+pub struct MouseConfig {
+    pub x: AxisConfig,
+    pub y: AxisConfig,
+    pub wheel: AxisConfig,
+    pub pan: AxisConfig,
+}
+
+/// Configuration for single movement axis
+pub struct AxisConfig {
+    pub invert: bool,
+    pub profile: &'static SpeedProfile,
 }
 
 /// Constant acceleration mouse speed profile.
@@ -41,13 +44,15 @@ pub struct SpeedProfile {
     pub max_speed: u16,
 }
 
+/// Movement emulation on a 2D plane
+struct PlaneAccumulator<'a> {
+    x: AxisAccumulator<'a>,
+    y: AxisAccumulator<'a>,
+    x_config: &'a AxisConfig,
+    y_config: &'a AxisConfig,
+}
 
-// struct PlaneEmulaator<'a> {
-//     x: AxisEmulator<'a>,
-//     y: AxisEmulator<'a>,
-// }
-
-/// Movement emulator along single axis
+/// Movement emulation along single axis
 struct AxisAccumulator<'a> {
     time: u16,
     accumulated: i32,
@@ -79,14 +84,12 @@ bitfield! {
 
 impl Mouse {
     /// Instantiate with given speed profiles
-    pub fn new(profiles: &'static MouseSpeedProfiles) -> Self {
+    pub fn new(profiles: &'static MouseConfig) -> Self {
         Self {
             buttons: MouseButtons(0),
             movement: MovementButtons(0),
-            x: AxisAccumulator::new(profiles.x),
-            y: AxisAccumulator::new(profiles.y),
-            wheel: AxisAccumulator::new(profiles.wheel),
-            pan: AxisAccumulator::new(profiles.pan),
+            xy: PlaneAccumulator::new(&profiles.x, &profiles.y),
+            scroll: PlaneAccumulator::new(&profiles.pan, &profiles.wheel),
         }
     }
 
@@ -114,73 +117,23 @@ impl Mouse {
         }
     }
 
-    /// Get direction multiplier depending on state of positive and negative button
-    #[inline(always)]
-    const fn direction(positive: bool, negative: bool) -> i32 {
-        match (positive, negative) {
-            (true, true) => 0,
-            (true, false) => 1,
-            (false, true) => -1,
-            (false, false) => 0,
-        }
-    }
-
-    /// Get state of 2D movement (reset_xy, dir_x, dir_y)
-    #[inline(always)]
-    const fn movement_state(up: bool, down: bool, left: bool, right: bool) -> (bool, i32, i32) {
-        let reset_xy = !(up || down || left || right);
-        let dir_x = Self::direction(right, left);
-        let dir_y = Self::direction(down, up);
-        (reset_xy, dir_x, dir_y)
-    }
-
-    /// Calculate x * sqrt(2) (181/256=0.70703125 vs 1/sqrt(2)=0.707106781)
-    #[inline(always)]
-    const fn mul_inv_sqrt2(val: i8) -> i8 {
-        ((val as i32 * 181) / 256) as i8
-    }
-
-    /// Generate 2D speed value if we are moving in both directions
-    #[inline(always)]
-    const fn speed_2d(x: i8, y: i8) -> (i8, i8) {
-        if x != 0 && y != 0 {
-            (Self::mul_inv_sqrt2(x), Self::mul_inv_sqrt2(x))
-        } else {
-            (x, y)
-        }
-    }
-
     /// Advance time and accumulate state
     pub fn tick(&mut self) {
         let m = &self.movement;
-        let (reset_xy, dir_x, dir_y) = Self::movement_state(m.up(), m.down(), m.left(), m.right());
-        let (reset_scroll, dir_pan, dir_wheel) = Self::movement_state(
-            m.wheel_up(), m.wheel_down(), m.pan_left(), m.pan_right());
-
-        self.x.tick(reset_xy, dir_x);
-        self.y.tick(reset_xy, dir_y);
-        self.wheel.tick(reset_scroll, dir_wheel);
-        self.pan.tick(reset_scroll, dir_pan);
+        self.xy.tick(m.up(), m.down(), m.left(), m.right());
+        self.scroll.tick(m.wheel_up(), m.wheel_down(), m.pan_left(), m.pan_right());
     }
 
     /// Try to push mouse report to endpoint or keep current info for the next report.
     pub fn push_report<'a, B: UsbBus>(&mut self, hid: &HIDClass<'a, B>) -> bool {
-        let x = self.x.accumulated();
-        let y = self.y.accumulated();
-        let wheel = self.wheel.accumulated();
-        let pan = self.pan.accumulated();
-
-        let (x, y) = Self::speed_2d(x, y);
-        let (pan, wheel) = Self::speed_2d(pan, wheel);
-
+        let (x, y) = self.xy.accumulated();
+        let (pan, wheel) = self.scroll.accumulated();
         let report = MouseReport { buttons: self.buttons.0, x, y, wheel, pan };
 
         match hid.push_input(&report) {
             Ok(_len) => {
-                self.x.consume();
-                self.y.consume();
-                self.wheel.consume();
-                self.pan.consume();
+                self.xy.consume();
+                self.scroll.consume();
                 true
             }
             Err(e) => match e {
@@ -208,6 +161,62 @@ impl SpeedProfile {
     }
 }
 
+impl<'a> PlaneAccumulator<'a> {
+    pub fn new(x: &'a AxisConfig, y: &'a AxisConfig) -> Self {
+        Self {
+            x: AxisAccumulator::new(x.profile),
+            y: AxisAccumulator::new(y.profile),
+            x_config: x,
+            y_config: y,
+        }
+    }
+
+    pub fn tick(&mut self, up: bool, down: bool, left: bool, right: bool) {
+        let reset = !(up || down || left || right);
+        let dir_x = Self::direction(right, left, self.x_config.invert);
+        let dir_y = Self::direction(down, up, self.y_config.invert);
+        self.x.tick(reset, dir_x);
+        self.y.tick(reset, dir_y);
+    }
+
+    pub fn accumulated(&self) -> (i8, i8) {
+        let (x, y) = (self.x.accumulated(), self.y.accumulated());
+        // Generate 2D speed value if we are moving in both directions
+        if x != 0 && y != 0 {
+            (Self::mul_inv_sqrt2(x), Self::mul_inv_sqrt2(x))
+        } else {
+            (x, y)
+        }
+    }
+
+    pub fn consume(&mut self) {
+        self.x.consume();
+        self.y.consume();
+    }
+
+    /// Calculate x * sqrt(2) (181/256=0.70703125 vs 1/sqrt(2)=0.707106781)
+    #[inline(always)]
+    const fn mul_inv_sqrt2(val: i8) -> i8 {
+        ((val as i32 * 181) / 256) as i8
+    }
+
+    /// Get direction multiplier depending on state of positive and negative button
+    #[inline(always)]
+    const fn direction(positive: bool, negative: bool, invert: bool) -> i32 {
+        let (positive, negative) = if invert {
+            (negative, positive)
+        } else {
+            (positive, negative)
+        };
+        match (positive, negative) {
+            (true, true) => 0,
+            (true, false) => 1,
+            (false, true) => -1,
+            (false, false) => 0,
+        }
+    }
+}
+
 impl<'a> AxisAccumulator<'a> {
     pub const fn new(profile: &'a SpeedProfile) -> Self {
         Self { profile, time: 0, accumulated: 0 }
@@ -222,20 +231,9 @@ impl<'a> AxisAccumulator<'a> {
         let rounded = self.accumulated() as i32 * self.div();
         // Avoid loosing small accumulated values by only subtracting the consumed value
         if rounded.abs() > self.accumulated.abs() {
-            #[cfg(test)]
-            {
-                use std::println;
-                println!("Consuming to {} -> 0", self.accumulated);
-            }
             self.accumulated = 0;
         } else {
-            let a = self.accumulated;
             self.accumulated -= rounded;
-            #[cfg(test)]
-            {
-                use std::println;
-                println!("Consuming {} - {} = {}", a, rounded, self.accumulated);
-            }
         }
     }
 

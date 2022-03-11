@@ -7,7 +7,9 @@ use keyberon::{
 };
 use rgb::RGB8;
 
-use crate::keyboard::{actions::{Action as CustomAction, MouseAction, MouseButton, MouseMovement, Inc}, mouse::{MouseSpeedProfiles, SpeedProfile}};
+use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig};
+use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
+use crate::keyboard::actions::Action as CustomAction;
 use crate::keyboard::leds::*;
 
 pub type Layout = layout::Layout<CustomAction>;
@@ -25,7 +27,7 @@ pub fn led_configs() -> LedConfigurations {
 }
 
 /// Get mouse speed profiles
-pub fn mouse_config() -> &'static MouseSpeedProfiles {
+pub fn mouse_config() -> &'static MouseConfig {
     &MOUSE
 }
 
@@ -96,7 +98,7 @@ static LAYERS: Layers = layout! {
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
         // [ LShift        Z X C V B   N M , . /   RShift        ]
-        [ LShift        Z X C V B   N M {M_S_UP} . /   RShift        ]
+        [ LShift        Z X C V B   N M {M_UP} . /   RShift        ]
         // [ Tab           {KQ} {KW} {KE} {KR} {KT}   {KY} {KU} {KI} {KO} {KP}   BSpace        ]
         // [ {LCTRL_ESC}   {KA} {KS} {KD} {KF} {KG}   {KH} {KJ} {KK} {KL} ;   {RCTRL_QUOTE} ]
         // [ LShift        {KZ} {KX} {KC} {KV} {KB}   {KN} {KM} , . /   RShift        ]
@@ -323,11 +325,23 @@ static LEDS: LedConfigurations = &[
     },
 ];
 
-static MOUSE: MouseSpeedProfiles = MouseSpeedProfiles {
-    x: &MOUSE_PROFILE,
-    y: &MOUSE_PROFILE,
-    wheel: &WHEEL_PROFILE,
-    pan: &WHEEL_PROFILE,
+static MOUSE: MouseConfig = MouseConfig {
+    x: AxisConfig {
+        invert: false,
+        profile: &MOUSE_PROFILE,
+    },
+    y: AxisConfig {
+        invert: false,
+        profile: &MOUSE_PROFILE,
+    },
+    wheel: AxisConfig {
+        invert: true,
+        profile: &WHEEL_PROFILE,
+    },
+    pan: AxisConfig {
+        invert: false,
+        profile: &WHEEL_PROFILE,
+    },
 };
 
 const MOUSE_PROFILE: SpeedProfile = SpeedProfile {
