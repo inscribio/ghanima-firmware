@@ -10,6 +10,7 @@ pub struct Mouse {
     movement: MovementButtons,
     xy: PlaneAccumulator<'static>,
     scroll: PlaneAccumulator<'static>,
+    joystick: Joystick<'static>,
 }
 
 /// Speed profiles for mouse emulation
@@ -18,6 +19,7 @@ pub struct MouseConfig {
     pub y: AxisConfig,
     pub wheel: AxisConfig,
     pub pan: AxisConfig,
+    pub joystick: JoystickConfig,
 }
 
 /// Configuration for single movement axis
@@ -44,6 +46,40 @@ pub struct SpeedProfile {
     pub max_speed: u16,
 }
 
+/// Joystick configuration
+// TODO: movement speed curve
+pub struct JoystickConfig {
+    /// Minimum reading value at which joystick movement is registered
+    pub min: u16,
+    /// Maximum value of joystick readings
+    pub max: u16,
+    /// Divider controlling the joystick speed
+    pub divider: u16,
+    /// Swap X with Y
+    pub swap_axes: bool,
+    /// Invert X axis direction
+    pub invert_x: bool,
+    /// Invert Y axis direction
+    pub invert_y: bool,
+}
+
+/// Joystick data
+struct Joystick<'a> {
+    x: i16,
+    y: i16,
+    x_acc: DivAccumulator,
+    y_acc: DivAccumulator,
+    // TODO: set from joystick config, change via custom actions
+    plane: Plane,
+    config: &'a JoystickConfig,
+}
+
+// Movement plane
+enum Plane {
+    Xy,
+    Scroll,
+}
+
 /// Movement emulation on a 2D plane
 struct PlaneAccumulator<'a> {
     x: AxisAccumulator<'a>,
@@ -55,7 +91,7 @@ struct PlaneAccumulator<'a> {
 /// Movement emulation along single axis
 struct AxisAccumulator<'a> {
     time: u16,
-    accumulated: i32,
+    accumulated: DivAccumulator,
     profile: &'a SpeedProfile,
 }
 
@@ -84,12 +120,13 @@ bitfield! {
 
 impl Mouse {
     /// Instantiate with given speed profiles
-    pub fn new(profiles: &'static MouseConfig) -> Self {
+    pub const fn new(config: &'static MouseConfig) -> Self {
         Self {
             buttons: MouseButtons(0),
             movement: MovementButtons(0),
-            xy: PlaneAccumulator::new(&profiles.x, &profiles.y),
-            scroll: PlaneAccumulator::new(&profiles.pan, &profiles.wheel),
+            xy: PlaneAccumulator::new(&config.x, &config.y),
+            scroll: PlaneAccumulator::new(&config.pan, &config.wheel),
+            joystick: Joystick::new(&config.joystick),
         }
     }
 
@@ -122,18 +159,40 @@ impl Mouse {
         let m = &self.movement;
         self.xy.tick(m.up(), m.down(), m.left(), m.right());
         self.scroll.tick(m.wheel_up(), m.wheel_down(), m.pan_left(), m.pan_right());
+        self.joystick.tick();
+    }
+
+    /// Store latest joystick readings
+    pub fn update_joystick(&mut self, (x, y): (i16, i16)) {
+        self.joystick.set(x, y);
+    }
+
+    fn get_speeds(&self) -> (i8, i8, i8, i8) {
+        let (mut x, mut y) = self.xy.get();
+        let (mut pan, mut wheel) = self.scroll.get();
+        if self.joystick.active() {
+            let (joy_x, joy_y) = (self.joystick.x_acc.get(), self.joystick.y_acc.get());
+            let (px, py) = match self.joystick.plane {
+                Plane::Xy => (&mut x, &mut y),
+                Plane::Scroll => (&mut pan, &mut wheel),
+            };
+            *px = px.saturating_add(joy_x);
+            *py = py.saturating_add(joy_y);
+        }
+        (x, y, pan, wheel)
     }
 
     /// Try to push mouse report to endpoint or keep current info for the next report.
     pub fn push_report<'a, B: UsbBus>(&mut self, hid: &HIDClass<'a, B>) -> bool {
-        let (x, y) = self.xy.accumulated();
-        let (pan, wheel) = self.scroll.accumulated();
+        let (x, y, pan, wheel) = self.get_speeds();
         let report = MouseReport { buttons: self.buttons.0, x, y, wheel, pan };
 
         match hid.push_input(&report) {
             Ok(_len) => {
                 self.xy.consume();
                 self.scroll.consume();
+                self.joystick.x_acc.consume();
+                self.joystick.y_acc.consume();
                 true
             }
             Err(e) => match e {
@@ -162,7 +221,7 @@ impl SpeedProfile {
 }
 
 impl<'a> PlaneAccumulator<'a> {
-    pub fn new(x: &'a AxisConfig, y: &'a AxisConfig) -> Self {
+    pub const fn new(x: &'a AxisConfig, y: &'a AxisConfig) -> Self {
         Self {
             x: AxisAccumulator::new(x.profile),
             y: AxisAccumulator::new(y.profile),
@@ -179,8 +238,8 @@ impl<'a> PlaneAccumulator<'a> {
         self.y.tick(reset, dir_y);
     }
 
-    pub fn accumulated(&self) -> (i8, i8) {
-        let (x, y) = (self.x.accumulated(), self.y.accumulated());
+    pub fn get(&self) -> (i8, i8) {
+        let (x, y) = (self.x.accumulated.get(), self.y.accumulated.get());
         // Generate 2D speed value if we are moving in both directions
         if x != 0 && y != 0 {
             (Self::mul_inv_sqrt2(x), Self::mul_inv_sqrt2(x))
@@ -190,8 +249,8 @@ impl<'a> PlaneAccumulator<'a> {
     }
 
     pub fn consume(&mut self) {
-        self.x.consume();
-        self.y.consume();
+        self.x.accumulated.consume();
+        self.y.accumulated.consume();
     }
 
     /// Calculate x * sqrt(2) (181/256=0.70703125 vs 1/sqrt(2)=0.707106781)
@@ -217,29 +276,46 @@ impl<'a> PlaneAccumulator<'a> {
     }
 }
 
-impl<'a> AxisAccumulator<'a> {
-    pub const fn new(profile: &'a SpeedProfile) -> Self {
-        Self { profile, time: 0, accumulated: 0 }
+/// Accumulate values to read at lower resolution depending on divider.
+struct DivAccumulator {
+    value: i32,
+    divider: u16,
+}
+
+impl DivAccumulator {
+    pub const fn new(divider: u16) -> Self {
+        Self { value: 0, divider }
+    }
+
+    pub fn accumulate(&mut self, value: i32) {
+        self.value = self.value.saturating_add(value);
+    }
+
+    pub fn get(&self) -> i8 {
+        (self.value / self.div())
+            .clamp(i8::MIN as i32, i8::MAX as i32) as i8
+    }
+
+    pub fn consume(&mut self) {
+        let rounded = self.get() as i32 * self.div();
+        // Avoid loosing small accumulated values by only subtracting the consumed value
+        if rounded.abs() > self.value.abs() {
+            self.value = 0;
+        } else {
+            self.value -= rounded;
+        }
     }
 
     fn div(&self) -> i32 {
         // Avoid division by 0, while also avoiding (div + 1)
-        self.profile.divider.max(1) as i32
+        self.divider.max(1) as i32
     }
+}
 
-    pub fn consume(&mut self) {
-        let rounded = self.accumulated() as i32 * self.div();
-        // Avoid loosing small accumulated values by only subtracting the consumed value
-        if rounded.abs() > self.accumulated.abs() {
-            self.accumulated = 0;
-        } else {
-            self.accumulated -= rounded;
-        }
-    }
 
-    pub fn accumulated(&self) -> i8 {
-        (self.accumulated / self.div())
-            .clamp(i8::MIN as i32, i8::MAX as i32) as i8
+impl<'a> AxisAccumulator<'a> {
+    pub const fn new(profile: &'a SpeedProfile) -> Self {
+        Self { profile, time: 0, accumulated: DivAccumulator::new(profile.divider) }
     }
 
     pub fn tick(&mut self, reset: bool, dir: i32) {
@@ -249,9 +325,49 @@ impl<'a> AxisAccumulator<'a> {
 
         // Accumulate
         let speed = dir * self.profile.get_speed(self.time) as i32;
-        self.accumulated = self.accumulated.saturating_add(speed);
+        self.accumulated.accumulate(speed);
 
         self.time = self.time.saturating_add(1);
+    }
+}
+
+impl<'a> Joystick<'a> {
+    pub const fn new(config: &'a JoystickConfig) -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            x_acc: DivAccumulator::new(config.divider),
+            y_acc: DivAccumulator::new(config.divider),
+            plane: Plane::Xy,
+            config
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.x.abs() as u16 >= self.config.min || self.y.abs() as u16 >= self.config.min
+    }
+
+    pub fn set(&mut self, x: i16, y: i16) {
+        let x = if self.config.invert_x { -x } else { x };
+        let y = if self.config.invert_y { -y } else { y };
+        let (x, y) = if self.config.swap_axes {
+            (y, x)
+        } else {
+            (x, y)
+        };
+        self.x = x;
+        self.y = y;
+    }
+
+    pub fn tick(&mut self) {
+        if !self.active() {
+            return
+        }
+        let clamped = |val: i16| {
+            (val.signum() * ((val.abs() as u16).min(self.config.max)) as i16) as i32
+        };
+        self.x_acc.accumulate(clamped(self.x));
+        self.y_acc.accumulate(clamped(self.y));
     }
 }
 
@@ -269,19 +385,19 @@ mod tests {
             max_speed: 30,
         };
         let mut acc = AxisAccumulator::new(&profile);
-        assert_eq!(acc.accumulated(), 0);
+        assert_eq!(acc.accumulated.get(), 0);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10);
+        assert_eq!(acc.accumulated.get(), 10);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20);
+        assert_eq!(acc.accumulated.get(), 10 + 20);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20 + 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 + 30);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20 + 30 + 30);
-        acc.consume();
-        assert_eq!(acc.accumulated(), 0);
+        assert_eq!(acc.accumulated.get(), 10 + 20 + 30 + 30);
+        acc.accumulated.consume();
+        assert_eq!(acc.accumulated.get(), 0);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 30);
+        assert_eq!(acc.accumulated.get(), 30);
     }
 
     #[test]
@@ -294,17 +410,17 @@ mod tests {
             max_speed: 30,
         };
         let mut acc = AxisAccumulator::new(&profile);
-        assert_eq!(acc.accumulated(), 0);
+        assert_eq!(acc.accumulated.get(), 0);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10);
+        assert_eq!(acc.accumulated.get(), 10);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20);
+        assert_eq!(acc.accumulated.get(), 10 + 20);
         acc.tick(false, -1);
-        assert_eq!(acc.accumulated(), 10 + 20 - 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 - 30);
         acc.tick(false, -1);
-        assert_eq!(acc.accumulated(), 10 + 20 - 30 - 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 - 30 - 30);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20 - 30 - 30 + 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 - 30 - 30 + 30);
     }
 
     #[test]
@@ -318,15 +434,15 @@ mod tests {
         };
         let mut acc = AxisAccumulator::new(&profile);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 0);
+        assert_eq!(acc.accumulated.get(), 0);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 0);
+        assert_eq!(acc.accumulated.get(), 0);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10);
+        assert_eq!(acc.accumulated.get(), 10);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20);
+        assert_eq!(acc.accumulated.get(), 10 + 20);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 10 + 20 + 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 + 30);
     }
 
     #[test]
@@ -342,9 +458,9 @@ mod tests {
         for _ in 0..5 {
             acc.tick(false, 1);
         }
-        assert_eq!(acc.accumulated(), 10 + 20 + 30 + 30 + 30);
+        assert_eq!(acc.accumulated.get(), 10 + 20 + 30 + 30 + 30);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 127);
+        assert_eq!(acc.accumulated.get(), 127);
     }
 
     #[test]
@@ -360,7 +476,7 @@ mod tests {
         for _ in 0..10 {
             acc.tick(false, 1);
         }
-        assert_eq!(acc.accumulated(), 10 / 2);
+        assert_eq!(acc.accumulated.get(), 10 / 2);
     }
 
     #[test]
@@ -375,7 +491,7 @@ mod tests {
         let mut acc = AxisAccumulator::new(&profile);
         acc.tick(false, 1);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), 100);
+        assert_eq!(acc.accumulated.get(), 100);
     }
 
     #[test]
@@ -391,11 +507,11 @@ mod tests {
         acc.tick(false, 1);
         acc.tick(false, 1);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100) / 10) as i8);
         acc.tick(true, 1);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100 + 50) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100 + 50) / 10) as i8);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100 + 50 + 75) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100 + 50 + 75) / 10) as i8);
     }
 
     #[test]
@@ -411,11 +527,11 @@ mod tests {
         acc.tick(false, 1);
         acc.tick(false, 1);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100) / 10) as i8);
         acc.tick(false, 0);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100) / 10) as i8);
         acc.tick(false, 1);
-        assert_eq!(acc.accumulated(), ((50_i32 + 75 + 100 + 100) / 10) as i8);
+        assert_eq!(acc.accumulated.get(), ((50_i32 + 75 + 100 + 100) / 10) as i8);
     }
 
     #[test]
@@ -444,8 +560,8 @@ mod tests {
         let mut acc = AxisAccumulator::new(&profile);
         for (i, val) in seq.into_iter().enumerate() {
             acc.tick(false, 1);
-            assert_eq!(acc.accumulated(), val, "At i = {}", i);
-            acc.consume();
+            assert_eq!(acc.accumulated.get(), val, "At i = {}", i);
+            acc.accumulated.consume();
         }
     }
 }

@@ -28,18 +28,18 @@ mod app {
     #[shared]
     struct Shared {
         usb: Usb<keyboard::leds::KeyboardLedsState>,
-        joy: joystick::Joystick,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
         leds: keyboard::KeyboardLeds,
+        keyboard: keyboard::Keyboard,
     }
 
     #[local]
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
-        keyboard: keyboard::Keyboard,
+        joy: joystick::Joystick,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -185,16 +185,16 @@ mod app {
         let shared = Shared {
             usb,
             spi_tx,
-            joy,
             serial_tx,
             serial_rx,
             crc,
             leds,
+            keyboard,
         };
 
         let local = Local {
             timer,
-            keyboard,
+            joy,
         };
 
         let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
@@ -214,6 +214,12 @@ mod app {
                 // ignore error if we're too slow
                 if update_leds::spawn(*t).is_err() {
                     defmt::warn!("Spawn failed: update_leds");
+                };
+            }
+
+            if *t % 10 == 0 {
+                if read_joystick::spawn().is_err() {
+                    defmt::warn!("Spawn failed: read_joystick");
                 };
             }
 
@@ -245,7 +251,7 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb], local = [keyboard])]
+    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb, keyboard])]
     fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
         debug::tasks::task::enter();
         let keyboard_tick::SharedResources {
@@ -253,11 +259,11 @@ mod app {
             serial_rx: rx,
             crc,
             usb,
+            keyboard,
         } = cx.shared;
-        let keyboard = cx.local.keyboard;
 
         // Run main keyboard logic
-        let state = (&mut tx, rx, usb).lock(|tx, rx, usb| {
+        let state = (&mut tx, rx, usb, keyboard).lock(|tx, rx, usb, keyboard| {
             keyboard.tick((tx, rx), usb)
         });
 
@@ -267,6 +273,30 @@ mod app {
         // Update LED patterns
         update_led_patterns::spawn(t, state).map_err(|_| ()).unwrap();
         debug::tasks::task::exit();
+    }
+
+    #[task(priority = 1, shared = [keyboard], local = [joy, certainty: u8 = 0])]
+    fn read_joystick(mut cx: read_joystick::Context) {
+        const MAX: u8 = 10;
+        const MARGIN: u8 = 2;
+
+        let certainty = cx.local.certainty;
+
+        // When we are not certain that joystick exists use zeroes
+        let xy = if *certainty >= MAX - MARGIN {
+            cx.local.joy.read_xy()
+        } else {
+            (0, 0)
+        };
+        cx.shared.keyboard.lock(|kb| kb.update_joystick(xy));
+
+        // Update joystick detection knowledge, do this _after_ ADC reading to avoid
+        // messing up the readings.
+        if cx.local.joy.detect() {
+            *certainty = (*certainty + 1).min(MAX);
+        } else {
+            *certainty = certainty.saturating_sub(1);
+        }
     }
 
     /// Apply state updates from keyboard_tick

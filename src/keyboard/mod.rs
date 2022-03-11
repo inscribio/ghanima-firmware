@@ -54,6 +54,13 @@ pub struct KeyboardLeds {
     configs: CircularIter<'static, leds::LedConfig>,
 }
 
+// TODO: use this in new()
+// pub struct KeyboardConfig {
+//     layers: layout::Layers<actions::Action>,
+//     mouse: mouse::MouseConfig,
+//     timeout: u32,
+// }
+
 /// Messages used in communication between keyboard halves
 #[derive(Serialize, Deserialize, PartialEq)]
 pub enum Message {
@@ -79,13 +86,13 @@ enum EventDef {
 impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, profiles: &'static mouse::MouseConfig, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, mouse: &'static mouse::MouseConfig, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
             keys,
             fsm: role::Fsm::with(side, timeout_ticks),
             layout,
-            mouse: mouse::Mouse::new(profiles)
+            mouse: mouse::Mouse::new(mouse)
         }
     }
 
@@ -193,6 +200,10 @@ impl Keyboard {
             layer: self.layout.current_layer() as u8,
             pressed: self.keys.pressed(),
         }
+    }
+
+    pub fn update_joystick(&mut self, xy: (i16, i16)) {
+        self.mouse.update_joystick(xy);
     }
 
     fn handle_action(&mut self, action: &Action, pressed: bool) {

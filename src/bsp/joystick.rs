@@ -92,8 +92,8 @@ impl Joystick {
             (pu as i16 - pd as i16) < MAX_DIFF
         };
 
-        defmt::debug!("Detecting X: f={=u16} pu={=u16} pd={=u16}", floating.0, pull_up.0, pull_down.0);
-        defmt::debug!("Detecting Y: f={=u16} pu={=u16} pd={=u16}", floating.1, pull_up.1, pull_down.1);
+        defmt::trace!("Detecting X: f={=u16} pu={=u16} pd={=u16}", floating.0, pull_up.0, pull_down.0);
+        defmt::trace!("Detecting Y: f={=u16} pu={=u16} pd={=u16}", floating.1, pull_up.1, pull_down.1);
 
         let x = detected(floating.0, pull_up.0, pull_down.0);
         let y = detected(floating.1, pull_up.1, pull_down.1);

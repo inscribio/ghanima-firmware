@@ -7,7 +7,7 @@ use keyberon::{
 };
 use rgb::RGB8;
 
-use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig};
+use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig};
 use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
 use crate::keyboard::actions::Action as CustomAction;
 use crate::keyboard::leds::*;
@@ -102,12 +102,7 @@ static LAYERS: Layers = layout! {
         // [ Tab           {KQ} {KW} {KE} {KR} {KT}   {KY} {KU} {KI} {KO} {KP}   BSpace        ]
         // [ {LCTRL_ESC}   {KA} {KS} {KD} {KF} {KG}   {KH} {KJ} {KK} {KL} ;   {RCTRL_QUOTE} ]
         // [ LShift        {KZ} {KX} {KC} {KV} {KB}   {KN} {KM} , . /   RShift        ]
-        [ n n
-            LGui LAlt {L1_SPACE}
-                Space
-                Enter
-            {L2_ENTER} RAlt LGui
-        n n ]
+        [ LGui LAlt {L1_SPACE} Space {M_L} n n {M_L} Enter {L2_ENTER} RAlt LGui ]
     }
     { // Layer 1 (hold left)
         [ F12   F1      F2   F3   F4    F5       F6 F7         F8   F9  F10   F11    ]
@@ -341,6 +336,14 @@ static MOUSE: MouseConfig = MouseConfig {
     pan: AxisConfig {
         invert: false,
         profile: &WHEEL_PROFILE,
+    },
+    joystick: JoystickConfig {
+        min: 175,
+        max: 4000,
+        divider: 800,
+        invert_x: false,
+        invert_y: true,
+        swap_axes: false,
     },
 };
 
