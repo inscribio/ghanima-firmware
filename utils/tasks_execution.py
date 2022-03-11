@@ -3,6 +3,15 @@
 import argparse
 import pandas as pd
 
+
+def duration_stats(duration, n_bins):
+    df = pd.DataFrame()
+    df['duration [ms]'] = duration * 1e3
+    df['range'] = pd.cut(df['duration [ms]'], n_bins)
+    stats = df.groupby('range').aggregate(func=['mean', 'std', 'count', 'sum'])
+    return stats
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(description='''
         Analyze tasks execution based on data from logic analyzer.
@@ -18,8 +27,10 @@ def main(args=None):
     parser.add_argument(
         '--trace-groups', type=int, default=5,
         help='Number of bins to use when generating histogram of trace pin pulse durations')
-    parser.add_argument('--trace-decimals', type=int, default=5,
+    parser.add_argument('--trace-decimals', type=int, default=2,
                         help='Number of decimal places for calculating trace stats by rounding')
+    parser.add_argument('--task-groups', type=int, default=16,
+                        help='Line --trace-groups but for the "tasks" pin')
     args = parser.parse_args(args)
 
     cols = [args.time_col, args.task_col, args.trace_col]
@@ -40,14 +51,25 @@ def main(args=None):
     df['duration'] = (df['end'] - df['start']).fillna(0)
 
     # Tasks
+    print('=============================')
+    print('=== Data from "tasks" pin ===')
+    print('=============================')
+
     run_time = df.loc[df['tasks'] == 1, 'duration'].sum()
     idle_time = df.loc[df['tasks'] == 0, 'duration'].sum()
-    print('Tasks:')
-    print(f'  Idle time = {idle_time * 1e3:.3f} ms')
-    print(f'  Run time  = {run_time * 1e3:.3f} ms')
-    print(f'  CPU usage = {run_time / (run_time + idle_time) * 100:.1f}%')
+    print(f'Idle time = {idle_time * 1e3:.3f} ms')
+    print(f'Run time  = {run_time * 1e3:.3f} ms')
+    print(f'CPU usage = {run_time / (run_time + idle_time) * 100:.1f}%')
+
+    stats = duration_stats(df['duration'], args.task_groups)
+    print('\nStats (pandas.cut):')
+    print(stats.to_string())
 
     # Trace
+    print()
+    print('=============================')
+    print('=== Data from "trace" pin ===')
+    print('=============================')
 
     # Merge sequences of same values into single rows:
     # Compare with shifted: True when a new value appears after a sequence of same values
@@ -65,19 +87,18 @@ def main(args=None):
     merged.drop(columns=['end', 'tasks', 'new_trace', 'groups'], inplace=True)
 
     # Get durations of periods where the pin was high
-    trace = pd.DataFrame()
-    trace['duration'] = merged[merged['trace'] == 1]['duration'].reset_index(drop=True)
-    trace['range'] = pd.cut(trace['duration'], args.trace_groups)
-    stats = trace.groupby('range').aggregate(func=['mean', 'std', 'count', 'sum'])
-    print('\nTrace statistics (pandas.cut):')
-    print(stats)
+    duration = merged[merged['trace'] == 1]['duration'].reset_index(drop=True)
+    stats = duration_stats(duration, args.trace_groups)
+    print('Stats (pandas.cut):')
+    print(stats.to_string())
 
     # Different method
-    trace.drop(columns='range', inplace=True)
-    trace['approx'] = trace['duration'].round(decimals=args.trace_decimals)
+    trace = pd.DataFrame()
+    trace['duration [ms]'] = duration * 1e3
+    trace['approx'] = trace['duration [ms]'].round(decimals=args.trace_decimals)
     stats = trace.groupby('approx').aggregate(func=['mean', 'std', 'count', 'sum'])
-    print('\nTrace statistics (round to decimals):')
-    print(stats)
+    print('\nStats (round to decimals):')
+    print(stats.to_string())
 
 
 if __name__ == "__main__":
