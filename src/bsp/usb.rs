@@ -1,6 +1,8 @@
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::{UsbDevice, UsbVidPid, UsbDeviceBuilder};
 use usbd_dfu_rt::DfuRuntimeClass;
+use usbd_hid::descriptor::{MouseReport, SerializedDescriptor};
+use usbd_hid::hid_class::HIDClass;
 
 use crate::hal::usb;
 use crate::hal_ext::reboot;
@@ -15,7 +17,7 @@ where
 {
     pub dev: UsbDevice<'static, Bus>,
     pub keyboard: keyberon::Class<'static, Bus, L>,
-    // pub mouse: HIDClass<'static, Bus>,
+    pub mouse: HIDClass<'static, Bus>,
     // this does not need to be share but it should be cleaner to have it here
     pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
 }
@@ -28,6 +30,7 @@ where
         // Classes
         let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader);
         let keyboard = keyberon::new_class(bus, leds);
+        let mouse = HIDClass::new(bus, MouseReport::desc(), 10);
 
         // Device
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
@@ -43,7 +46,7 @@ where
             .composite_with_iads()
             .build();
 
-        Self { dev, keyboard, dfu }
+        Self { dev, keyboard, mouse, dfu }
     }
 
     pub fn keyboard_leds(&mut self) -> &L {
@@ -52,6 +55,6 @@ where
 
     /// Periodic USB poll
     pub fn poll(&mut self) -> bool {
-        self.dev.poll(&mut [&mut self.keyboard, &mut self.dfu])
+        self.dev.poll(&mut [&mut self.keyboard, &mut self.mouse, &mut self.dfu])
     }
 }

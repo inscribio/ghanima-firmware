@@ -6,6 +6,8 @@
 
 /// Special keyboard actions
 pub mod actions;
+
+mod event;
 /// Keyboard matrix scanner with debouncing
 mod keys;
 /// Keyboard lightning control and configuration
@@ -21,12 +23,14 @@ use keyberon::layout::{self, Event};
 use usb_device::device::UsbDeviceState;
 
 use crate::bsp::sides::BoardSide;
+use crate::bsp::usb::Usb;
 use crate::ioqueue;
 use crate::hal_ext::crc::Crc;
 use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
 use actions::Action;
+use event::CustomEventExt;
 
 pub use keys::Keys;
 pub use leds::Leds;
@@ -41,6 +45,7 @@ pub struct Keyboard {
     keys: keys::Keys,
     fsm: role::Fsm,
     layout: layout::Layout<Action>,
+    mouse: mouse::Mouse,
 }
 
 /// Keyboard lightning control
@@ -74,12 +79,13 @@ enum EventDef {
 impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, profiles: &'static mouse::MouseSpeedProfiles, timeout_ticks: u32) -> Self {
         let side = *keys.side();
         Self {
             keys,
             fsm: role::Fsm::with(side, timeout_ticks),
             layout,
+            mouse: mouse::Mouse::new(profiles)
         }
     }
 
@@ -94,12 +100,7 @@ impl Keyboard {
     /// halves and resolve key events depending on keyboard layout. Requires information
     /// about current USB state (connected/not connected). Returns keyboard USB HID report
     /// with the keys that are currently pressed and [`KeyboardState`] for LED controller.
-    pub fn tick<TX, RX>(
-        &mut self,
-        (tx, rx): (&mut TX, &mut RX),
-        usb_state: UsbDeviceState,
-        leds: leds::KeyboardLedsState
-    ) -> (KbHidReport, KeyboardState)
+    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb<leds::KeyboardLedsState>) -> KeyboardState
     where
         TX: ioqueue::TransmitQueue<Message>,
         RX: ioqueue::ReceiveQueue<Message>,
@@ -111,7 +112,7 @@ impl Keyboard {
         };
 
         // First update USB state in FSM
-        maybe_tx(tx, self.fsm.usb_state(usb_state == UsbDeviceState::Configured));
+        maybe_tx(tx, self.fsm.usb_state(usb.dev.state() == UsbDeviceState::Configured));
 
         // Process RX data
         while let Some(msg) = rx.get() {
@@ -150,31 +151,51 @@ impl Keyboard {
             }
         }
 
-        // Advance keyboard time
-        let custom = self.layout.tick();
-        match custom {
-            layout::CustomEvent::NoEvent => {},
-            layout::CustomEvent::Press(act) => self.handle_action(act, true),
-            layout::CustomEvent::Release(act) => self.handle_action(act, false),
+        // Only master should keep track of all the keyboard state
+        if self.fsm.role() == Role::Master {
+            // Advance keyboard time
+            let custom = self.layout.tick();
+            if let Some((action, pressed)) = custom.transposed() {
+                self.handle_action(action, pressed);
+            }
+
+            // Advance mouse emulation time
+            self.mouse.tick();
+
+            // Push USB reports
+            if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
+                // TODO: auto-enable NumLock by checking leds state
+                let kb_report: KbHidReport = self.layout.keycodes().collect();
+                let modified = usb.keyboard.device_mut().set_keyboard_report(kb_report.clone());
+                // Only write to the endpoint if report has changed
+                if modified {
+                    // Keyboard HID report is just a set of keys being pressed, so just ignore this
+                    // report if we were not able to push it because the last one hasn't been read yet.
+                    // If USB host polls so rarely then there's no point in queueing anything, USB host
+                    // will just miss some keys (seems unlikely as a key would have to be pressed for a
+                    // very short time).
+                    // TODO: we could add a small queue to debounce USB hosts with unpredictable lags
+                    usb.keyboard.write(kb_report.as_bytes())
+                        .expect("Bug in class implementation");
+                }
+
+                // Try to push USB mouse report
+                self.mouse.push_report(&usb.mouse);
+            }
         }
 
         // Collect keyboard state
-        let state = leds::KeyboardState {
-            leds,
-            usb_on: usb_state == UsbDeviceState::Configured,
+        // TODO: send LED commands to second half
+        leds::KeyboardState {
+            leds: *usb.keyboard_leds(),
+            usb_on: usb.dev.state() == UsbDeviceState::Configured,
             role: self.fsm.role(),
             layer: self.layout.current_layer() as u8,
             pressed: self.keys.pressed(),
-        };
-
-        // Generate USB report
-        // TODO: auto-enable NumLock by checking leds state
-        let report = self.layout.keycodes().collect();
-
-        (report, state)
+        }
     }
 
-    fn handle_action(&mut self, action: &Action, _press: bool) {
+    fn handle_action(&mut self, action: &Action, pressed: bool) {
         use actions::{LedAction};
         match action {
             Action::Led(led) => match led {
@@ -183,7 +204,7 @@ impl Keyboard {
                 },
                 LedAction::Brightness(_) => todo!(),
             },
-            Action::Mouse(_mouse) => todo!(),
+            Action::Mouse(mouse) => self.mouse.handle_action(mouse, pressed),
         }
     }
 }

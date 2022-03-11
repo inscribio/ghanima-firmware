@@ -7,7 +7,7 @@ use keyberon::{
 };
 use rgb::RGB8;
 
-use crate::keyboard::actions::{Action as CustomAction, MouseAction, MouseButton, MouseMovement, Inc};
+use crate::keyboard::{actions::{Action as CustomAction, MouseAction, MouseButton, MouseMovement, Inc}, mouse::{MouseSpeedProfiles, SpeedProfile}};
 use crate::keyboard::leds::*;
 
 pub type Layout = layout::Layout<CustomAction>;
@@ -22,6 +22,11 @@ pub fn layout() -> Layout {
 /// Get keyboard layout
 pub fn led_configs() -> LedConfigurations {
     LEDS
+}
+
+/// Get mouse speed profiles
+pub fn mouse_config() -> &'static MouseSpeedProfiles {
+    &MOUSE
 }
 
 const HOLDTAP_TIMEOUT: u16 = 180;
@@ -90,7 +95,8 @@ static LAYERS: Layers = layout! {
         [ '`'           1 2 3 4 5   6 7 8 9 0   '\\'          ]
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
-        [ LShift        Z X C V B   N M , . /   RShift        ]
+        // [ LShift        Z X C V B   N M , . /   RShift        ]
+        [ LShift        Z X C V B   N M {M_S_UP} . /   RShift        ]
         // [ Tab           {KQ} {KW} {KE} {KR} {KT}   {KY} {KU} {KI} {KO} {KP}   BSpace        ]
         // [ {LCTRL_ESC}   {KA} {KS} {KD} {KF} {KG}   {KH} {KJ} {KK} {KL} ;   {RCTRL_QUOTE} ]
         // [ LShift        {KZ} {KX} {KC} {KV} {KB}   {KN} {KM} , . /   RShift        ]
@@ -316,3 +322,26 @@ static LEDS: LedConfigurations = &[
         layers: &[],
     },
 ];
+
+static MOUSE: MouseSpeedProfiles = MouseSpeedProfiles {
+    x: &MOUSE_PROFILE,
+    y: &MOUSE_PROFILE,
+    wheel: &WHEEL_PROFILE,
+    pan: &WHEEL_PROFILE,
+};
+
+const MOUSE_PROFILE: SpeedProfile = SpeedProfile {
+    divider: 10000,
+    delay: 50,
+    acceleration_time: 750,
+    start_speed: 5000,
+    max_speed: 15000,
+};
+
+const WHEEL_PROFILE: SpeedProfile = SpeedProfile {
+    divider: 1000,
+    delay: 50,
+    acceleration_time: 750,
+    start_speed: 25,
+    max_speed: 50,
+};

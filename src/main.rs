@@ -12,7 +12,7 @@ mod app {
     use cortex_m::interrupt::free as ifree;
     use super::hal;
     use hal::prelude::*;
-    use usb_device::{prelude::*, class_prelude::UsbBusAllocator};
+    use usb_device::class_prelude::UsbBusAllocator;
 
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
@@ -156,6 +156,7 @@ mod app {
         let keyboard = keyboard::Keyboard::new(
             keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
             layers::layout(),
+            layers::mouse_config(),
             1000,
         );
 
@@ -251,40 +252,20 @@ mod app {
             serial_tx: mut tx,
             serial_rx: rx,
             crc,
-            mut usb,
-            ..
+            usb,
         } = cx.shared;
         let keyboard = cx.local.keyboard;
 
-        // Retrieve current USB state
-        let (usb_state, usb_leds) = usb.lock(|usb| {
-            (usb.dev.state(), *usb.keyboard_leds())
+        // Run main keyboard logic
+        let state = (&mut tx, rx, usb).lock(|tx, rx, usb| {
+            keyboard.tick((tx, rx), usb)
         });
-
-        // Run keyboard logic and get the USB report
-        let (report, state) = (&mut tx, rx).lock(|tx, rx| {
-            keyboard.tick((tx, rx), usb_state, usb_leds)
-        });
-
-        // Update LED patterns
-        update_led_patterns::spawn(t, state).map_err(|_| ()).unwrap();
 
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
-        // Set current USB report to the new one, finish if there is no change
-        if usb_state != UsbDeviceState::Configured {
-            debug::tasks::task::exit();
-            return
-        }
-        if !usb.lock(|usb| usb.keyboard.device_mut().set_keyboard_report(report.clone())) {
-            debug::tasks::task::exit();
-            return
-        }
-        // Spin until we are able to send the report.
-        // Important: lock separately in each loop iterations and use higher priority for usb_poll
-        // to avoid not-so-dead locks (tick may be running all the time preventing usb_poll).
-        while let Ok(0) = usb.lock(|usb| usb.keyboard.write(report.as_bytes())) {}
+        // Update LED patterns
+        update_led_patterns::spawn(t, state).map_err(|_| ()).unwrap();
         debug::tasks::task::exit();
     }
 
@@ -309,7 +290,6 @@ mod app {
         let update_leds::SharedResources {
             mut spi_tx,
             mut leds,
-            ..
         } = cx.shared;
 
         // Get new LED colors
