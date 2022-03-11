@@ -49,7 +49,8 @@ opt-level = 3
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-cortex-m-rtic = "1.0"
+# cortex-m-rtic = "1.0"
+cortex-m-rtic = { git = "https://github.com/rtic-rs/cortex-m-rtic.git", rev = "c6231d81" }
 stm32f0 = "0.14"
 stm32f0xx-hal = { version = "0.18", features = ["stm32f072", "stm32-usbd"] }
 systick-monotonic = "1.0"
