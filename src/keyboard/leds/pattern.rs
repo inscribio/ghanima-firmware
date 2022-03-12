@@ -82,7 +82,7 @@ impl<'a> LedController<'a> {
 
     /// Change current configuration
     ///
-    /// Note that [`PatternController::update_patterns`] must be called to actually
+    /// Note that [`Self::update_patterns`] must be called to actually
     /// reset patterns to use the new configuration.
     pub fn set_config(&mut self, config: &'a LedConfig) {
         self.config = config;

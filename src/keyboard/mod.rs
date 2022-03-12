@@ -6,8 +6,6 @@
 
 /// Special keyboard actions
 pub mod actions;
-
-mod event;
 /// Keyboard matrix scanner with debouncing
 mod keys;
 /// Keyboard lightning control and configuration
@@ -29,7 +27,7 @@ use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
 use actions::Action;
-use event::CustomEventExt;
+use keyberon::layout::CustomEvent;
 
 pub use keys::Keys;
 pub use leds::LedController;
@@ -227,5 +225,21 @@ impl LedsUpdate {
         //     leds.set_brightness(brightness);
         // }
         leds.update_patterns(time, self.state);
+    }
+}
+
+/// Extension trait for [`CustomEvent`]
+pub trait CustomEventExt<T: 'static> {
+    /// Convert NoEvent into None, else return Some(T, pressed)
+    fn transposed(self) -> Option<(&'static T, bool)>;
+}
+
+impl<T> CustomEventExt<T> for CustomEvent<T> {
+    fn transposed(self) -> Option<(&'static T, bool)> {
+        match self {
+            CustomEvent::NoEvent => None,
+            CustomEvent::Press(act) => Some((act, true)),
+            CustomEvent::Release(act) => Some((act, false)),
+        }
     }
 }
