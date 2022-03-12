@@ -17,7 +17,7 @@ mod app {
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}};
-    use lib::{keyboard, layers, ioqueue};
+    use lib::{keyboard, config, ioqueue};
 
     const DEBOUNCE_COUNT: u16 = 5;
 
@@ -32,7 +32,7 @@ mod app {
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
-        leds: keyboard::KeyboardLeds,
+        leds: keyboard::LedController<'static>,
         keyboard: keyboard::Keyboard,
     }
 
@@ -153,34 +153,19 @@ mod app {
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
         let serial_rx = keyboard::Receiver::new(serial_rx);
-        let keyboard = keyboard::Keyboard::new(
+        let (keyboard, mut leds) = keyboard::Keyboard::new(
             keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
-            layers::layout(),
-            layers::mouse_config(),
-            1000,
+            &config::CONFIG,
         );
-
-        // Keyboard RGB LEDs controller
-        let mut leds = keyboard::KeyboardLeds::new(board_side, layers::led_configs());
         // Send a first transfer ASAP with all LEDs in initial state
-        spi_tx.push(|buf| {
-            leds.controller_mut()
-                .tick(0)
-                .serialize_to_slice(buf)
-        }).unwrap();
+        spi_tx.push(|buf| leds.tick(0).serialize_to_slice(buf)).unwrap();
         spi_tx.start().unwrap();
-
-        debug::tasks::trace::run(|| {
-            defmt::info!("Liftoff!");
-            defmt::debug!("Size of: layout={=usize} led_configs={=usize}",
-                core::mem::size_of_val(&layers::layout()),
-                core::mem::size_of_val(layers::led_configs()),
-            );
-        });
 
         if !joy.detect() {
             defmt::warn!("Joystick not detected");
         }
+
+        debug::tasks::trace::run(|| defmt::info!("Liftoff!"));
 
         let shared = Shared {
             usb,
@@ -202,7 +187,7 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM15, priority = 4, local = [timer, t: usize = 0])]
+    #[task(binds = TIM15, priority = 4, local = [timer, t: u32 = 0])]
     fn tick(cx: tick::Context) {
         debug::tasks::task::enter();
         // Clears interrupt flag
@@ -212,8 +197,8 @@ mod app {
 
             if *t % 10 == 0 {
                 // ignore error if we're too slow
-                if update_leds::spawn(*t).is_err() {
-                    defmt::warn!("Spawn failed: update_leds");
+                if leds_tick::spawn(*t).is_err() {
+                    defmt::warn!("Spawn failed: leds_tick");
                 };
             }
 
@@ -252,7 +237,7 @@ mod app {
     }
 
     #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb, keyboard])]
-    fn keyboard_tick(cx: keyboard_tick::Context, t: usize) {
+    fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
         debug::tasks::task::enter();
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
@@ -263,7 +248,7 @@ mod app {
         } = cx.shared;
 
         // Run main keyboard logic
-        let state = (&mut tx, rx, usb, keyboard).lock(|tx, rx, usb, keyboard| {
+        let leds_update = (&mut tx, rx, usb, keyboard).lock(|tx, rx, usb, keyboard| {
             keyboard.tick((tx, rx), usb)
         });
 
@@ -271,7 +256,7 @@ mod app {
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
         // Update LED patterns
-        update_led_patterns::spawn(t, state).map_err(|_| ()).unwrap();
+        update_leds_state::spawn(t, leds_update).map_err(|_| ()).unwrap();
         debug::tasks::task::exit();
     }
 
@@ -304,31 +289,27 @@ mod app {
     /// This has the same priority as update_leds but we use a queue to eventually apply all
     /// the updates.
     #[task(priority = 1, shared = [leds], capacity = 4)]
-    fn update_led_patterns(cx: update_led_patterns::Context, t: usize, state: keyboard::leds::KeyboardState) {
+    fn update_leds_state(cx: update_leds_state::Context, t: u32, update: keyboard::LedsUpdate) {
         debug::tasks::task::enter();
         let mut leds = cx.shared.leds;
-        leds.lock(|leds| {
-            leds.controller_mut()
-                .update_patterns(t as u32, state)
-        });
+        leds.lock(|leds| update.apply(t, leds));
         debug::tasks::task::exit();
     }
 
     #[task(priority = 1, shared = [spi_tx, leds])]
-    fn update_leds(cx: update_leds::Context, t: usize) {
+    fn leds_tick(cx: leds_tick::Context, t: u32) {
         debug::tasks::task::enter();
-        let update_leds::SharedResources {
+        let leds_tick::SharedResources {
             mut spi_tx,
             mut leds,
         } = cx.shared;
 
-        // Get new LED colors
         leds.lock(|leds| {
-            let colors = debug::tasks::trace::run(|| {
-                leds.controller_mut().tick(t as u32)
-            });
+            // Get new LED colors
+            let colors = debug::tasks::trace::run(|| leds.tick(t));
 
-            // Prepare data to send and start DMA transfer
+            // Prepare data to be sent and start DMA transfer.
+            // `leds` must be kept locked because we're serializing from reference.
             spi_tx.lock(|spi_tx| {
                 debug::tasks::trace::run(|| {
                     // TODO: try to use .serialize()

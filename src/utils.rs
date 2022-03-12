@@ -17,6 +17,23 @@ impl<T> InfallibleResult<T> for Result<T, Infallible> {
     }
 }
 
+/// Changing value of a variable with integer steps
+pub enum Inc {
+    /// Up/Increase/Next/Increment
+    Up,
+    /// Down/Decrease/Previous/Decrement
+    Down,
+}
+
+impl Inc {
+    pub fn update<'a, T>(&self, iter: &mut CircularIter<'a, T>) -> &'a T {
+        match self {
+            Inc::Up => iter.next().unwrap(),
+            Inc::Down => iter.next_back().unwrap(),
+        }
+    }
+}
+
 /// Slice iterator in both directions that wraps around to first/last element
 ///
 /// Often the use case is to use [`CircularIter::current`] to access the current

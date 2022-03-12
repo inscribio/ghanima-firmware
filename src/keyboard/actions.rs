@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-use crate::utils::CircularIter;
+pub use crate::utils::Inc;
 
 /// Additional key actions
 pub enum Action {
@@ -47,21 +45,4 @@ pub enum MouseMovement {
     WheelDown,
     PanLeft,
     PanRight,
-}
-
-/// Changing value of a variable with integer steps
-pub enum Inc {
-    /// Up/Increase/Next/Increment
-    Up,
-    /// Down/Decrease/Previous/Decrement
-    Down,
-}
-
-impl Inc {
-    pub fn update<'a, T>(&self, iter: &mut CircularIter<'a, T>) -> &'a T {
-        match self {
-            Inc::Up => iter.next().unwrap(),
-            Inc::Down => iter.next_back().unwrap(),
-        }
-    }
 }

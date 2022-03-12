@@ -40,14 +40,12 @@
 // * in-memory has to split this because we have Layout for key functions and need some led color
 //   config
 
-#![allow(dead_code)]
-
 /// Logic related to rule conditions
 mod condition;
 /// Pattern iteration and color generation logic
 mod pattern;
 
-pub use pattern::{PatternController, Leds};
+pub use pattern::LedController;
 pub use condition::{KeyboardState, KeyboardLedsState};
 
 use rgb::RGB8;

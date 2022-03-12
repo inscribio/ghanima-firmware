@@ -155,11 +155,13 @@ impl DebugPins {
 }
 
 impl DebugGpio {
+    #[inline(always)]
     fn tx(&self) -> Pin {
         let pin: TxPin = unsafe { MaybeUninit::uninit().assume_init() };
         pin.downgrade()
     }
 
+    #[inline(always)]
     fn rx(&self) -> Pin {
         let pin: RxPin = unsafe { MaybeUninit::uninit().assume_init() };
         pin.downgrade()

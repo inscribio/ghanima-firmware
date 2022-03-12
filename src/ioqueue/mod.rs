@@ -23,6 +23,7 @@ type PacketId = u16;
 /// Access to transmitter's queue
 pub trait TransmitQueue<P: Packet> {
     /// Push packet overwriting oldest one if the queue is full
+    // TODO: return bool/enum to indicate if packet was overwritten
     fn push(&mut self, packet: P);
 }
 

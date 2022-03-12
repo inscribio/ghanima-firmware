@@ -19,8 +19,8 @@ extern crate std;
 use stm32f0xx_hal as hal;
 
 pub mod bsp;
+pub mod config;  // TODO: maybe remove from lib and only include in main?
 pub mod hal_ext;
 pub mod ioqueue;
 pub mod keyboard;
-pub mod layers;
 pub mod utils;

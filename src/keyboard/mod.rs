@@ -14,18 +14,17 @@ mod keys;
 pub mod leds;
 /// Mouse emulation
 pub mod mouse;
+/// Messages sent between keyboard halves
+mod msg;
 /// Role negotiation between keyboard halves
 mod role;
 
-use serde::{Serialize, Deserialize};
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
 use usb_device::device::UsbDeviceState;
 
-use crate::bsp::sides::BoardSide;
 use crate::bsp::usb::Usb;
 use crate::ioqueue;
-use crate::hal_ext::crc::Crc;
 use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
@@ -33,12 +32,12 @@ use actions::Action;
 use event::CustomEventExt;
 
 pub use keys::Keys;
-pub use leds::Leds;
+pub use leds::LedController;
 
 /// Transmitter of packets for communication between keyboard halves
-pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<Message, TX, N>;
+pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, N>;
 /// Receiver of packets for communication between keyboard halves
-pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<Message, RX, N, B>;
+pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::Message, RX, N, B>;
 
 /// Split keyboard logic
 pub struct Keyboard {
@@ -46,54 +45,43 @@ pub struct Keyboard {
     fsm: role::Fsm,
     layout: layout::Layout<Action>,
     mouse: mouse::Mouse,
+    led_configs: CircularIter<'static, leds::LedConfig>,
 }
 
-/// Keyboard lightning control
-pub struct KeyboardLeds {
-    controller: leds::PatternController<'static>,
-    configs: CircularIter<'static, leds::LedConfig>,
+/// Keyboard configuration
+pub struct KeyboardConfig {
+    /// Keyboard layers configuration
+    pub layers: layout::Layers<actions::Action>,
+    /// Configuration of mouse emulation
+    pub mouse: &'static mouse::MouseConfig,
+    /// Configuration of RGB LED lightning
+    pub leds: leds::LedConfigurations,
+    /// Timeout for polling the other half about role negotiation
+    pub timeout: u32,
 }
 
-// TODO: use this in new()
-// pub struct KeyboardConfig {
-//     layers: layout::Layers<actions::Action>,
-//     mouse: mouse::MouseConfig,
-//     timeout: u32,
-// }
-
-/// Messages used in communication between keyboard halves
-#[derive(Serialize, Deserialize, PartialEq)]
-pub enum Message {
-    /// Negotiation of roles of each half
-    Role(role::Message),
-    /// Raw key event transmitted to the half that is connected to USB from the other one
-    #[serde(with = "EventDef")]
-    Key(Event),
-}
-
-impl ioqueue::Packet for Message {
-    type Checksum = Crc;
-}
-
-// Work around Event not implementing Serialize: https://serde.rs/remote-derive.html
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "Event")]
-enum EventDef {
-    Press(u8, u8),
-    Release(u8, u8),
+/// Deferred update of LED controller state
+pub struct LedsUpdate {
+    state: KeyboardState,
+    new_config: Option<&'static leds::LedConfig>,
+    new_brightness: Option<u8>,
 }
 
 impl Keyboard {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, layout: layout::Layout<Action>, mouse: &'static mouse::MouseConfig, timeout_ticks: u32) -> Self {
+    pub fn new(keys: keys::Keys, config: &KeyboardConfig) -> (Self, LedController) {
         let side = *keys.side();
-        Self {
+        let led_configs = CircularIter::new(config.leds);
+        let leds = LedController::new(side, led_configs.current());
+        let keyboard = Self {
             keys,
-            fsm: role::Fsm::with(side, timeout_ticks),
-            layout,
-            mouse: mouse::Mouse::new(mouse)
-        }
+            fsm: role::Fsm::with(side, config.timeout),
+            layout: layout::Layout::new(config.layers),
+            mouse: mouse::Mouse::new(config.mouse),
+            led_configs,
+        };
+        (keyboard, leds)
     }
 
     /// Get current role
@@ -103,18 +91,17 @@ impl Keyboard {
 
     /// Periodic keyboard events processing
     ///
-    /// This should be called in a fixed period. Will handle communication between keyboard
-    /// halves and resolve key events depending on keyboard layout. Requires information
-    /// about current USB state (connected/not connected). Returns keyboard USB HID report
-    /// with the keys that are currently pressed and [`KeyboardState`] for LED controller.
-    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb<leds::KeyboardLedsState>) -> KeyboardState
+    /// This should be called in a fixed period to update internal state, handle communication
+    /// between keyboard halves and resolve key events depending on keyboard layout. Returns
+    /// [`KeyboardState`] to be passed to the LED controller - possibly a lower priority task.
+    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb<leds::KeyboardLedsState>) -> LedsUpdate
     where
-        TX: ioqueue::TransmitQueue<Message>,
-        RX: ioqueue::ReceiveQueue<Message>,
+        TX: ioqueue::TransmitQueue<msg::Message>,
+        RX: ioqueue::ReceiveQueue<msg::Message>,
     {
         let maybe_tx = |tx: &mut TX, msg: Option<role::Message>| {
             if let Some(msg) = msg {
-                tx.push(Message::Role(msg));
+                tx.push(msg::Message::Role(msg));
             }
         };
 
@@ -124,11 +111,11 @@ impl Keyboard {
         // Process RX data
         while let Some(msg) = rx.get() {
             match msg {
-                Message::Role(msg) => {
+                msg::Message::Role(msg) => {
                     defmt::info!("Got role::Message: {}", msg);
                     maybe_tx(tx, self.fsm.on_rx(msg));
                 },
-                Message::Key(event) => {
+                msg::Message::Key(event) => {
                     match event {
                         Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
@@ -153,17 +140,19 @@ impl Keyboard {
                 Role::Slave => {
                     let (i, j) = event.coord();
                     defmt::info!("Send Key({=u8}, {=u8})", i, j);
-                    tx.push(Message::Key(event));
+                    tx.push(msg::Message::Key(event));
                 },
             }
         }
+
+        let mut led_config = None;
 
         // Only master should keep track of all the keyboard state
         if self.fsm.role() == Role::Master {
             // Advance keyboard time
             let custom = self.layout.tick();
             if let Some((action, pressed)) = custom.transposed() {
-                self.handle_action(action, pressed);
+                led_config = self.handle_action(action, pressed);
             }
 
             // Advance mouse emulation time
@@ -193,108 +182,50 @@ impl Keyboard {
 
         // Collect keyboard state
         // TODO: send LED commands to second half
-        leds::KeyboardState {
+        let state = leds::KeyboardState {
             leds: *usb.keyboard_leds(),
             usb_on: usb.dev.state() == UsbDeviceState::Configured,
             role: self.fsm.role(),
             layer: self.layout.current_layer() as u8,
             pressed: self.keys.pressed(),
+        };
+
+        LedsUpdate {
+            state,
+            new_config: led_config,
+            new_brightness: None
         }
     }
 
+    /// Set new joystick reading values
     pub fn update_joystick(&mut self, xy: (i16, i16)) {
         self.mouse.update_joystick(xy);
     }
 
-    fn handle_action(&mut self, action: &Action, pressed: bool) {
-        use actions::{LedAction};
+    fn handle_action(&mut self, action: &Action, pressed: bool) -> Option<&'static leds::LedConfig> {
+        use actions::LedAction;
         match action {
-            Action::Led(led) => match led {
-                LedAction::Cycle(_inc) => {
-                    todo!()
-                },
-                LedAction::Brightness(_) => todo!(),
+            Action::Led(led) => if !pressed {  // only on release
+                match led {
+                    LedAction::Cycle(inc) => return Some(inc.update(&mut self.led_configs)),
+                    LedAction::Brightness(_) => todo!(),
+                }
             },
             Action::Mouse(mouse) => self.mouse.handle_action(mouse, pressed),
-        }
+        };
+        None
     }
 }
 
-impl KeyboardLeds {
-    pub fn new(side: BoardSide, configs: leds::LedConfigurations) -> Self {
-        let configs = CircularIter::new(configs);
-        Self {
-            controller: leds::PatternController::new(side, configs.current()),
-            configs,
+impl LedsUpdate {
+    /// Perform LED controller update
+    pub fn apply(self, time: u32, leds: &mut LedController) {
+        if let Some(config) = self.new_config {
+            leds.set_config(config);
         }
-    }
-
-    /// Get the underlying pattern controller
-    pub fn controller_mut(&mut self) -> &mut leds::PatternController<'static> {
-        &mut self.controller
-    }
-
-    pub fn handle_action(&mut self, action: &actions::LedAction, press: bool) {
-        // On release
-        if !press {
-            match action {
-                actions::LedAction::Cycle(inc) => {
-                    let new = inc.update(&mut self.configs);
-                    self.controller.set_config(new);
-                },
-                actions::LedAction::Brightness(_) => todo!(),
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ioqueue::packet::PacketSer;
-
-    fn verify_serialization(msg: Message, expected: &[u8]) {
-        let mut buf = [0; 32];
-        let mut checksum = Crc::new();
-        let mut buf = msg.to_slice(&mut checksum, &mut buf[..]).unwrap();
-        let len = postcard_cobs::decode_in_place(&mut buf).unwrap();
-        assert_eq!(&buf[..len], expected);
-    }
-
-    #[test]
-    fn message_ser_key_press() {
-        verify_serialization(Message::Key(Event::Press(5, 6)),
-            // Message::Key, Event::Press, i, j, crc16_L, crc16_H, sentinel
-            &[0x01, 0x00, 5, 6, 0x82, 0x8a, 0x00]
-        );
-    }
-
-    #[test]
-    fn message_ser_key_release() {
-        verify_serialization(Message::Key(Event::Release(7, 8)),
-            &[0x01, 0x01, 7, 8, 0x53, 0xee, 0x00]
-        );
-    }
-
-    #[test]
-    fn message_ser_role_establish_master() {
-        verify_serialization(Message::Role(role::Message::EstablishMaster),
-            // Message::Key, role::Message::*, crc16_L, crc16_H, sentinel
-            &[0x00, 0x00, 0x01, 0xb0, 0x00]
-        );
-    }
-
-    #[test]
-    fn message_ser_role_release_master() {
-        verify_serialization(Message::Role(role::Message::ReleaseMaster),
-            &[0x00, 0x01, 0xc0, 0x70, 0x00]
-        );
-    }
-
-    #[test]
-    fn message_ser_role_ack() {
-        verify_serialization(Message::Role(role::Message::Ack),
-            &[0x00, 0x02, 0x80, 0x71, 0x00]
-        );
+        // if let Some(brightness) = self.new_brightness {
+        //     leds.set_brightness(brightness);
+        // }
+        leds.update_patterns(time, self.state);
     }
 }

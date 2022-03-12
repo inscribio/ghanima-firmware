@@ -7,17 +7,17 @@ use super::condition::KeyboardState;
 pub type Leds = ws2812b::Leds<NLEDS>;
 
 /// Generates LED colors according to current [`LedConfig`]
-pub struct PatternController<'a> {
+pub struct LedController<'a> {
     leds: Leds,
     config: &'a LedConfig,
-    patterns: [PatternExecutor<'a>; NLEDS],
+    patterns: [ColorGenerator<'a>; NLEDS],
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
     side: BoardSide,
 }
 
 /// Generates the color for a single LED depending on current time
 #[derive(Default)]
-struct PatternExecutor<'a> {
+struct ColorGenerator<'a> {
     pattern: Option<PatternIter<'a>>,
     start_time: u32,
     once_should_reset: bool,
@@ -31,7 +31,7 @@ struct PatternIter<'a> {
     prev: Option<&'a Transition>,
 }
 
-impl<'a> PatternController<'a> {
+impl<'a> LedController<'a> {
     pub fn new(side: BoardSide, config: &'a LedConfig) -> Self {
         Self {
             leds: Leds::new(),
@@ -89,7 +89,7 @@ impl<'a> PatternController<'a> {
     }
 }
 
-impl<'a> PatternExecutor<'a> {
+impl<'a> ColorGenerator<'a> {
     /// Set new pattern and reset its start time
     fn reset(&mut self, time: u32, pattern: Option<&'a Pattern>) {
         self.pattern = pattern.map(PatternIter::new);
@@ -395,7 +395,7 @@ mod tests {
     }
 
     fn test_pattern_update(seq: &[UpdateStep]) {
-        let mut exec = PatternExecutor::default();
+        let mut exec = ColorGenerator::default();
         assert!(exec.pattern.is_none());
         assert_eq!(exec.start_time, 0);
 
@@ -468,7 +468,7 @@ mod tests {
         let mut start_time = 0;
 
         for (t_curr, (t_start, transition)) in seq {
-            PatternExecutor::advance_pattern(&mut start_time, *t_curr, &mut iter);
+            ColorGenerator::advance_pattern(&mut start_time, *t_curr, &mut iter);
             let curr = iter.curr();
             match transition {
                 None => assert!(curr.is_none(), "t = {}", *t_curr),
@@ -525,8 +525,8 @@ mod tests {
         let mut iter = PatternIter::new(pattern);
         let mut start_time = 0;
         for (time, color) in seq {
-            PatternExecutor::advance_pattern(&mut start_time, *time, &mut iter);
-            assert_eq!(&PatternExecutor::get_color(start_time, *time, &iter), color, "t = {}", *time);
+            ColorGenerator::advance_pattern(&mut start_time, *time, &mut iter);
+            assert_eq!(&ColorGenerator::get_color(start_time, *time, &iter), color, "t = {}", *time);
         }
     }
 

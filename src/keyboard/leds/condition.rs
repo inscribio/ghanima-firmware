@@ -4,7 +4,7 @@ use crate::bsp::NROWS;
 use crate::bsp::sides::BoardSide;
 use crate::keyboard::keys::PressedLedKeys;
 use crate::keyboard::role::Role;
-use super::{Keys, Condition, KeyboardLed};
+use super::{Keys, Condition, KeyboardLed, LedController};
 
 /// Collection of keyboard state variables that can be used as conditions
 #[derive(Clone)]
@@ -28,6 +28,13 @@ bitfield! {
     pub scroll_lock, set_scroll_lock: 2;
     pub compose, set_compose: 3;
     pub kana, set_kana: 4;
+}
+
+impl KeyboardState {
+    /// Apply LED controller state update
+    pub fn update(self, time: u32, controller: &mut LedController) {
+        controller.update_patterns(time, self);
+    }
 }
 
 impl Condition {

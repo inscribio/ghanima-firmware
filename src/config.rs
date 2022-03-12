@@ -1,4 +1,4 @@
-//! Layout and functions of keys on the keyboard
+//! Keyboard configuration
 
 use keyberon::{
     action::{self, k, l, d, m, Action::*, HoldTapConfig},
@@ -9,27 +9,19 @@ use rgb::RGB8;
 
 use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig};
 use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
+use crate::keyboard::KeyboardConfig;
 use crate::keyboard::actions::Action as CustomAction;
 use crate::keyboard::leds::*;
 
-pub type Layout = layout::Layout<CustomAction>;
-pub type Layers = layout::Layers<CustomAction>;
+type Layers = layout::Layers<CustomAction>;
 type Action = action::Action<CustomAction>;
 
-/// Get keyboard layout
-pub fn layout() -> Layout {
-    Layout::new(LAYERS)
-}
-
-/// Get keyboard layout
-pub fn led_configs() -> LedConfigurations {
-    LEDS
-}
-
-/// Get mouse speed profiles
-pub fn mouse_config() -> &'static MouseConfig {
-    &MOUSE
-}
+pub static CONFIG: KeyboardConfig = KeyboardConfig {
+    layers: LAYERS,
+    mouse: &MOUSE,
+    leds: LEDS,
+    timeout: 1000,
+};
 
 const HOLDTAP_TIMEOUT: u16 = 180;
 const HTC: HoldTapConfig = HoldTapConfig::Default;
