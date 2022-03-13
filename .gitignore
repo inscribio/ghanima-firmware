@@ -1,4 +1,11 @@
+# Build dir
 /target/
+# Temporary dev files
 /tmp/
+
+# Local config
 .envrc
 .ignore
+
+# Map files
+/*.map

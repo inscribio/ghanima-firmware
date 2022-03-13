@@ -1,9 +1,13 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 rustflags = [
-  # Requires flip-link (cargo install flip-link)
+  # Protect against stack overflow, requires flip-link (cargo install flip-link)
   "-C", "linker=flip-link",
+  # Main linker script
   "-C", "link-arg=-Tlink.x",
+  # Section for defmt
   "-C", "link-arg=-Tdefmt.x",
+  # Produce a memory map file
+  "-C", "link-arg=-Map=memory.map"
 ]
 runner = "probe-run --chip STM32F072C8Tx"
 
