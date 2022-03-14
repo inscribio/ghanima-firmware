@@ -3,7 +3,7 @@ use keyberon::layout::Event;
 
 use crate::hal_ext::crc::Crc;
 use crate::ioqueue;
-use super::role;
+use super::{role, LedsUpdate};
 
 /// Messages used in communication between keyboard halves
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -13,6 +13,8 @@ pub enum Message {
     /// Raw key event transmitted to the half that is connected to USB from the other one
     #[serde(with = "EventDef")]
     Key(Event),
+    /// Update LEDs state
+    Leds(LedsUpdate),
 }
 
 // Work around Event not implementing Serialize: https://serde.rs/remote-derive.html
@@ -30,6 +32,9 @@ impl ioqueue::Packet for Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keyboard::actions::Inc;
+    use crate::keyboard::keys::PressedLedKeys;
+    use crate::keyboard::leds::{KeyboardState, KeyboardLedsState};
     use crate::ioqueue::packet::PacketSer;
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
@@ -75,5 +80,40 @@ mod tests {
         verify_serialization(Message::Role(role::Message::Ack),
             &[0x00, 0x02, 0x80, 0x71, 0x00]
         );
+    }
+
+    #[test]
+    fn verify_leds_update() {
+        verify_serialization(Message::Leds(LedsUpdate {
+            state: KeyboardState {
+                leds: KeyboardLedsState(0b01010),
+                usb_on: true,
+                role: role::Role::Master,
+                layer: 2,
+                pressed_left: PressedLedKeys::new_raw(0b0000_0000000000000000000000011001),
+                pressed_right: PressedLedKeys::new_raw(0b0000_1100000000000000000000000011),
+            },
+            config: None,
+            brightness: Some(Inc::Down),
+        }),
+            // Message::Leds
+            &[0x02,
+                // leds, usb_on, role, layer
+                0b01010, 1, 0, 2,
+                // pressed_left
+                0b00011001, 0x00, 0x00, 0x00,
+                // pressed_right
+                0b00000011, 0x00, 0x00, 0b0000_1100,
+                // config
+                0x00,
+                // brightness
+                0x01, 0x01,
+                // crc16_L, crc16_H
+                0xc6, 0xcc,
+                // sentinel
+                0x00,
+            ]
+        );
+
     }
 }

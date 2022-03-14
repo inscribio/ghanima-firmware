@@ -1,7 +1,9 @@
 use rgb::{RGB8, ComponentMap};
 
 use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
-use super::{LedConfig, Pattern, Repeat, Transition, Interpolation};
+use crate::keyboard::actions::Inc;
+use crate::utils::CircularIter;
+use super::{LedConfig, Pattern, Repeat, Transition, Interpolation, LedConfigurations};
 use super::condition::KeyboardState;
 
 pub type Leds = ws2812b::Leds<NLEDS>;
@@ -9,7 +11,7 @@ pub type Leds = ws2812b::Leds<NLEDS>;
 /// Generates LED colors according to current [`LedConfig`]
 pub struct LedController<'a> {
     leds: Leds,
-    config: &'a LedConfig,
+    config: CircularIter<'a, LedConfig>,
     patterns: [ColorGenerator<'a>; NLEDS],
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
     side: BoardSide,
@@ -33,14 +35,14 @@ struct PatternIter<'a> {
 }
 
 impl<'a> LedController<'a> {
-    pub fn new(side: BoardSide, config: &'a LedConfig) -> Self {
+    pub fn new(side: BoardSide, configurations: &'a LedConfigurations) -> Self {
         Self {
             leds: Leds::new(),
-            config,
+            config: CircularIter::new(configurations),
             side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
-            brightness: u8::MAX,
+            brightness: u8::MAX/2,
         }
     }
 
@@ -50,18 +52,23 @@ impl<'a> LedController<'a> {
         self.pattern_candidates.fill(None);
 
         // Scan the rules that we might consider, rules on end of list overwrite previous ones.
-        let layer_rules = self.config.layers.get(state.layer as usize);
-        core::iter::once(self.config.default)
+        let config = self.config.current();
+        let layer_rules = config.layers.get(state.layer as usize);
+        core::iter::once(config.default)
             // Optionally overwritten by layer rules
             .chain(layer_rules.copied())
             .for_each(|rules| {
                 for rule in rules {
                     rule.keys.for_each(|row, col| {
-                        // Keys iterator iterates only over non-joystick coordinates
-                        let led_num = BoardSide::led_number((row, col))
-                            .unwrap();
-                        if rule.condition.applies(&state, &self.side, led_num) {
-                            self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
+                        // Only consider rules from this side
+                        if self.side.has_coords((row, col)) {
+                            let local = BoardSide::coords_to_local((row, col));
+                            // Keys iterator iterates only over non-joystick coordinates
+                            let led_num = BoardSide::led_number(local)
+                                .unwrap();
+                            if rule.condition.applies(&state, &self.side, led_num) {
+                                self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
+                            }
                         }
                     });
                 }
@@ -95,8 +102,8 @@ impl<'a> LedController<'a> {
     ///
     /// Note that [`Self::update_patterns`] must be called to actually
     /// reset patterns to use the new configuration.
-    pub fn set_config(&mut self, config: &'a LedConfig) {
-        self.config = config;
+    pub fn cycle_config(&mut self, inc: Inc) {
+        inc.update(&mut self.config);
     }
 
     /// Get current global brightness
@@ -119,6 +126,7 @@ impl<'a> ColorGenerator<'a> {
     }
 
     /// Update pattern if it is different than the current one
+    // TODO: remove time param, use Option<start_time>, set Some in tick(), optimize LedController update
     pub fn update(&mut self, time: u32, pattern: Option<&'a Pattern>) {
         let keep = match (self.pattern.as_ref(), pattern) {
             (Some(this), Some(other)) => {

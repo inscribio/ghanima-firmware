@@ -1,4 +1,5 @@
 use keyberon::{matrix, debounce, layout};
+use serde::{Deserialize, Serialize};
 
 use crate::bsp::{NCOLS, NROWS, NLEDS, ColPin, RowPin, sides::BoardSide};
 use crate::utils::InfallibleResult;
@@ -12,7 +13,7 @@ pub struct Keys {
 }
 
 /// Bit-set storing key states as bit-flags in the order of LEDs
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct PressedLedKeys(u32);
 
 impl Keys {
@@ -61,7 +62,7 @@ impl PressedLedKeys {
         (self.0 & (1 << led)) != 0
     }
 
-    fn update(&mut self, event: &layout::Event) {
+    pub fn update(&mut self, event: &layout::Event) {
         let (row, col, state) = match event {
             layout::Event::Press(i, j) => (i, j, true),
             layout::Event::Release(i, j) => (i, j, false),
@@ -75,5 +76,15 @@ impl PressedLedKeys {
                 self.0 &= !bitmask;
             }
         }
+    }
+
+    /// Get the raw internal state
+    pub fn get_raw(&self) -> u32 {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub fn new_raw(keys: u32) -> Self {
+        Self(keys)
     }
 }

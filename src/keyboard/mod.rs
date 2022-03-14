@@ -19,18 +19,21 @@ mod role;
 
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
-use usb_device::device::UsbDeviceState;
+use serde::{Serialize, Deserialize};
 
+use usb_device::device::UsbDeviceState;
+use crate::bsp::sides::BoardSide;
 use crate::bsp::usb::Usb;
 use crate::ioqueue;
-use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
+use keys::PressedLedKeys;
 
 pub use keys::Keys;
 pub use leds::LedController;
+
 
 /// Transmitter of packets for communication between keyboard halves
 pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, N>;
@@ -43,7 +46,8 @@ pub struct Keyboard {
     fsm: role::Fsm,
     layout: layout::Layout<Action>,
     mouse: mouse::Mouse,
-    led_configs: CircularIter<'static, leds::LedConfig>,
+    prev_state: KeyboardState,
+    pressed_other: PressedLedKeys,
 }
 
 /// Keyboard configuration
@@ -59,9 +63,10 @@ pub struct KeyboardConfig {
 }
 
 /// Deferred update of LED controller state
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct LedsUpdate {
     state: KeyboardState,
-    config: Option<&'static leds::LedConfig>,
+    config: Option<Inc>,
     brightness: Option<Inc>,
 }
 
@@ -70,15 +75,20 @@ impl Keyboard {
     /// (see [`Self::tick`])
     pub fn new(keys: keys::Keys, config: &KeyboardConfig) -> (Self, LedController) {
         let side = *keys.side();
-        let led_configs = CircularIter::new(config.leds);
-        let leds = LedController::new(side, led_configs.current());
-        let keyboard = Self {
-            keys,
-            fsm: role::Fsm::with(side, config.timeout),
-            layout: layout::Layout::new(config.layers),
-            mouse: mouse::Mouse::new(config.mouse),
-            led_configs,
+        let leds = LedController::new(side, &config.leds);
+        let fsm = role::Fsm::with(side, config.timeout);
+        let layout = layout::Layout::new(config.layers);
+        let mouse = mouse::Mouse::new(config.mouse);
+        let prev_state = KeyboardState {
+            leds: leds::KeyboardLedsState(0),
+            usb_on: false,
+            role: fsm.role(),
+            layer: layout.current_layer() as u8,
+            pressed_left: Default::default(),
+            pressed_right: Default::default(),
         };
+        let pressed_other = Default::default();
+        let keyboard = Self { keys, fsm, layout, mouse, prev_state, pressed_other };
         (keyboard, leds)
     }
 
@@ -106,6 +116,9 @@ impl Keyboard {
         // First update USB state in FSM
         maybe_tx(tx, self.fsm.usb_state(usb.dev.state() == UsbDeviceState::Configured));
 
+        // Store LEDs updates from master
+        let mut leds_update = None;
+
         // Process RX data
         while let Some(msg) = rx.get() {
             match msg {
@@ -118,10 +131,17 @@ impl Keyboard {
                         Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
                     }
-                    // Only master cares for key presses from the other half
+                    // Update pressed keys for the other half
+                    self.pressed_other.update(&event.transform(|i, j| {
+                        BoardSide::coords_to_local((i, j))
+                    }));
+                    // Only master uses key events from the other half
                     if self.fsm.role() == Role::Master {
                         self.layout.event(event);
                     }
+                },
+                msg::Message::Leds(leds) => if self.fsm.role() == Role::Slave {
+                    leds_update = Some(leds);
                 },
             }
         }
@@ -143,26 +163,46 @@ impl Keyboard {
             }
         }
 
-        // Collect keyboard state
-        // TODO: send LED commands to second half
-        let mut leds_update = LedsUpdate {
-            state: leds::KeyboardState {
-                leds: *usb.keyboard_leds(),
-                usb_on: usb.dev.state() == UsbDeviceState::Configured,
-                role: self.fsm.role(),
-                layer: self.layout.current_layer() as u8,
-                pressed: self.keys.pressed(),
-            },
-            config: None,
-            brightness: None,
-        };
+        if self.fsm.role() == Role::Slave {
+            // Slave just uses the LED update from master
 
-        // Only master should keep track of all the keyboard state
-        if self.fsm.role() == Role::Master {
+            // Update previous state
+            if let Some(update) = leds_update.as_ref() {
+                self.prev_state = update.state.clone();
+            }
+
+            // Return the new update or use state from previous one
+            leds_update.unwrap_or(LedsUpdate {
+                state: self.prev_state.clone(),
+                config: None,
+                brightness: None,
+            })
+        } else {
+            // Master keeps track of the actual keyboard state
+
+            // Get pressed keys state for each side
+            let (pressed_left, pressed_right) = match self.keys.side() {
+                BoardSide::Left => (self.keys.pressed(), self.pressed_other),
+                BoardSide::Right => (self.pressed_other, self.keys.pressed()),
+            };
+            // Collect state
+            let mut update = LedsUpdate {
+                state: leds::KeyboardState {
+                    leds: *usb.keyboard_leds(),
+                    usb_on: usb.dev.state() == UsbDeviceState::Configured,
+                    role: self.fsm.role(),
+                    layer: self.layout.current_layer() as u8,
+                    pressed_left,
+                    pressed_right,
+                },
+                config: None,
+                brightness: None,
+            };
+
             // Advance keyboard time
             let custom = self.layout.tick();
             if let Some((action, pressed)) = custom.transposed() {
-                self.handle_action(action, pressed, &mut leds_update);
+                self.handle_action(action, pressed, &mut update);
             }
 
             // Advance mouse emulation time
@@ -188,9 +228,22 @@ impl Keyboard {
                 // Try to push USB mouse report
                 self.mouse.push_report(&usb.mouse);
             }
-        }
 
-        leds_update
+            // Transfer LED updates
+            // TODO: the other half still uses it's own configuration so this won't be correct if
+            // each half has different firmware loaded
+            // TODO: need to synchronize time between halves!
+            if update.config.is_some() || update.brightness.is_some() || update.state != self.prev_state {
+                defmt::info!("Send Leds(left={=u32}, right={=u32})",
+                    update.state.pressed_left.get_raw(),
+                    update.state.pressed_right.get_raw(),
+                );
+                tx.push(msg::Message::Leds(update.clone()));
+                self.prev_state = update.state.clone();
+            }
+
+            update
+        }
     }
 
     /// Set new joystick reading values
@@ -202,7 +255,7 @@ impl Keyboard {
         match action {
             Action::Led(led) => if !pressed {  // only on release
                 match led {
-                    LedAction::Cycle(inc) => update.config = Some(inc.update(&mut self.led_configs)),
+                    LedAction::Cycle(inc) => update.config = Some(*inc),
                     LedAction::Brightness(inc) => update.brightness = Some(*inc),
                 }
             },
@@ -217,8 +270,8 @@ impl LedsUpdate {
 
     /// Perform LED controller update
     pub fn apply(self, time: u32, leds: &mut LedController) {
-        if let Some(config) = self.config {
-            leds.set_config(config);
+        if let Some(inc) = self.config {
+            leds.cycle_config(inc);
         }
         if let Some(inc) = self.brightness {
             let new = match inc {

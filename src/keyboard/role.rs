@@ -19,7 +19,7 @@ pub enum Message {
 }
 
 /// Describes current role of keyboard half
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum Role {
     /// Board should act as master: process keyboard events, send USB HID reports,
     /// send commands to slave over serial, etc.
@@ -29,6 +29,8 @@ pub enum Role {
     Slave,
 }
 
+// FIXME: sometimes both end up thinking they are masters?
+// scenario: connect right, connect left, disconnect right, connect right
 statemachine! {
     transitions: {
         // Both sides starts as slaves

@@ -2,6 +2,8 @@
 
 use core::convert::Infallible;
 
+use serde::{Serialize, Deserialize};
+
 /// Helper trait to resolve [`Result`]s with unreachable [`Err`] variant
 pub trait InfallibleResult<T> {
     /// Take the Ok value of an infallible [`Result`]
@@ -18,7 +20,7 @@ impl<T> InfallibleResult<T> for Result<T, Infallible> {
 }
 
 /// Changing value of a variable with integer steps
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Inc {
     /// Up/Increase/Next/Increment
     Up,

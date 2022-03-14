@@ -22,6 +22,14 @@ impl BoardSide {
         }
     }
 
+    /// Get the other side
+    pub fn other(&self) -> BoardSide {
+        match self {
+            BoardSide::Left => BoardSide::Right,
+            BoardSide::Right => BoardSide::Left,
+        }
+    }
+
     const fn coordinates_valid(&self, row: u8, col: u8) -> bool {
         let (row, col) = ((row as usize), (col as usize));
         let row_valid = row < NROWS;
@@ -38,7 +46,7 @@ impl BoardSide {
         2 * NCOLS as u8 - 1 - col
     }
 
-    /// Keyboard matrix coordinates have to be transformed to global representation
+    /// Transform local key coordinates to global coordinates
     pub const fn coords_to_global(&self, (row, col): (u8, u8)) -> (u8, u8) {
         let col = match self {
             Self::Left => col,
@@ -48,14 +56,21 @@ impl BoardSide {
         (row, col)
     }
 
-    /// Keyboard matrix coordinates have to be transformed to global representation
-    pub const fn coords_to_local(&self, (row, col): (u8, u8)) -> (u8, u8) {
-        debug_assert!(self.coordinates_valid(row, col));
-        let col = match self {
-            Self::Left => col,
-            Self::Right => Self::reflect_col(col),
+    /// Transform global key coordinates to local coordinates
+    pub const fn coords_to_local((row, col): (u8, u8)) -> (u8, u8) {
+        let col =  if col >= NCOLS as u8 {
+            Self::reflect_col(col)
+        } else {
+            col
         };
         (row, col)
+    }
+
+    pub fn has_coords(&self, (_row, col): (u8, u8)) -> bool {
+        match self {
+            BoardSide::Left => col < NCOLS as u8,
+            BoardSide::Right => col >= NCOLS as u8,
+        }
     }
 
     /// Get relative key position for this side
@@ -175,10 +190,18 @@ impl BoardSide {
 mod tests {
     use super::*;
 
+    #[test]
+    fn global_to_local() {
+        assert_eq!(BoardSide::coords_to_local((1, 3)), (1, 3));
+        assert_eq!(BoardSide::coords_to_local((1, 8)), (1, 3));
+        assert_eq!(BoardSide::coords_to_local((1, 4)), (1, 4));
+        assert_eq!(BoardSide::coords_to_local((1, 7)), (1, 4));
+    }
+
     fn test_coordinates_translation(side: BoardSide, coords: &[((u8, u8), (u8, u8))]) {
         for (local, global) in coords {
-            assert_eq!(side.coords_to_global(*local), *global);
-            assert_eq!(side.coords_to_local(*global), *local);
+            assert_eq!(side.coords_to_global(*local), *global, "L{:?} -> G{:?}", local, global);
+            assert_eq!(BoardSide::coords_to_local(*global), *local, "G{:?} -> L{:?}", global, local);
         }
     }
 
