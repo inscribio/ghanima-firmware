@@ -69,10 +69,11 @@ where
         self.queue.push(packet);
     }
 
-    /// Check DMA TX state and send packets from queue if possible
-    pub fn tick(&mut self, checksum: &mut P::Checksum) {
+    /// Check DMA TX state and send packets from queue if possible.
+    /// Returns `true` if started a transfer.
+    pub fn tick(&mut self, checksum: &mut P::Checksum) -> bool {
         if !self.tx.is_ready() || self.queue.is_empty() {
-            return;
+            return false;
         }
 
         // Push as much as possible
@@ -109,6 +110,7 @@ where
 
         // Start the transfer, should never fail because we check that tx.is_ready()
         nb::block!(self.tx.start()).map_err(|_| ()).unwrap();
+        true
     }
 
     /// Perform interrupt processing, should be called in all relevant IRQ handlers
