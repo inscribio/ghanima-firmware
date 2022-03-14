@@ -8,7 +8,7 @@ def duration_stats(duration, n_bins):
     df = pd.DataFrame()
     df['duration [ms]'] = duration * 1e3
     df['range'] = pd.cut(df['duration [ms]'], n_bins)
-    stats = df.groupby('range').aggregate(func=['mean', 'std', 'count', 'sum'])
+    stats = df.groupby('range').aggregate(func=['count', 'mean', 'std', 'min', 'max'])
     return stats
 
 
@@ -96,7 +96,7 @@ def main(args=None):
     trace = pd.DataFrame()
     trace['duration [ms]'] = duration * 1e3
     trace['approx'] = trace['duration [ms]'].round(decimals=args.trace_decimals)
-    stats = trace.groupby('approx').aggregate(func=['mean', 'std', 'count', 'sum'])
+    stats = trace.groupby('approx').aggregate(func=['count', 'mean', 'std', 'min', 'max'])
     print('\nStats (round to decimals):')
     print(stats.to_string())
 
