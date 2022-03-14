@@ -34,7 +34,7 @@ mod tests {
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
         let mut buf = [0; 32];
-        let mut checksum = Crc::new();
+        let mut checksum = Crc::new_mock();
         let mut buf = msg.to_slice(&mut checksum, &mut buf[..]).unwrap();
         let len = postcard_cobs::decode_in_place(&mut buf).unwrap();
         assert_eq!(&buf[..len], expected);

@@ -102,7 +102,11 @@ mod mock {
     pub struct Crc(Vec<u8>);
 
     impl Crc {
-        pub fn new() -> Self {
+        pub fn new(_crc: hal::pac::CRC, _rcc: &mut hal::rcc::Rcc) -> Self {
+            Self::new_mock()
+        }
+
+        pub fn new_mock() -> Self {
             Self(Vec::new())
         }
     }
