@@ -128,7 +128,8 @@ impl<const N: usize> Leds<N> {
         Self::BUFFER_SIZE
     }
 
-    const fn gamma_correction(pixel: u8) -> u8 {
+    /// Apply gamma correction
+    pub const fn gamma_correction(pixel: u8) -> u8 {
         // https://docs.rs/smart-leds/0.3.0/src/smart_leds/lib.rs.html#43-45
         const GAMMA: [u8; 256] = [
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,

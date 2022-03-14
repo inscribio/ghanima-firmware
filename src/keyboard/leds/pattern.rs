@@ -1,4 +1,4 @@
-use rgb::RGB8;
+use rgb::{RGB8, ComponentMap};
 
 use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
 use super::{LedConfig, Pattern, Repeat, Transition, Interpolation};
@@ -13,6 +13,7 @@ pub struct LedController<'a> {
     patterns: [ColorGenerator<'a>; NLEDS],
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
     side: BoardSide,
+    brightness: u8,
 }
 
 /// Generates the color for a single LED depending on current time
@@ -39,6 +40,7 @@ impl<'a> LedController<'a> {
             side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
+            brightness: u8::MAX,
         }
     }
 
@@ -72,12 +74,21 @@ impl<'a> LedController<'a> {
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
     pub fn tick(&mut self, time: u32) -> &Leds {
-        for led in 0..NLEDS {
-            let color = self.patterns[led].tick(time);
-            self.leds.set_gamma_corrected(led, &color);
+        debug_assert_eq!(self.patterns.len(), self.leds.leds.len());
+        let patterns = self.patterns.iter_mut();
+        let leds = self.leds.leds.iter_mut();
+
+        for (pattern, led) in patterns.zip(leds) {
+            *led = pattern.tick(time)
+                .map(|channel| Self::dimmed(channel, self.brightness))
+                .map(Leds::gamma_correction);
         }
 
         &self.leds
+    }
+
+    fn dimmed(color: u8, brightness: u8) -> u8 {
+        (((brightness as u16 + 1) * color as u16) >> 8) as u8
     }
 
     /// Change current configuration
@@ -86,6 +97,16 @@ impl<'a> LedController<'a> {
     /// reset patterns to use the new configuration.
     pub fn set_config(&mut self, config: &'a LedConfig) {
         self.config = config;
+    }
+
+    /// Get current global brightness
+    pub fn brightness(&self) -> u8 {
+        self.brightness
+    }
+
+    /// Change global brightness
+    pub fn set_brightness(&mut self, brightness: u8) {
+        self.brightness = brightness;
     }
 }
 
@@ -604,5 +625,18 @@ mod tests {
             (5500, Some(RGB8::new(150, 150, 150))),
             (6000, Some(RGB8::new(200, 200, 200))),
         ]);
+    }
+
+    #[test]
+    fn color_dimming() {
+        assert_eq!(LedController::dimmed(255/2, 255/4), 255/8);
+        // Make sure that brightness 255 won't give color 254
+        for brightness in 0..255 {
+            assert_eq!(LedController::dimmed(255, brightness), brightness);
+        }
+        // ...and that full brightness doesn't change the color
+        for color in 0..255 {
+            assert_eq!(LedController::dimmed(color, 255), color);
+        }
     }
 }

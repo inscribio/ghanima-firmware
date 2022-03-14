@@ -7,7 +7,7 @@ use keyberon::{
 };
 use rgb::RGB8;
 
-use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig};
+use crate::keyboard::{mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig}, actions::LedAction};
 use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
 use crate::keyboard::KeyboardConfig;
 use crate::keyboard::actions::Action as CustomAction;
@@ -84,13 +84,16 @@ const M_S_DOWN: Action = Action::Custom(CustomAction::Mouse(MouseAction::Move(Mo
 const M_PLUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Up)));
 const M_MINUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Down)));
 
+const L_UP: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Up)));
+const L_DOWN: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Down)));
+
 static LAYERS: Layers = layout! {
     { // Default
         [ '`'           1 2 3 4 5   6 7 8 9 0   '\\'          ]
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
         // [ LShift        Z X C V B   N M , . /   RShift        ]
-        [ LShift        Z X C V B   N M {M_UP} . /   RShift        ]
+        [ LShift        Z X C V B   N M {L_DOWN} . /   RShift        ]
         // [ Tab           {KQ} {KW} {KE} {KR} {KT}   {KY} {KU} {KI} {KO} {KP}   BSpace        ]
         // [ {LCTRL_ESC}   {KA} {KS} {KD} {KF} {KG}   {KH} {KJ} {KK} {KL} ;   {RCTRL_QUOTE} ]
         // [ LShift        {KZ} {KX} {KC} {KV} {KB}   {KN} {KM} , . /   RShift        ]

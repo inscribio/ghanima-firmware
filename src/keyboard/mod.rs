@@ -26,7 +26,7 @@ use crate::ioqueue;
 use crate::utils::CircularIter;
 use role::Role;
 use leds::KeyboardState;
-use actions::Action;
+use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 
 pub use keys::Keys;
@@ -61,8 +61,8 @@ pub struct KeyboardConfig {
 /// Deferred update of LED controller state
 pub struct LedsUpdate {
     state: KeyboardState,
-    new_config: Option<&'static leds::LedConfig>,
-    new_brightness: Option<u8>,
+    config: Option<&'static leds::LedConfig>,
+    brightness: Option<Inc>,
 }
 
 impl Keyboard {
@@ -143,14 +143,26 @@ impl Keyboard {
             }
         }
 
-        let mut led_config = None;
+        // Collect keyboard state
+        // TODO: send LED commands to second half
+        let mut leds_update = LedsUpdate {
+            state: leds::KeyboardState {
+                leds: *usb.keyboard_leds(),
+                usb_on: usb.dev.state() == UsbDeviceState::Configured,
+                role: self.fsm.role(),
+                layer: self.layout.current_layer() as u8,
+                pressed: self.keys.pressed(),
+            },
+            config: None,
+            brightness: None,
+        };
 
         // Only master should keep track of all the keyboard state
         if self.fsm.role() == Role::Master {
             // Advance keyboard time
             let custom = self.layout.tick();
             if let Some((action, pressed)) = custom.transposed() {
-                led_config = self.handle_action(action, pressed);
+                self.handle_action(action, pressed, &mut leds_update);
             }
 
             // Advance mouse emulation time
@@ -178,21 +190,7 @@ impl Keyboard {
             }
         }
 
-        // Collect keyboard state
-        // TODO: send LED commands to second half
-        let state = leds::KeyboardState {
-            leds: *usb.keyboard_leds(),
-            usb_on: usb.dev.state() == UsbDeviceState::Configured,
-            role: self.fsm.role(),
-            layer: self.layout.current_layer() as u8,
-            pressed: self.keys.pressed(),
-        };
-
-        LedsUpdate {
-            state,
-            new_config: led_config,
-            new_brightness: None
-        }
+        leds_update
     }
 
     /// Set new joystick reading values
@@ -200,30 +198,35 @@ impl Keyboard {
         self.mouse.update_joystick(xy);
     }
 
-    fn handle_action(&mut self, action: &Action, pressed: bool) -> Option<&'static leds::LedConfig> {
-        use actions::LedAction;
+    fn handle_action(&mut self, action: &Action, pressed: bool, update: &mut LedsUpdate) {
         match action {
             Action::Led(led) => if !pressed {  // only on release
                 match led {
-                    LedAction::Cycle(inc) => return Some(inc.update(&mut self.led_configs)),
-                    LedAction::Brightness(_) => todo!(),
+                    LedAction::Cycle(inc) => update.config = Some(inc.update(&mut self.led_configs)),
+                    LedAction::Brightness(inc) => update.brightness = Some(*inc),
                 }
             },
             Action::Mouse(mouse) => self.mouse.handle_action(mouse, pressed),
         };
-        None
     }
 }
 
 impl LedsUpdate {
+    const BRIGHTNESS_LEVELS: u8 = 8;
+    const BRIGHTNESS_INC: u8 = u8::MAX / Self::BRIGHTNESS_LEVELS;
+
     /// Perform LED controller update
     pub fn apply(self, time: u32, leds: &mut LedController) {
-        if let Some(config) = self.new_config {
+        if let Some(config) = self.config {
             leds.set_config(config);
         }
-        // if let Some(brightness) = self.new_brightness {
-        //     leds.set_brightness(brightness);
-        // }
+        if let Some(inc) = self.brightness {
+            let new = match inc {
+                Inc::Up => leds.brightness().saturating_add(Self::BRIGHTNESS_INC),
+                Inc::Down => leds.brightness().saturating_sub(Self::BRIGHTNESS_INC),
+            };
+            leds.set_brightness(new);
+        }
         leds.update_patterns(time, self.state);
     }
 }

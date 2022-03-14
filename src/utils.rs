@@ -18,6 +18,7 @@ impl<T> InfallibleResult<T> for Result<T, Infallible> {
 }
 
 /// Changing value of a variable with integer steps
+#[derive(Clone, Copy, PartialEq)]
 pub enum Inc {
     /// Up/Increase/Next/Increment
     Up,
