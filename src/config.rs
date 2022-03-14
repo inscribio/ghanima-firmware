@@ -92,11 +92,8 @@ static LAYERS: Layers = layout! {
         [ '`'           1 2 3 4 5   6 7 8 9 0   '\\'          ]
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
-        // [ LShift        Z X C V B   N M , . /   RShift        ]
-        [ LShift        Z X C V B   N M {L_DOWN} . /   RShift        ]
-        // [ Tab           {KQ} {KW} {KE} {KR} {KT}   {KY} {KU} {KI} {KO} {KP}   BSpace        ]
-        // [ {LCTRL_ESC}   {KA} {KS} {KD} {KF} {KG}   {KH} {KJ} {KK} {KL} ;   {RCTRL_QUOTE} ]
-        // [ LShift        {KZ} {KX} {KC} {KV} {KB}   {KN} {KM} , . /   RShift        ]
+        [ LShift        Z X C V B   N M , . /   RShift        ]
+        // [ LShift        Z X C V B   N M {L_DOWN} . /   RShift        ]
         [ LGui LAlt {L1_SPACE} Space {M_L} n n {M_L} Enter {L2_ENTER} RAlt LGui ]
     }
     { // Layer 1 (hold left)
@@ -135,7 +132,57 @@ static LAYERS: Layers = layout! {
     }
 };
 
-const MAX: u8 = 150;
+const MAX: u8 = 200;
+
+#[allow(dead_code)]
+mod colors {
+    use super::*;
+    pub const NONE:    RGB8 = RGB8::new(  0,   0,   0);
+    pub const RED:     RGB8 = RGB8::new(MAX,   0,   0);
+    pub const GREEN:   RGB8 = RGB8::new(0,   MAX,   0);
+    pub const BLUE:    RGB8 = RGB8::new(0,     0, MAX);
+    pub const YELLOW:  RGB8 = RGB8::new(MAX, MAX,   0);
+    pub const MAGENTA: RGB8 = RGB8::new(MAX,   0, MAX);
+    pub const CYAN:    RGB8 = RGB8::new(0,   MAX, MAX);
+    pub const ORANGE:  RGB8 = RGB8::new(MAX, MAX/5, 0);
+    pub const PURPLE:  RGB8 = RGB8::new(MAX/3, 0, MAX);
+    pub const AZURE:   RGB8 = RGB8::new(0, MAX/3, MAX);
+    pub const WHITE:   RGB8 = RGB8::new(MAX, MAX, MAX);
+}
+
+use colors::*;
+
+macro_rules! pattern {
+    ( $repeat:expr, $duration:expr, [ $($color:expr),* $(,)? ] $(,)? ) => {
+        Pattern {
+            repeat: $repeat,
+            phase: Phase { x: 0.0, y: 0.0 },
+            transitions: &[ $(
+                Transition {
+                    color: $color,
+                    duration: $duration,
+                    interpolation: Interpolation::Linear
+                },
+            )* ],
+        }
+    };
+}
+
+macro_rules! constant {
+    ($color:expr) => {
+        Pattern {
+            repeat: Repeat::Wrap,
+            transitions: &[
+                Transition {
+                    color: $color,
+                    duration: 0,
+                    interpolation: Interpolation::Piecewise,
+                },
+            ],
+            phase: Phase { x: 0.0, y: 0.0 },
+        }
+    };
+}
 
 static LEDS: LedConfigurations = &[
     LedConfig {
@@ -143,172 +190,42 @@ static LEDS: LedConfigurations = &[
             LedRule {
                 keys: Keys::All,
                 condition: Condition::Always,
-                pattern: Pattern {
-                    repeat: Repeat::Reflect,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(MAX, 0, 0),
-                            duration: 1000,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, MAX, 0),
-                            duration: 1000,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, 0, MAX),
-                            duration: 1000,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Reflect, 3000, [NONE, AZURE]),
             },
             LedRule {
-                keys: Keys::Rows(&[1, 3]),
+                keys: Keys::Rows(&[1]),
                 condition: Condition::Always,
-                pattern: Pattern {
-                    repeat: Repeat::Wrap,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(0, 0, 0),
-                            duration: 500,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(MAX, 0, MAX),
-                            duration: 500,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Wrap, 1500, [NONE, PURPLE]),
             },
             LedRule {
-                keys: Keys::Cols(&[1, 4]),
+                keys: Keys::Cols(&[1, 10]),
                 condition: Condition::Always,
-                pattern: Pattern {
-                    repeat: Repeat::Wrap,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(0, 0, 0),
-                            duration: 3000,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, MAX, MAX),
-                            duration: 3000,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Wrap, 1000, [NONE, BLUE]),
             },
             LedRule {
-                keys: Keys::Keys(&[(4, 3)]),
+                keys: Keys::Keys(&[(4, 0), (4, 8)]),
                 condition: Condition::Always,
-                pattern: Pattern {
-                    repeat: Repeat::Wrap,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(MAX, 0, 0),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(MAX, MAX, 0),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, MAX, 0),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, MAX, MAX),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(0, 0, MAX),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(MAX, 0, MAX),
-                            duration: 200,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Wrap, 200, [RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA]),
             },
             LedRule {
                 keys: Keys::All,
                 condition: Condition::Pressed(true),
-                pattern: Pattern {
-                    repeat: Repeat::Once,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(255, 255, 255),
-                            duration: 300,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(255, 255, 255),
-                            duration: 100,
-                            interpolation: Interpolation::Piecewise,
-                        },
-                        Transition {
-                            color: RGB8::new(0, 0, 0),
-                            duration: 300,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Once, 250, [RED, RED, NONE]),
             },
             LedRule {
-                keys: Keys::Rows(&[0]),
+                keys: Keys::Rows(&[2]),
                 condition: Condition::KeyPressed(true, (3, 8)),
-                pattern: Pattern {
-                    repeat: Repeat::Once,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(MAX, 0, MAX),
-                            duration: 300,
-                            interpolation: Interpolation::Linear,
-                        },
-                        Transition {
-                            color: RGB8::new(MAX, 0, MAX),
-                            duration: 100,
-                            interpolation: Interpolation::Piecewise,
-                        },
-                        Transition {
-                            color: RGB8::new(0, 0, 0),
-                            duration: 300,
-                            interpolation: Interpolation::Linear,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: pattern!(Repeat::Once, 250, [ORANGE, ORANGE, NONE]),
             },
             LedRule {
-                keys: Keys::Keys(&[(3, 3)]),
+                keys: Keys::Rows(&[3]),
+                condition: Condition::KeyPressed(true, (3, 3)),
+                pattern: pattern!(Repeat::Once, 250, [WHITE, WHITE, NONE]),
+            },
+            LedRule {
+                keys: Keys::Keys(&[(3, 8)]),
                 condition: Condition::Pressed(false),
-                pattern: Pattern {
-                    repeat: Repeat::Wrap,
-                    transitions: &[
-                        Transition {
-                            color: RGB8::new(MAX, MAX, 0),
-                            duration: 0,
-                            interpolation: Interpolation::Piecewise,
-                        },
-                    ],
-                    phase: Phase { x: 0.0, y: 0.0 },
-                },
+                pattern: constant!(YELLOW),
             },
         ],
         layers: &[],
