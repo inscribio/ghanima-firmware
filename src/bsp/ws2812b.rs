@@ -75,6 +75,7 @@ impl<const N: usize> Leds<N> {
     const ONE: [u8; SERIAL_SIZE] = Self::serial_bits(T1H_BITS);
     const ZERO: [u8; SERIAL_SIZE] = Self::serial_bits(T0H_BITS);
 
+    #[inline(always)]
     const fn serial_mask(bit_value: bool, first_half: bool) -> u8 {
         // This is a specialized implementation
         sa::const_assert_eq!(SERIAL_BITS, 4);
@@ -87,20 +88,32 @@ impl<const N: usize> Leds<N> {
     }
 
     fn serialize_colors(colors: &[RGB8], buf: &mut [u8]) {
-        let mut i = 0;
         let bit_msb = |byte: u8, i: usize| (byte & (1 << (7 - i))) != 0;
-        for rgb in colors {
-            let mut serialize_byte = |c: u8| {
-                for j in 0..4 {
-                    let n1 = Self::serial_mask(bit_msb(c, 2*j), true);
-                    let n2 = Self::serial_mask(bit_msb(c, 2*j + 1), false);
-                    buf[i] = n1 | n2;
-                    i += 1;
-                }
-            };
-            serialize_byte(rgb.g);
-            serialize_byte(rgb.r);
-            serialize_byte(rgb.b);
+
+        // Serialization:
+        // RGB(u8, u8, u8) -> ([u8, u8, u8, u8], [u8, u8, u8, u8], [u8, u8, u8, u8])
+        let chunks = buf.chunks_exact_mut(3 * 4);
+
+        for (rgb, chunk) in colors.iter().zip(chunks) {
+            // Byte nibbles computation
+            let n1 = |bit: bool| Self::serial_mask(bit, true);
+            let n2 = |bit: bool| Self::serial_mask(bit, false);
+            // Unroll the inner loop for a significant speedup (in the order of .51 ms -> .13 ms)
+            let c = rgb.g;
+            chunk[ 0] = n1(bit_msb(c, 0)) | n2(bit_msb(c, 1));
+            chunk[ 1] = n1(bit_msb(c, 2)) | n2(bit_msb(c, 3));
+            chunk[ 2] = n1(bit_msb(c, 4)) | n2(bit_msb(c, 5));
+            chunk[ 3] = n1(bit_msb(c, 6)) | n2(bit_msb(c, 7));
+            let c = rgb.r;
+            chunk[ 4] = n1(bit_msb(c, 0)) | n2(bit_msb(c, 1));
+            chunk[ 5] = n1(bit_msb(c, 2)) | n2(bit_msb(c, 3));
+            chunk[ 6] = n1(bit_msb(c, 4)) | n2(bit_msb(c, 5));
+            chunk[ 7] = n1(bit_msb(c, 6)) | n2(bit_msb(c, 7));
+            let c = rgb.b;
+            chunk[ 8] = n1(bit_msb(c, 0)) | n2(bit_msb(c, 1));
+            chunk[ 9] = n1(bit_msb(c, 2)) | n2(bit_msb(c, 3));
+            chunk[10] = n1(bit_msb(c, 4)) | n2(bit_msb(c, 5));
+            chunk[11] = n1(bit_msb(c, 6)) | n2(bit_msb(c, 7));
         }
     }
 
