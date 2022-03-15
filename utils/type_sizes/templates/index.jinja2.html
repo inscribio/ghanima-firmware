@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Types</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="style.css" type="text/css" rel="stylesheet">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="index.js" type="text/javascript" defer></script>
+    </head>
+    <body>
+        {% for type in types %}
+        <li>
+
+            {# Add caret if we need to recurce #}
+            {% if type.tree is not none and type.tree|length %}
+            <span class="caret">
+            {% endif %}
+
+                <span class="type-path">{{ type.name }}</span>:
+                <span class="number">{{ type.size }}</span> bytes,
+                alignment <span class="number">{{ type.alignment }}</span> bytes
+
+            {# Recurse into the list #}
+            {% if type.tree is not none and type.tree|length %}
+            </span>
+            <ul class="nested">
+                {% for node in type.tree recursive %}
+                <li>
+                    {% if node.tree is not none and node.tree|length %}
+                    <span class="caret">
+                    {% endif %}
+
+                        <span class="subtype">
+                            {{ node.__class__.__name__|lower }}
+                        </span>
+
+                        {% if node.name is defined %}
+                        <span class="name">
+                            {{ node.name }}:
+                        </span>
+                        {% endif %}
+
+                        {% if node.size is defined %}
+                        <span class="number">{{ node.size }}</span> bytes,
+                        {% endif %}
+
+                        {% if node.offset is defined %}
+                        offset <span class="number">{{ node.offset }}</span> bytes,
+                        {% endif %}
+
+                        {% if node.alignment is defined %}
+                        alignment <span class="number">{{ node.alignment }}</span> bytes,
+                        {% endif %}
+
+                    {# Recurse into the list #}
+                    {% if node.tree is not none and node.tree|length %}
+                    </span>
+                    <ul class="nested">
+                        {{ loop(node.tree) }}
+                    </ul>
+                    {% endif %}
+                </li>
+
+
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+        </li>
+        {% endfor %}
+    </body>
+</html>
