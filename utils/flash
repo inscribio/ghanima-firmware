@@ -31,7 +31,7 @@ die() {
 
 while (( $# > 0 )); do
     case "$1" in
-        -h)
+        -h|--help)
             echo "Usage: $(basename $0) [ --first-flash ]"
             exit 0 ;;
         --first-flash)
