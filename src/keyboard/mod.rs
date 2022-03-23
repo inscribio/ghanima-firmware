@@ -19,6 +19,7 @@ mod role;
 
 use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
+use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBufferRead, RingBuffer};
 use serde::{Serialize, Deserialize};
 
 use usb_device::device::UsbDeviceState;
@@ -48,6 +49,8 @@ pub struct Keyboard {
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
+    report_queue: ConstGenericRingBuffer<KbHidReport, 4>,
+    report_missed: bool,
 }
 
 /// Keyboard configuration
@@ -88,7 +91,18 @@ impl Keyboard {
             pressed_right: Default::default(),
         };
         let pressed_other = Default::default();
-        let keyboard = Self { keys, fsm, layout, mouse, prev_state, pressed_other };
+        let report_queue = ConstGenericRingBuffer::new();
+        let report_missed = false;
+        let keyboard = Self {
+            keys,
+            fsm,
+            layout,
+            mouse,
+            prev_state,
+            pressed_other,
+            report_queue,
+            report_missed,
+        };
         (keyboard, leds)
     }
 
@@ -212,17 +226,37 @@ impl Keyboard {
             if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
                 // TODO: auto-enable NumLock by checking leds state
                 let kb_report: KbHidReport = self.layout.keycodes().collect();
-                let modified = usb.keyboard.device_mut().set_keyboard_report(kb_report.clone());
-                // Only write to the endpoint if report has changed
-                if modified {
-                    // Keyboard HID report is just a set of keys being pressed, so just ignore this
-                    // report if we were not able to push it because the last one hasn't been read yet.
-                    // If USB host polls so rarely then there's no point in queueing anything, USB host
-                    // will just miss some keys (seems unlikely as a key would have to be pressed for a
-                    // very short time).
-                    // TODO: we could add a small queue to debounce USB hosts with unpredictable lags
-                    usb.keyboard.write(kb_report.as_bytes())
-                        .expect("Bug in class implementation");
+
+                // Add new report only if it is different than the previous one.
+                let add = self.report_queue.peek()
+                    .map(|prev| &kb_report != prev)
+                    .unwrap_or(true);
+
+                // If we missed a report (ring buffer overflow) then we must make sure that an
+                // additional report will be sent to synchronize the HID state.
+                if add || (self.report_missed && self.report_queue.is_empty()) {
+                    self.report_missed = self.report_queue.is_full();
+                    // We're using a small queue to avoid dropping reports, but keyboard HID report
+                    // is just a set of keys being pressed, so just ignore reports if we are unable
+                    // to push them. If USB host polls so rarely then there's no real point in queueing,
+                    // more - host will just miss some keys (though this may lead to problems like a key
+                    // press being locked).
+                    self.report_queue.push(kb_report);
+                }
+
+                if let Some(report) = self.report_queue.peek() {
+                    // TODO: Have to set it here and call .write(). Combined with the queueing logic
+                    // we do extra work (all those copies and comparisons) that could be avoided.
+                    usb.keyboard.device_mut().set_keyboard_report(report.clone());
+                    // Call to .write() will return Ok(0) if the previous report hasn't been sent yet,
+                    // else number of data written. Any other Err should never happen - would be
+                    // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
+                    let ok = usb.keyboard.write(report.as_bytes())
+                        .expect("Bug in class implementation") > 0;
+                    if ok {
+                        // Consume the report on success
+                        self.report_queue.skip();
+                    }
                 }
 
                 // Try to push USB mouse report
