@@ -49,7 +49,13 @@ pub struct Keyboard {
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
-    report_queue: ConstGenericRingBuffer<KbHidReport, 4>,
+    // TODO: instead of having large queue, use smarter way of merging following keyboard reports
+    // e.g. when pressing 4 keys, instead of inserting [A], [A, B], [A, B, C], [A, B, C, D], we
+    // would first insert [A], then update that report; similarly when releasing:
+    // [A, B, C, D], [A, B, C], [A, B], [A]
+    // would be merged into all-to-nothing. But we must make sure that we don't accidentally miss
+    // something when merging.
+    report_queue: ConstGenericRingBuffer<KbHidReport, 8>,
     report_missed: bool,
 }
 
