@@ -93,23 +93,22 @@ static LAYERS: Layers = layout! {
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
         [ LShift        Z X C V B   N M , . /   RShift        ]
-        // [ LShift        Z X C V B   N M {L_DOWN} . /   RShift        ]
-        [ LGui LAlt {L1_SPACE} Space {M_L} n n {M_L} Enter {L2_ENTER} RAlt LGui ]
+        [ LGui LAlt {L1_SPACE} Space {M_L} n n {M_R} Enter {L2_ENTER} RAlt LGui ]
     }
     { // Layer 1 (hold left)
-        [ F12   F1      F2   F3   F4    F5       F6 F7         F8   F9  F10   F11    ]
+        [ F12   F1      F2   F3   F4    F5       F6 F7  F8   F9         F10   F11    ]
         // FIXME: use [LAlt Q], but it fails if not being the last one
-        [ t     t       Home Up   End   PgUp     t  '('        ')'  '_' +     Delete ]
-        [ t     t       Left Down Right PgDown   t  '['        ']'  -   =     t      ]
-        [ t     t       t    t    t     t        t  '{'        '}'  t   t     t      ]
-        [ t     t       t    t    t     Delete   t  {L3_ENTER} LAlt t   t     t      ]
+        [ t     t       Home Up   End   PgUp     t  '(' ')'  '_'        +     Delete ]
+        [ t     t       Left Down Right PgDown   t  '[' ']'  -          =     t      ]
+        [ t     t       t    t    t     t        t  '{' '}'  t          t     t      ]
+        [ t     t       t    t    t     Delete   t  t   t    {L3_ENTER} LAlt  t      ]
     }
     { // Layer 2 (hold right)
-        [ Insert     t      t      t   t          t   t t     t   t   t   t ]
-        [ t          *      Kp7    Kp8 Kp9        -   t '('   ')' '_' +   t ]
-        [ CapsLock   /      Kp4    Kp5 Kp6        +   t '['   ']' -   =   t ]
-        [ t          Kp0    Kp1    Kp2 Kp3        =   t Enter t   t   t   t ]
-        [ t          t      t      t   {L3_SPACE} t   t t     t   t   t   t ]
+        [ t          t      t          t   t     t   t t     t   t   t   Insert ]
+        [ t          *      Kp7        Kp8 Kp9   -   t '('   ')' '_' +   t      ]
+        [ CapsLock   /      Kp4        Kp5 Kp6   +   t '['   ']' -   =   t      ]
+        [ t          Kp0    Kp1        Kp2 Kp3   =   t Enter t   t   t   t      ]
+        [ t          t      {L3_SPACE} t   t     t   t t     t   t   t   t      ]
     }
     { // Layer 3 (hold left->right or right->left)
         [ t   {LDEF}     {LGAM}     t           t          t             t          {M_MINUS}  {M_M}    {M_PLUS}  t               t ]
@@ -123,12 +122,7 @@ static LAYERS: Layers = layout! {
         [ Tab      Q W E R T   Y U I O P   BSpace        ]
         [ LCtrl    A S D F G   H J K L ;   {RCTRL_QUOTE} ]
         [ LShift   Z X C V B   N M , . /   RShift        ]
-        [ n n
-            LGui LAlt Space
-                {L1_SPACE}
-                {L2_ENTER}
-            Enter RAlt LGui
-        n n ]
+        [ LGui LAlt Space {L1_SPACE} {M_L} n n {M_R} {L2_ENTER} Enter RAlt LGui ]
     }
 };
 
