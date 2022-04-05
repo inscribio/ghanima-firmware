@@ -132,7 +132,7 @@ static LAYERS: Layers = layout! {
     }
 };
 
-const MAX: u8 = 200;
+const MAX: u8 = 255;
 
 #[allow(dead_code)]
 mod colors {
@@ -190,42 +190,37 @@ static LEDS: LedConfigurations = &[
             LedRule {
                 keys: Keys::All,
                 condition: Condition::Always,
-                pattern: pattern!(Repeat::Reflect, 3000, [NONE, AZURE]),
-            },
-            LedRule {
-                keys: Keys::Rows(&[1]),
-                condition: Condition::Always,
-                pattern: pattern!(Repeat::Wrap, 1500, [NONE, PURPLE]),
-            },
-            LedRule {
-                keys: Keys::Cols(&[1, 10]),
-                condition: Condition::Always,
-                pattern: pattern!(Repeat::Wrap, 1000, [NONE, BLUE]),
-            },
-            LedRule {
-                keys: Keys::Keys(&[(4, 0), (4, 8)]),
-                condition: Condition::Always,
-                pattern: pattern!(Repeat::Wrap, 200, [RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA]),
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: NONE,
+                            duration: 1500,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: rgb::RGB::new(251, 188, 0),
+                            duration: 2000,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: rgb::RGB::new(251, 188, 0),
+                            duration: 1000,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: NONE,
+                            duration: 1500,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 }
+                }
             },
             LedRule {
                 keys: Keys::All,
                 condition: Condition::Pressed(true),
                 pattern: pattern!(Repeat::Once, 250, [RED, RED, NONE]),
-            },
-            LedRule {
-                keys: Keys::Rows(&[2]),
-                condition: Condition::KeyPressed(true, (3, 8)),
-                pattern: pattern!(Repeat::Once, 250, [ORANGE, ORANGE, NONE]),
-            },
-            LedRule {
-                keys: Keys::Rows(&[3]),
-                condition: Condition::KeyPressed(true, (3, 3)),
-                pattern: pattern!(Repeat::Once, 250, [WHITE, WHITE, NONE]),
-            },
-            LedRule {
-                keys: Keys::Keys(&[(3, 8)]),
-                condition: Condition::Pressed(false),
-                pattern: constant!(YELLOW),
             },
         ],
         layers: &[],
