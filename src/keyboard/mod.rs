@@ -228,7 +228,7 @@ impl Keyboard {
                 let kb_report: KbHidReport = self.layout.keycodes().collect();
 
                 // Add new report only if it is different than the previous one.
-                let add = self.report_queue.peek()
+                let add = self.report_queue.back()
                     .map(|prev| &kb_report != prev)
                     .unwrap_or(true);
 
