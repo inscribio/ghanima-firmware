@@ -28,9 +28,12 @@ where
 {
     pub fn new(bus: &'static UsbBusAllocator<Bus>, side: &BoardSide, leds: L) -> Self {
         // Classes
-        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader);
         let keyboard = keyberon::new_class(bus, leds);
         let mouse = HIDClass::new(bus, MouseReport::desc(), 10);
+        // NOTE: Create it last or else the device won't enumerate on Windows. It seems that Windows
+        // does not like having DFU interface with number 0 and will report invalid configuration
+        // descriptor.
+        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader);
 
         // Device
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
