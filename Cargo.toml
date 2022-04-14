@@ -60,6 +60,7 @@ embedded-hal = "0.2"
 embedded-dma = "0.2"
 
 usb-device = "0.2"
+# usb-device = { git = "https://github.com/ryan-summers/usb-device.git", branch = "rs/issue-82/short-data-stage" }
 usbd-hid = "0.5"
 usbd-dfu-rt = "0.1"
 
@@ -94,3 +95,6 @@ usb-device = { git = "https://github.com/ryan-summers/usb-device.git", branch = 
 assert_float_eq = "1.1"
 crc = "2.1"
 gnuplot = "0.0.37"
+
+[build-dependencies]
+ghanima-config = { path = "./config" }

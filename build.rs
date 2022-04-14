@@ -13,6 +13,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+use ghanima_config::KeyboardConfig;
+
 fn main() {
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
@@ -22,6 +24,10 @@ fn main() {
         .write_all(include_bytes!("memory.x"))
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
+
+    // Generate config schema
+    // KeyboardConfig::schema_to_file(std::path::Path::new("./schema.json")).unwrap();
+    KeyboardConfig::schema_to_file(&out.join("schema.json")).unwrap();
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
