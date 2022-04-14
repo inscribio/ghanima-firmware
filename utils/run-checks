@@ -18,6 +18,8 @@ EOF
 # Avoid linking errors for tests on host
 export DEFMT_LOG=off
 
+host="--target x86_64-unknown-linux-gnu"
+
 case "$1" in
 	-h|--help) usage; ;;
 	watch)
@@ -25,7 +27,8 @@ case "$1" in
 		cargo watch -x "test --target x86_64-unknown-linux-gnu $*"
 		;;
 	*)
+		(cd config && cargo check $host && cargo test $host) && \
 		cargo check && \
-			cargo test --target x86_64-unknown-linux-gnu "$@"
+			cargo test $host "$@"
 		;;
 esac
