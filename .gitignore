@@ -9,3 +9,6 @@
 
 # Map files
 /*.map
+
+# Misc
+/.nvim/
