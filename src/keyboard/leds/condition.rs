@@ -74,6 +74,7 @@ impl Condition {
                     .map(|led| state.pressed(&checked_side).is_pressed(led) == *pressed)
                     .unwrap_or(false)
             },
+            Condition::Not(c) => !c.applies(state, side, led),
         }
     }
 }

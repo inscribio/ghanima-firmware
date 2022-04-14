@@ -106,6 +106,8 @@ pub enum Condition {
     Pressed(bool),
     /// Apply when given key has given pressed state
     KeyPressed(bool, (u8, u8)),
+    /// Applies when the internal condition does not
+    Not(&'static Condition),
 }
 
 /// Standard keyboard LED
