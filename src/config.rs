@@ -93,18 +93,18 @@ static LAYERS: Layers = layout! {
         [ Tab           Q W E R T   Y U I O P   BSpace        ]
         [ {LCTRL_ESC}   A S D F G   H J K L ;   {RCTRL_QUOTE} ]
         [ LShift        Z X C V B   N M , . /   RShift        ]
-        [ LGui LAlt {L1_SPACE} Space {M_L} n n {M_R} Enter {L2_ENTER} RAlt LGui ]
+        [ LGui LAlt {L1_SPACE} n {M_L} n n {M_R} n {L2_ENTER} RAlt LGui ]
     }
     { // Layer 1 (hold left)
-        [ F12   F1      F2   F3   F4    F5       F6 F7  F8   F9         F10   F11    ]
+        [ F12   F1      F2   F3   F4    F5       F6 F7  F8     F9         F10   F11    ]
         // FIXME: use [LAlt Q], but it fails if not being the last one
-        [ t     t       Home Up   End   PgUp     t  '(' ')'  '_'        +     Delete ]
-        [ t     t       Left Down Right PgDown   t  '[' ']'  -          =     t      ]
-        [ t     t       t    t    t     t        t  '{' '}'  t          t     t      ]
-        [ t     t       t    t    t     Delete   t  t   t    {L3_ENTER} LAlt  t      ]
+        [ t     t       Home Up   End   PgUp     t  '(' ')'    '_'        +     Delete ]
+        [ t     t       Left Down Right PgDown   t  '[' ']'    -          =     t      ]
+        [ t     t       t    t    t     t        t  '{' '}'    t          t     t      ]
+        [ t     t       t    t    t     t        t  t   Delete {L3_ENTER} LAlt  t      ]
     }
     { // Layer 2 (hold right)
-        [ t          t      t          t   t     t   t t     t   t   t   Insert ]
+        [ NumLock    t      t          t   t     t   t t     t   t   t   Insert ]
         [ t          *      Kp7        Kp8 Kp9   -   t '('   ')' '_' +   t      ]
         [ CapsLock   /      Kp4        Kp5 Kp6   +   t '['   ']' -   =   t      ]
         [ t          Kp0    Kp1        Kp2 Kp3   =   t Enter t   t   t   t      ]
@@ -215,6 +215,16 @@ static LEDS: LedConfigurations = &[
                 keys: Keys::All,
                 condition: Condition::Pressed(true),
                 pattern: pattern!(Repeat::Once, 250, [RED, RED, NONE]),
+            },
+            LedRule {
+                keys: Keys::All,
+                condition: Condition::Not(&Condition::Led(KeyboardLed::NumLock)),
+                pattern: constant!(BLUE),
+            },
+            LedRule {
+                keys: Keys::All,
+                condition: Condition::Led(KeyboardLed::CapsLock),
+                pattern: constant!(GREEN),
             },
         ],
         layers: &[],
