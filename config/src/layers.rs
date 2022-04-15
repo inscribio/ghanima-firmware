@@ -5,9 +5,9 @@ use schemars::JsonSchema;
 
 use super::impl_enum_to_tokens;
 
-pub type Layers = Vec<Vec<Vec<Action>>>;
+pub type Layers<T> = Vec<Vec<Vec<Action<T>>>>;
 
-pub fn to_tokens(layers: &Layers) -> TokenStream {
+pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
     quote! {
         &[ #(&[ #(&[ #(#layers),* ]),* ]),* ]
     }
@@ -15,23 +15,22 @@ pub fn to_tokens(layers: &Layers) -> TokenStream {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 #[serde(tag = "type")]
-pub enum Action {
+pub enum Action<T: ToTokens> {
     NoOp,
     Trans,
     KeyCode { keycode: KeyCode },
     MultipleKeyCodes { keycodes: Vec<KeyCode> },
-    MultipleActions { actions: Vec<Action> },
+    MultipleActions { actions: Vec<Action<T>> },
     Layer { layer: usize },
     DefaultLayer { layer: usize },
     HoldTap {
         timeout: u16,
-        hold: Box<Action>,
-        tap: Box<Action>,
+        hold: Box<Action<T>>,
+        tap: Box<Action<T>>,
         config: HoldTapConfig,
         tap_hold_interval: u16,
     },
-    // TODO: custom actions
-    // Custom(T),
+    Custom(T),
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -239,7 +238,7 @@ impl_enum_to_tokens! {
     enum HoldTapConfig: keyberon::action::HoldTapConfig,
 }
 
-impl ToTokens for Action {
+impl<T: ToTokens> ToTokens for Action<T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let act = quote! { keyberon::action::Action };
         let t = match self {
@@ -267,6 +266,7 @@ impl ToTokens for Action {
                     }
                 }
             },
+            Action::Custom(custom) => quote! { #act::Custom(#custom) }
         };
         tokens.append_all(t);
     }
@@ -275,6 +275,7 @@ impl ToTokens for Action {
 #[cfg(test)]
 pub mod tests {
     use crate::format::assert_tokens_eq;
+    use crate::custom;
 
     use super::*;
 
@@ -330,13 +331,17 @@ pub mod tests {
                         },
                         "config": "Default",
                         "tap_hold_interval": 100
+                    },
+                    {
+                        "type": "Custom",
+                        "Mouse": { "Move": "WheelDown" }
                     }
                 ]
             ]
         ])
     }
 
-    pub fn example_config() -> Layers {
+    pub fn example_config() -> Layers<custom::Action> {
         vec![
             vec![
                 vec![
@@ -364,6 +369,7 @@ pub mod tests {
                         config: HoldTapConfig::Default,
                         tap_hold_interval: 100,
                     },
+                    Action::Custom(custom::Action::Mouse(custom::MouseAction::Move(custom::MouseMovement::WheelDown))),
                 ],
             ],
         ]
@@ -393,7 +399,14 @@ pub mod tests {
                             tap: &keyberon::action::Action::KeyCode(keyberon::key_code::KeyCode::Space),
                             config: keyberon::action::HoldTapConfig::Default,
                             tap_hold_interval: 100u16,
-                        }
+                        },
+                        keyberon::action::Action::Custom(
+                            crate::keyboard::actions::Action::Mouse(
+                                crate::keyboard::actions::MouseAction::Move(
+                                    crate::keyboard::actions::MouseMovement::WheelDown
+                                )
+                            )
+                        ),
                     ]
                 ]
              ]
@@ -402,7 +415,7 @@ pub mod tests {
 
     #[test]
     fn deserialize() -> anyhow::Result<()> {
-        let layers: Layers = serde_json::from_value(example_json())?;
+        let layers: Layers<custom::Action> = serde_json::from_value(example_json())?;
         assert_eq!(layers, example_config());
         Ok(())
     }

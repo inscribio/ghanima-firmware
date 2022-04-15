@@ -1,3 +1,4 @@
+pub mod custom;
 pub mod format;
 pub mod layers;
 pub mod leds;
@@ -13,7 +14,7 @@ use schemars::{JsonSchema, schema_for, schema::RootSchema};
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
 pub struct KeyboardConfig {
-    layers: layers::Layers,
+    layers: layers::Layers<custom::Action>,
     mouse: mouse::MouseConfig,
     leds: leds::LedConfigurations,
     timeout: u32,
@@ -89,6 +90,24 @@ macro_rules! impl_enum_to_tokens {
                     let s = v.as_str().unwrap();
                     let i = Ident::new(s, Span::call_site());
                     tokens.append_all(quote! { $path::#i });
+                }
+            }
+        )*
+    };
+}
+
+/// Implement ToTokens for a simple enum with tuple-like variants.
+#[macro_export]
+macro_rules! impl_enum_tuple_to_tokens {
+    ( $( enum $enum:ident: $path:path { $( $variant:ident( $( $field:ident ),* ) ),* } )* ) => {
+        $(
+            impl ToTokens for $enum {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    tokens.append_all(match self {
+                        $(
+                            Self::$variant( $( $field ),* ) => quote! { $path::$variant( $( #$field ),* ) }
+                        ),*
+                    });
                 }
             }
         )*
