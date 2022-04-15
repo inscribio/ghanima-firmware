@@ -4,8 +4,8 @@ use cortex_m::interrupt;
 use crate::{hal, utils::InfallibleResult};
 use super::{types::*, get_tx, get_rx};
 
-#[cfg(all(feature = "idle_sleep", feature = "debug_tasks"))]
-compile_error!("debug_tasks will not work with idle_sleep enabled");
+#[cfg(all(feature = "idle-sleep", feature = "debug-tasks"))]
+compile_error!("debug-tasks will not work with idle-sleep enabled");
 
 /// Grant GPIOs to this module
 pub fn init((tx, rx): (Tx, Rx)) {
@@ -32,7 +32,7 @@ pub mod trace {
     /// Set trace GPIO pin as high
     #[inline(always)]
     pub fn start() {
-        if cfg!(feature = "debug_tasks") {
+        if cfg!(feature = "debug-tasks") {
             ensure_init();
             trace_pin().set_low().infallible();
             trace_pin().set_high().infallible();
@@ -42,7 +42,7 @@ pub mod trace {
     /// Set trace GPIO pin as low
     #[inline(always)]
     pub fn end() {
-        if cfg!(feature = "debug_tasks") {
+        if cfg!(feature = "debug-tasks") {
             ensure_init();
             trace_pin().set_high().infallible();
             trace_pin().set_low().infallible();
@@ -71,7 +71,7 @@ pub mod task {
     /// To be called on task enter
     #[inline(always)]
     pub fn enter() {
-        if cfg!(feature = "debug_tasks") {
+        if cfg!(feature = "debug-tasks") {
             ensure_init();
             PENDING.store(true, Ordering::SeqCst);
             // Make sure to always have 0-to-1 transition so that when another
@@ -84,7 +84,7 @@ pub mod task {
     /// To be called on all task exit points
     #[inline(always)]
     pub fn exit() {
-        if cfg!(feature = "debug_tasks") {
+        if cfg!(feature = "debug-tasks") {
             ensure_init();
             // Make sure to have a 1-to-0 transition.
             task_pin().set_high().infallible();
@@ -99,7 +99,7 @@ pub mod task {
     /// Call in idle task to indicate that no tasks are pending
     #[inline(always)]
     pub fn idle() {
-        if cfg!(feature = "debug_tasks") {
+        if cfg!(feature = "debug-tasks") {
             task_pin().set_low().infallible();
             PENDING.store(false, Ordering::SeqCst);
         }

@@ -57,7 +57,7 @@ mod app {
         let mut dev = cx.device;
 
         // Automatically enter sleep mode when leaving an ISR
-        if cfg!(feature = "idle_sleep") {
+        if cfg!(feature = "idle-sleep") {
             core.SCB.set_sleeponexit();
         }
 
@@ -395,10 +395,10 @@ mod app {
     #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
-            if cfg!(feature = "debug_tasks") {
+            if cfg!(feature = "debug-tasks") {
                 debug::tasks::task::idle();
             }
-            if cfg!(feature = "idle_sleep") {
+            if cfg!(feature = "idle-sleep") {
                 rtic::export::wfi();
             } else {
                 rtic::export::nop();
