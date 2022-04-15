@@ -5,7 +5,7 @@ authors = ["Jędrzej Boczar <jedrzej.boczar@gmail.com>"]
 edition = "2021"
 
 [features]
-default = ["idle-sleep", "json-config"]
+default = ["idle-sleep"]
 idle-sleep = []
 crystal = []
 debug-tasks = []
