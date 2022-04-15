@@ -1,0 +1,1517 @@
+{
+  "layers": [
+    [
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "Grave"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb1"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb2"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb3"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb4"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb5"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb6"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb7"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb8"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb9"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb0"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Bslash"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "Tab"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Q"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "W"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "E"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "R"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "T"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Y"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "U"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "I"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "O"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "P"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "BSpace"
+        }
+      ],
+      [
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "KeyCode",
+            "keycode": "LCtrl"
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Escape"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "A"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "S"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "D"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "G"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "H"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "J"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "K"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "L"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "SColon"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "KeyCode",
+            "keycode": "RCtrl"
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Quote"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "LShift"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Z"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "X"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "C"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "V"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "B"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "N"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "M"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Comma"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Dot"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Slash"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RShift"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "LGui"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LAlt"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 1
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Space"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 2
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Enter"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RAlt"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LGui"
+        }
+      ]
+    ],
+    [
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "F12"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F1"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F2"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F3"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F4"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F5"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F6"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F7"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F8"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F9"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F10"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F11"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Home"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Up"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "End"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "PgUp"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Kb9"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Kb0"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Minus"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Equal"
+          ]
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Delete"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Left"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Down"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Right"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "PgDown"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LBracket"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RBracket"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Minus"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Equal"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "LBracket"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "RBracket"
+          ]
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Delete"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 3
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Enter"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LAlt"
+        },
+        {
+          "type": "Trans"
+        }
+      ]
+    ],
+    [
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "NumLock"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Insert"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Kb8"
+          ]
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp7"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp8"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp9"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Minus"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Kb9"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Kb0"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Minus"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Equal"
+          ]
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "CapsLock"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Slash"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp4"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp5"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp6"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "Equal"
+          ]
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LBracket"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RBracket"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Minus"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Equal"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp0"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp1"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp2"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kp3"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Equal"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Enter"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 3
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Space"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        }
+      ]
+    ],
+    [
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "DefaultLayer",
+          "layer": 0
+        },
+        {
+          "type": "DefaultLayer",
+          "layer": 4
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaVolUp"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "LGui",
+            "Left"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LCtrl",
+            "LAlt",
+            "Up"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "LGui",
+            "Right"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LGui",
+            "LShift",
+            "PgUp"
+          ]
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LShift",
+            "PScreen"
+          ]
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaVolDown"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LCtrl",
+            "LAlt",
+            "Left"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LCtrl",
+            "LAlt",
+            "Down"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LCtrl",
+            "LAlt",
+            "Right"
+          ]
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LGui",
+            "LShift",
+            "PgDown"
+          ]
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "MultipleKeyCodes",
+          "keycodes": [
+            "LAlt",
+            "PScreen"
+          ]
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaMute"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaPreviousSong"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaPlayPause"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaNextSong"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "MediaStop"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "PScreen"
+        },
+        {
+          "type": "Trans"
+        }
+      ],
+      [
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        },
+        {
+          "type": "Trans"
+        }
+      ]
+    ],
+    [
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "Escape"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb1"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb2"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb3"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb4"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb5"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb6"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb7"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb8"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb9"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Kb0"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Bslash"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "Tab"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Q"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "W"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "E"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "R"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "T"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Y"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "U"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "I"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "O"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "P"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "BSpace"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "LCtrl"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "A"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "S"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "D"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "F"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "G"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "H"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "J"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "K"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "L"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "SColon"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "KeyCode",
+            "keycode": "RCtrl"
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Quote"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "LShift"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Z"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "X"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "C"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "V"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "B"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "N"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "M"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Comma"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Dot"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Slash"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RShift"
+        }
+      ],
+      [
+        {
+          "type": "KeyCode",
+          "keycode": "LGui"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LAlt"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Space"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 1
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Space"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "NoOp"
+        },
+        {
+          "type": "HoldTap",
+          "timeout": 180,
+          "hold": {
+            "type": "Layer",
+            "layer": 2
+          },
+          "tap": {
+            "type": "KeyCode",
+            "keycode": "Enter"
+          },
+          "config": "Default",
+          "tap_hold_interval": 0
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "Enter"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "RAlt"
+        },
+        {
+          "type": "KeyCode",
+          "keycode": "LGui"
+        }
+      ]
+    ]
+  ],
+  "leds": [
+    {
+      "default": [
+        {
+          "keys": "All",
+          "condition": "Always",
+          "pattern": {
+            "repeat": "Wrap",
+            "transitions": [
+              {
+                "color": [
+                  0,
+                  0,
+                  0
+                ],
+                "duration": 1500,
+                "interpolation": "Linear"
+              },
+              {
+                "color": [
+                  251,
+                  188,
+                  0
+                ],
+                "duration": 2000,
+                "interpolation": "Linear"
+              },
+              {
+                "color": [
+                  251,
+                  188,
+                  0
+                ],
+                "duration": 2000,
+                "interpolation": "Linear"
+              },
+              {
+                "color": [
+                  0,
+                  0,
+                  0
+                ],
+                "duration": 1500,
+                "interpolation": "Linear"
+              }
+            ],
+            "phase": {
+              "x": 0,
+              "y": 0
+            }
+          }
+        },
+        {
+          "keys": "All",
+          "condition": {
+            "Pressed": true
+          },
+          "pattern": {
+            "repeat": "Once",
+            "transitions": [
+              {
+                "color": [
+                  255,
+                  0,
+                  0
+                ],
+                "duration": 250,
+                "interpolation": "Linear"
+              },
+              {
+                "color": [
+                  255,
+                  0,
+                  0
+                ],
+                "duration": 250,
+                "interpolation": "Linear"
+              },
+              {
+                "color": [
+                  0,
+                  0,
+                  0
+                ],
+                "duration": 250,
+                "interpolation": "Linear"
+              }
+            ],
+            "phase": {
+              "x": 0,
+              "y": 0
+            }
+          }
+        },
+        {
+          "keys": "All",
+          "condition": {
+            "Not": {
+              "Led": "NumLock"
+            }
+          },
+          "pattern": {
+            "repeat": "Wrap",
+            "transitions": [
+              {
+                "color": [
+                  0,
+                  0,
+                  255
+                ],
+                "duration": 0,
+                "interpolation": "Piecewise"
+              }
+            ],
+            "phase": {
+              "x": 0,
+              "y": 0
+            }
+          }
+        },
+        {
+          "keys": "All",
+          "condition": { "Led": "CapsLock" },
+          "pattern": {
+            "repeat": "Wrap",
+            "transitions": [
+              {
+                "color": [
+                  0,
+                  255,
+                  0
+                ],
+                "duration": 0,
+                "interpolation": "Piecewise"
+              }
+            ],
+            "phase": {
+              "x": 0,
+              "y": 0
+            }
+          }
+        }
+      ],
+      "layers": []
+    }
+  ],
+  "mouse": {
+    "x": {
+      "invert": false,
+      "profile": {
+        "divider": 10000,
+        "delay": 50,
+        "acceleration_time": 750,
+        "start_speed": 5000,
+        "max_speed": 15000
+      }
+    },
+    "y": {
+      "invert": false,
+      "profile": {
+        "divider": 10000,
+        "delay": 50,
+        "acceleration_time": 750,
+        "start_speed": 5000,
+        "max_speed": 15000
+      }
+    },
+    "wheel": {
+      "invert": true,
+      "profile": {
+        "divider": 1000,
+        "delay": 50,
+        "acceleration_time": 750,
+        "start_speed": 25,
+        "max_speed": 50
+      }
+    },
+    "pan": {
+      "invert": false,
+      "profile": {
+        "divider": 1000,
+        "delay": 50,
+        "acceleration_time": 750,
+        "start_speed": 25,
+        "max_speed": 50
+      }
+    },
+    "joystick": {
+      "min": 175,
+      "max": 4000,
+      "divider": 800,
+      "swap_axes": false,
+      "invert_x": false,
+      "invert_y": true
+    }
+  },
+  "timeout": 1000
+}
