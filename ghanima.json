@@ -248,7 +248,8 @@
           "type": "NoOp"
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Left" }
         },
         {
           "type": "NoOp"
@@ -257,7 +258,8 @@
           "type": "NoOp"
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Right" }
         },
         {
           "type": "NoOp"
@@ -814,13 +816,16 @@
           "type": "Trans"
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Sensitivity": "Down" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Mid" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Sensitivity": "Up" }
         },
         {
           "type": "Trans"
@@ -870,16 +875,20 @@
           ]
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "WheelUp" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Left" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "Up" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Right" }
         },
         {
           "type": "MultipleKeyCodes",
@@ -933,16 +942,20 @@
           ]
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "WheelDown" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "Left" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "Down" }
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Move": "Right" }
         },
         {
           "type": "MultipleKeyCodes",
@@ -980,7 +993,8 @@
           "keycode": "MediaStop"
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Left" }
         },
         {
           "type": "Trans"
@@ -1277,7 +1291,8 @@
           "tap_hold_interval": 0
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Left" }
         },
         {
           "type": "NoOp"
@@ -1286,7 +1301,8 @@
           "type": "NoOp"
         },
         {
-          "type": "NoOp"
+          "type": "Custom",
+          "Mouse": { "Click": "Right" }
         },
         {
           "type": "HoldTap",
