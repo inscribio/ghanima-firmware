@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 
 use super::impl_enum_to_tokens;
 
-pub type Layers<T> = Vec<Vec<Vec<Action<T>>>>;
+pub type Layers<T> = Vec<Vec<Vec<Act<T>>>>;
 
 pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
     quote! {
@@ -15,18 +15,22 @@ pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 #[serde(tag = "type")]
-pub enum Action<T: ToTokens> {
+// HACK: rename to desired name and use a different name for the enum, or else schemars will use
+// the default algorithm for generics leading to Action<Action> becoming "Action_for_Action";
+// only rename will not work due to: `let schema_is_renamed = *type_name != schema_base_name`
+#[schemars(rename = "Action")]
+pub enum Act<T: ToTokens> {
     NoOp,
     Trans,
     KeyCode { keycode: KeyCode },
     MultipleKeyCodes { keycodes: Vec<KeyCode> },
-    MultipleActions { actions: Vec<Action<T>> },
+    MultipleActions { actions: Vec<Act<T>> },
     Layer { layer: usize },
     DefaultLayer { layer: usize },
     HoldTap {
         timeout: u16,
-        hold: Box<Action<T>>,
-        tap: Box<Action<T>>,
+        hold: Box<Act<T>>,
+        tap: Box<Act<T>>,
         config: HoldTapConfig,
         tap_hold_interval: u16,
     },
@@ -238,24 +242,24 @@ impl_enum_to_tokens! {
     enum HoldTapConfig: keyberon::action::HoldTapConfig,
 }
 
-impl<T: ToTokens> ToTokens for Action<T> {
+impl<T: ToTokens> ToTokens for Act<T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let act = quote! { keyberon::action::Action };
         let t = match self {
-            Action::NoOp => quote! { #act::NoOp },
-            Action::Trans => quote! { #act::Trans },
-            Action::KeyCode { keycode } => {
+            Act::NoOp => quote! { #act::NoOp },
+            Act::Trans => quote! { #act::Trans },
+            Act::KeyCode { keycode } => {
                 quote! { #act::KeyCode(#keycode) }
             },
-            Action::MultipleKeyCodes { keycodes } => {
+            Act::MultipleKeyCodes { keycodes } => {
                 quote! { #act::MultipleKeyCodes( &[ #( #keycodes ),* ] ) }
             },
-            Action::MultipleActions { actions } => {
+            Act::MultipleActions { actions } => {
                 quote! { #act::MultipleActions( &[ #( #actions ),* ] ) }
             },
-            Action::Layer { layer } => quote! { #act::Layer(#layer) },
-            Action::DefaultLayer { layer } => quote! { #act::DefaultLayer(#layer) },
-            Action::HoldTap { timeout, hold, tap, config, tap_hold_interval } => {
+            Act::Layer { layer } => quote! { #act::Layer(#layer) },
+            Act::DefaultLayer { layer } => quote! { #act::DefaultLayer(#layer) },
+            Act::HoldTap { timeout, hold, tap, config, tap_hold_interval } => {
                 quote! {
                     #act::HoldTap {
                         timeout: #timeout,
@@ -266,7 +270,7 @@ impl<T: ToTokens> ToTokens for Action<T> {
                     }
                 }
             },
-            Action::Custom(custom) => quote! { #act::Custom(#custom) }
+            Act::Custom(custom) => quote! { #act::Custom(#custom) }
         };
         tokens.append_all(t);
     }
@@ -345,31 +349,31 @@ pub mod tests {
         vec![
             vec![
                 vec![
-                    Action::NoOp,
-                    Action::Trans,
-                    Action::KeyCode { keycode: KeyCode::Kb2 },
-                    Action::MultipleKeyCodes {
+                    Act::NoOp,
+                    Act::Trans,
+                    Act::KeyCode { keycode: KeyCode::Kb2 },
+                    Act::MultipleKeyCodes {
                         keycodes: vec![
                             KeyCode::LCtrl,
                             KeyCode::C,
                         ],
                     },
-                    Action::MultipleActions {
+                    Act::MultipleActions {
                         actions: vec![
-                            Action::KeyCode { keycode: KeyCode::Q },
-                            Action::Layer { layer: 2 },
+                            Act::KeyCode { keycode: KeyCode::Q },
+                            Act::Layer { layer: 2 },
                         ],
                     },
-                    Action::Layer { layer: 3 },
-                    Action::DefaultLayer { layer: 2 },
-                    Action::HoldTap {
+                    Act::Layer { layer: 3 },
+                    Act::DefaultLayer { layer: 2 },
+                    Act::HoldTap {
                         timeout: 180,
-                        hold: Box::new(Action::Layer { layer: 2 }),
-                        tap: Box::new(Action::KeyCode { keycode: KeyCode::Space }),
+                        hold: Box::new(Act::Layer { layer: 2 }),
+                        tap: Box::new(Act::KeyCode { keycode: KeyCode::Space }),
                         config: HoldTapConfig::Default,
                         tap_hold_interval: 100,
                     },
-                    Action::Custom(custom::Action::Mouse(custom::MouseAction::Move(custom::MouseMovement::WheelDown))),
+                    Act::Custom(custom::Action::Mouse(custom::MouseAction::Move(custom::MouseMovement::WheelDown))),
                 ],
             ],
         ]
