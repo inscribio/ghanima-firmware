@@ -5,6 +5,7 @@ pub mod mouse;
 
 use std::{path::Path, fs::File, io::{Write, BufReader}};
 
+use anyhow::Context;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use serde::{Serialize, Deserialize};
@@ -25,7 +26,7 @@ impl ToTokens for KeyboardConfig {
         let mouse = &self.mouse;
         let timeout = &self.timeout;
         tokens.append_all(quote! {
-            ghanima::keyboard::KeyboardConfig {
+            crate::keyboard::KeyboardConfig {
                 layers: #layers,
                 mouse: &#mouse,
                 leds: #leds,
@@ -38,13 +39,14 @@ impl ToTokens for KeyboardConfig {
 impl KeyboardConfig {
     fn file_tokens(&self) -> TokenStream {
         quote! {
-            pub static CONFIG: ghanima::keyboard::KeyboardConfig = #self;
+            pub static CONFIG: crate::keyboard::KeyboardConfig = #self;
         }
     }
 
     fn to_string_pretty(&self) -> anyhow::Result<String> {
-        let file = self.file_tokens();
-        let parsed = syn::parse_file(&file.to_string())?;
+        let file = self.file_tokens().to_string();
+        let parsed = syn::parse_file(&file)
+            .context(format!("Failed to parse:\n{}", file))?;
         Ok(prettyplease::unparse(&parsed))
     }
 
@@ -192,7 +194,7 @@ mod tests {
         let leds = leds::tests::example_code();
         let mouse = mouse::tests::example_code();
         quote! {
-            ghanima::keyboard::KeyboardConfig {
+            crate::keyboard::KeyboardConfig {
                 layers: #layers,
                 mouse: &#mouse,
                 leds: #leds,

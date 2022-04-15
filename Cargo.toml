@@ -98,3 +98,4 @@ gnuplot = "0.0.37"
 
 [build-dependencies]
 ghanima-config = { path = "./config" }
+anyhow = "1.0"

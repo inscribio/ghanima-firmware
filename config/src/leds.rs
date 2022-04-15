@@ -7,7 +7,7 @@ use crate::{impl_struct_to_tokens, impl_enum_to_tokens};
 
 pub type LedConfigurations = Vec<LedConfig>;
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct LedConfig {
     default: LayerRules,
     layers: Vec<LayerRules>,
@@ -15,14 +15,14 @@ pub struct LedConfig {
 
 pub type LayerRules = Vec<LedRule>;
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct LedRule {
     keys: Keys,
     condition: Condition,
     pattern: Pattern,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Keys {
     All,
     Rows(Vec<u8>),
@@ -30,7 +30,7 @@ pub enum Keys {
     Keys(Vec<(u8, u8)>),
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Condition {
     Always,
     Led(KeyboardLed),
@@ -41,13 +41,13 @@ pub enum Condition {
     Not(Box<Condition>),
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Role {
     Master,
     Slave,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum KeyboardLed {
     NumLock,
     CapsLock,
@@ -56,40 +56,40 @@ pub enum KeyboardLed {
     Kana,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct Pattern {
     repeat: Repeat,
     transitions: Vec<Transition>,
     phase: Phase,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct Phase {
     x: f32,
     y: f32,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Repeat {
     Once,
     Wrap,
     Reflect,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct Transition {
     color: RGB8,
     duration: u16,
     interpolation: Interpolation,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Interpolation {
     Piecewise,
     Linear,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct RGB8(u8, u8, u8);
 
 pub fn to_tokens(configs: &LedConfigurations) -> TokenStream {
@@ -99,17 +99,17 @@ pub fn to_tokens(configs: &LedConfigurations) -> TokenStream {
 }
 
 impl_enum_to_tokens! {
-    enum KeyboardLed: ghanima::keyboard::leds::KeyboardLed,
-    enum Repeat: ghanima::keyboard::leds::Repeat,
-    enum Interpolation: ghanima::keyboard::leds::Interpolation,
-    enum Role: ghanima::keyboard::role::Role,
+    enum KeyboardLed: crate::keyboard::leds::KeyboardLed,
+    enum Repeat: crate::keyboard::leds::Repeat,
+    enum Interpolation: crate::keyboard::leds::Interpolation,
+    enum Role: crate::keyboard::role::Role,
 }
 
 impl_struct_to_tokens! {
-    struct LedRule: ghanima::keyboard::leds::LedRule { keys, condition, pattern, }
-    struct Pattern: ghanima::keyboard::leds::Pattern { repeat, &[transitions], phase, }
-    struct Transition: ghanima::keyboard::leds::Transition { color, duration, interpolation, }
-    struct Phase: ghanima::keyboard::leds::Phase { x, y, }
+    struct LedRule: crate::keyboard::leds::LedRule { keys, condition, pattern, }
+    struct Pattern: crate::keyboard::leds::Pattern { repeat, &[transitions], phase, }
+    struct Transition: crate::keyboard::leds::Transition { color, duration, interpolation, }
+    struct Phase: crate::keyboard::leds::Phase { x, y, }
 }
 
 impl ToTokens for LedConfig {
@@ -117,7 +117,7 @@ impl ToTokens for LedConfig {
         let defaults = &self.default;
         let layers = &self.layers;
         tokens.append_all(quote! {
-            ghanima::keyboard::leds::LedConfig {
+            crate::keyboard::leds::LedConfig {
                 default: &[ #( #defaults ),* ],
                 layers: &[ #( &[ #( #layers ),* ] ),* ],
             }
@@ -127,7 +127,7 @@ impl ToTokens for LedConfig {
 
 impl ToTokens for Keys {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let leds = quote! { ghanima::keyboard::leds };
+        let leds = quote! { crate::keyboard::leds };
         tokens.append_all(match self {
             Keys::All => quote! { #leds::Keys::All },
             Keys::Rows(rows) => quote! { #leds::Keys::Rows(&[ #( #rows ),* ]) },
@@ -142,7 +142,7 @@ impl ToTokens for Keys {
 
 impl ToTokens for Condition {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let leds = quote! { ghanima::keyboard::leds };
+        let leds = quote! { crate::keyboard::leds };
         tokens.append_all(match self {
             Condition::Always => quote! { #leds::Condition::Always },
             Condition::Led(led) => quote! { #leds::Condition::Led(#led) },
@@ -287,46 +287,46 @@ pub mod tests {
     pub fn example_code() -> TokenStream {
         quote! {
             &[
-                ghanima::keyboard::leds::LedConfig {
+                crate::keyboard::leds::LedConfig {
                     default: &[
-                        ghanima::keyboard::leds::LedRule {
-                            keys: ghanima::keyboard::leds::Keys::All,
-                            condition: ghanima::keyboard::leds::Condition::Always,
-                            pattern: ghanima::keyboard::leds::Pattern {
-                                repeat: ghanima::keyboard::leds::Repeat::Wrap,
+                        crate::keyboard::leds::LedRule {
+                            keys: crate::keyboard::leds::Keys::All,
+                            condition: crate::keyboard::leds::Condition::Always,
+                            pattern: crate::keyboard::leds::Pattern {
+                                repeat: crate::keyboard::leds::Repeat::Wrap,
                                 transitions: &[
-                                    ghanima::keyboard::leds::Transition {
+                                    crate::keyboard::leds::Transition {
                                         color: rgb::RGB8::new(0u8, 0u8, 0u8),
                                         duration: 1500u16,
-                                        interpolation: ghanima::keyboard::leds::Interpolation::Piecewise,
+                                        interpolation: crate::keyboard::leds::Interpolation::Piecewise,
                                     },
-                                    ghanima::keyboard::leds::Transition {
+                                    crate::keyboard::leds::Transition {
                                         color: rgb::RGB8::new(255u8, 180u8, 0u8),
                                         duration: 1000u16,
-                                        interpolation: ghanima::keyboard::leds::Interpolation::Linear,
+                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
                                     }
                                 ],
-                                phase: ghanima::keyboard::leds::Phase { x: 0f32, y: 0f32 }
+                                phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
                             }
                         },
-                        ghanima::keyboard::leds::LedRule {
-                            keys: ghanima::keyboard::leds::Keys::Rows(&[0u8, 1u8, 3u8]),
-                            condition: ghanima::keyboard::leds::Condition::Pressed(true),
-                            pattern: ghanima::keyboard::leds::Pattern {
-                                repeat: ghanima::keyboard::leds::Repeat::Once,
+                        crate::keyboard::leds::LedRule {
+                            keys: crate::keyboard::leds::Keys::Rows(&[0u8, 1u8, 3u8]),
+                            condition: crate::keyboard::leds::Condition::Pressed(true),
+                            pattern: crate::keyboard::leds::Pattern {
+                                repeat: crate::keyboard::leds::Repeat::Once,
                                 transitions: &[
-                                    ghanima::keyboard::leds::Transition {
+                                    crate::keyboard::leds::Transition {
                                         color: rgb::RGB8::new(255u8, 255u8, 255u8),
                                         duration: 250u16,
-                                        interpolation: ghanima::keyboard::leds::Interpolation::Linear,
+                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
                                     },
-                                    ghanima::keyboard::leds::Transition {
+                                    crate::keyboard::leds::Transition {
                                         color: rgb::RGB8::new(0u8, 0u8, 0u8),
                                         duration: 250u16,
-                                        interpolation: ghanima::keyboard::leds::Interpolation::Linear,
+                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
                                     }
                                 ],
-                                phase: ghanima::keyboard::leds::Phase { x: 0f32, y: 0f32 }
+                                phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
                             }
                         }
                     ],

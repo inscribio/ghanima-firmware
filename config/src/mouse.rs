@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 
 use crate::impl_struct_to_tokens;
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct MouseConfig {
     x: AxisConfig,
     y: AxisConfig,
@@ -13,14 +13,14 @@ pub struct MouseConfig {
     joystick: JoystickConfig,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct AxisConfig {
     invert: bool,
     // TODO: optimize for size by detecting same profiles and extracting to separate variable
     profile: SpeedProfile,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct SpeedProfile {
     divider: u16,
     delay: u16,
@@ -29,7 +29,7 @@ pub struct SpeedProfile {
     max_speed: u16,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct JoystickConfig {
     min: u16,
     max: u16,
@@ -40,10 +40,10 @@ pub struct JoystickConfig {
 }
 
 impl_struct_to_tokens! {
-    struct MouseConfig: ghanima::keyboard::mouse::MouseConfig { x, y, wheel, pan, joystick, }
-    struct AxisConfig: ghanima::keyboard::mouse::AxisConfig { invert, &profile, }
-    struct SpeedProfile: ghanima::keyboard::mouse::SpeedProfile { divider, delay, acceleration_time, start_speed, max_speed, }
-    struct JoystickConfig: ghanima::keyboard::mouse::JoystickConfig { min, max, divider, swap_axes, invert_x, invert_y, }
+    struct MouseConfig: crate::keyboard::mouse::MouseConfig { x, y, wheel, pan, joystick, }
+    struct AxisConfig: crate::keyboard::mouse::AxisConfig { invert, &profile, }
+    struct SpeedProfile: crate::keyboard::mouse::SpeedProfile { divider, delay, acceleration_time, start_speed, max_speed, }
+    struct JoystickConfig: crate::keyboard::mouse::JoystickConfig { min, max, divider, swap_axes, invert_x, invert_y, }
 }
 
 #[cfg(test)]
@@ -160,10 +160,10 @@ pub mod tests {
 
     pub fn example_code() -> TokenStream {
         quote! {
-            ghanima::keyboard::mouse::MouseConfig {
-                x: ghanima::keyboard::mouse::AxisConfig {
+            crate::keyboard::mouse::MouseConfig {
+                x: crate::keyboard::mouse::AxisConfig {
                     invert: false,
-                    profile: &ghanima::keyboard::mouse::SpeedProfile {
+                    profile: &crate::keyboard::mouse::SpeedProfile {
                         divider: 10000u16,
                         delay: 50u16,
                         acceleration_time: 750u16,
@@ -171,9 +171,9 @@ pub mod tests {
                         max_speed: 15000u16,
                     }
                 },
-                y: ghanima::keyboard::mouse::AxisConfig {
+                y: crate::keyboard::mouse::AxisConfig {
                     invert: false,
-                    profile: &ghanima::keyboard::mouse::SpeedProfile {
+                    profile: &crate::keyboard::mouse::SpeedProfile {
                         divider: 10000u16,
                         delay: 50u16,
                         acceleration_time: 750u16,
@@ -181,9 +181,9 @@ pub mod tests {
                         max_speed: 15000u16,
                     }
                 },
-                wheel: ghanima::keyboard::mouse::AxisConfig {
+                wheel: crate::keyboard::mouse::AxisConfig {
                     invert: true,
-                    profile: &ghanima::keyboard::mouse::SpeedProfile {
+                    profile: &crate::keyboard::mouse::SpeedProfile {
                         divider: 1000u16,
                         delay: 50u16,
                         acceleration_time: 750u16,
@@ -191,9 +191,9 @@ pub mod tests {
                         max_speed: 50u16,
                     }
                 },
-                pan: ghanima::keyboard::mouse::AxisConfig {
+                pan: crate::keyboard::mouse::AxisConfig {
                     invert: false,
-                    profile: &ghanima::keyboard::mouse::SpeedProfile {
+                    profile: &crate::keyboard::mouse::SpeedProfile {
                         divider: 1000u16,
                         delay: 50u16,
                         acceleration_time: 750u16,
@@ -201,7 +201,7 @@ pub mod tests {
                         max_speed: 50u16,
                     }
                 },
-                joystick: ghanima::keyboard::mouse::JoystickConfig {
+                joystick: crate::keyboard::mouse::JoystickConfig {
                     min: 175u16,
                     max: 4000u16,
                     divider: 800u16,
