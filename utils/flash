@@ -32,13 +32,16 @@ die() {
 while (( $# > 0 )); do
     case "$1" in
         -h|--help)
-            echo "Usage: $(basename $0) [ --first-flash ]"
+            echo "Usage: $(basename $0) [--first-flash] [--prebuilt] [-- [CARGO_FLAGS...]]"
             exit 0 ;;
         --first-flash)
             first=yes ;;
         --prebuilt)
             shift
             prebuilt="$1" ;;
+        --)
+            shift
+            break ;;
         *)
             echo "Unknown option: $1"
             exit 1 ;;
@@ -50,7 +53,6 @@ done
 HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 cd "$HERE/.."
 
-opt='--release'
 target_name='ghanima'
 
 stm32dfu_id='0483:df11'
@@ -58,18 +60,20 @@ keyboard_id='16c0:27db'
 stlink_id='0483:3748'
 
 target_bin="target/$target_name.bin"
-cargo_flags="$opt"
+cargo_flags="--release $*"
 dfu_modifiers="leave"
 
 # on first flashing we may ned to unprotect the flash
 [[ ${first:-no} = 'yes' ]] && dfu_modifiers="force:unprotect"
+
+info "Cargo flags: $cargo_flags"
 
 ###
 
 check_firmware() {
     if [[ ${prebuilt:-0} = 0 ]]; then
         info "Checking firmware ..."
-        cargo check "$cargo_flags"
+        cargo check $cargo_flags
     else
         info "Checking firmware (prebuilt) ..."
         test -f "$prebuilt"
@@ -81,9 +85,9 @@ get_firmware() {
     if [[ ${prebuilt:-0} = 0 ]]; then
         info "Building firmware ..." 1>&2
         # build firmware
-        cargo build "$cargo_flags" 1>&2 || die "Failed to build firmware"
+        cargo build $cargo_flags 1>&2 || die "Failed to build firmware"
         # convert to binary
-        cargo objcopy "$cargo_flags" --bin "$target_name" -- -O binary "$target_bin" 1>&2 || die "Objcopy failed"
+        cargo objcopy $cargo_flags --bin "$target_name" -- -O binary "$target_bin" 1>&2 || die "Objcopy failed"
         echo "$target_bin"
     else
         info "Using prebuilt firmware: $prebuilt ..." 1>&2
