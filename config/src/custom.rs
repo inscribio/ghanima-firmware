@@ -6,6 +6,7 @@ use schemars::JsonSchema;
 use crate::{impl_enum_to_tokens, impl_enum_tuple_to_tokens};
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
+#[schemars(rename = "CustomAction")]
 pub enum Action {
     /// Modify LED lightning
     Led(LedAction),

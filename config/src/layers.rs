@@ -14,7 +14,6 @@ pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
-#[serde(tag = "type")]
 // HACK: rename to desired name and use a different name for the enum, or else schemars will use
 // the default algorithm for generics leading to Action<Action> becoming "Action_for_Action";
 // only rename will not work due to: `let schema_is_renamed = *type_name != schema_base_name`
@@ -22,11 +21,11 @@ pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
 pub enum Act<T: ToTokens> {
     NoOp,
     Trans,
-    KeyCode { keycode: KeyCode },
-    MultipleKeyCodes { keycodes: Vec<KeyCode> },
-    MultipleActions { actions: Vec<Act<T>> },
-    Layer { layer: usize },
-    DefaultLayer { layer: usize },
+    KeyCode(KeyCode),
+    MultipleKeyCodes(Vec<KeyCode>),
+    MultipleActions(Vec<Act<T>>),
+    Layer(usize),
+    DefaultLayer(usize),
     HoldTap {
         timeout: u16,
         hold: Box<Act<T>>,
@@ -248,17 +247,17 @@ impl<T: ToTokens> ToTokens for Act<T> {
         let t = match self {
             Act::NoOp => quote! { #act::NoOp },
             Act::Trans => quote! { #act::Trans },
-            Act::KeyCode { keycode } => {
+            Act::KeyCode(keycode) => {
                 quote! { #act::KeyCode(#keycode) }
             },
-            Act::MultipleKeyCodes { keycodes } => {
+            Act::MultipleKeyCodes(keycodes) => {
                 quote! { #act::MultipleKeyCodes( &[ #( #keycodes ),* ] ) }
             },
-            Act::MultipleActions { actions } => {
+            Act::MultipleActions(actions) => {
                 quote! { #act::MultipleActions( &[ #( #actions ),* ] ) }
             },
-            Act::Layer { layer } => quote! { #act::Layer(#layer) },
-            Act::DefaultLayer { layer } => quote! { #act::DefaultLayer(#layer) },
+            Act::Layer(layer) => quote! { #act::Layer(#layer) },
+            Act::DefaultLayer(layer) => quote! { #act::DefaultLayer(#layer) },
             Act::HoldTap { timeout, hold, tap, config, tap_hold_interval } => {
                 quote! {
                     #act::HoldTap {
@@ -287,59 +286,28 @@ pub mod tests {
         serde_json::json!([
             [
                 [
+                    "NoOp",
+                    "Trans",
+                    { "KeyCode": "Kb2" },
+                    { "MultipleKeyCodes": ["LCtrl", "C"] },
                     {
-                        "type": "NoOp"
+                        "MultipleActions": [
+                            { "KeyCode": "Q" },
+                            { "Layer": 2 }
+                        ]
                     },
+                    { "Layer": 3 },
+                    { "DefaultLayer": 2 },
                     {
-                        "type": "Trans"
-                    },
-                    {
-                        "type": "KeyCode",
-                        "keycode": "Kb2"
-                    },
-                    {
-                        "type": "MultipleKeyCodes",
-                        "keycodes": ["LCtrl", "C"]
-                    },
-                    {
-                        "type": "MultipleActions",
-                        "actions": [
-                        {
-                            "type": "KeyCode",
-                            "keycode": "Q"
-                        },
-                        {
-                            "type": "Layer",
-                            "layer": 2
+                        "HoldTap": {
+                            "timeout": 180,
+                            "hold": { "Layer": 2 },
+                            "tap": { "KeyCode": "Space" },
+                            "config": "Default",
+                            "tap_hold_interval": 100
                         }
-                    ]
                     },
-                    {
-                        "type": "Layer",
-                        "layer": 3
-                    },
-                    {
-                        "type": "DefaultLayer",
-                        "layer": 2
-                    },
-                    {
-                        "type": "HoldTap",
-                        "timeout": 180,
-                        "hold": {
-                            "type": "Layer",
-                            "layer": 2
-                        },
-                        "tap": {
-                            "type": "KeyCode",
-                            "keycode": "Space"
-                        },
-                        "config": "Default",
-                        "tap_hold_interval": 100
-                    },
-                    {
-                        "type": "Custom",
-                        "Mouse": { "Move": "WheelDown" }
-                    }
+                    { "Custom": { "Mouse": { "Move": "WheelDown" } } }
                 ]
             ]
         ])
@@ -351,25 +319,25 @@ pub mod tests {
                 vec![
                     Act::NoOp,
                     Act::Trans,
-                    Act::KeyCode { keycode: KeyCode::Kb2 },
-                    Act::MultipleKeyCodes {
-                        keycodes: vec![
+                    Act::KeyCode(KeyCode::Kb2),
+                    Act::MultipleKeyCodes(
+                        vec![
                             KeyCode::LCtrl,
                             KeyCode::C,
                         ],
-                    },
-                    Act::MultipleActions {
-                        actions: vec![
-                            Act::KeyCode { keycode: KeyCode::Q },
-                            Act::Layer { layer: 2 },
+                    ),
+                    Act::MultipleActions(
+                        vec![
+                            Act::KeyCode(KeyCode::Q),
+                            Act::Layer(2),
                         ],
-                    },
-                    Act::Layer { layer: 3 },
-                    Act::DefaultLayer { layer: 2 },
+                    ),
+                    Act::Layer(3),
+                    Act::DefaultLayer(2),
                     Act::HoldTap {
                         timeout: 180,
-                        hold: Box::new(Act::Layer { layer: 2 }),
-                        tap: Box::new(Act::KeyCode { keycode: KeyCode::Space }),
+                        hold: Box::new(Act::Layer(2)),
+                        tap: Box::new(Act::KeyCode(KeyCode::Space)),
                         config: HoldTapConfig::Default,
                         tap_hold_interval: 100,
                     },
