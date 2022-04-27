@@ -242,7 +242,7 @@ impl<'a> PlaneAccumulator<'a> {
         let (x, y) = (self.x.accumulated.get(), self.y.accumulated.get());
         // Generate 2D speed value if we are moving in both directions
         if x != 0 && y != 0 {
-            (Self::mul_inv_sqrt2(x), Self::mul_inv_sqrt2(x))
+            (Self::mul_inv_sqrt2(x), Self::mul_inv_sqrt2(y))
         } else {
             (x, y)
         }
