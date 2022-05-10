@@ -94,7 +94,7 @@ usb-device = { git = "https://github.com/ryan-summers/usb-device.git", branch = 
 
 [dev-dependencies]
 assert_float_eq = "1.1"
-crc = "2.1"
+crc = "3.0"
 gnuplot = "0.0.37"
 
 [build-dependencies]
