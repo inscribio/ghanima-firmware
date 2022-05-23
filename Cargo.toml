@@ -60,8 +60,8 @@ nb = "1.0"
 embedded-hal = "0.2"
 embedded-dma = "0.2"
 
+# TODO: update stm32-usbd to use newer usb-device and bump this
 usb-device = "0.2"
-# usb-device = { git = "https://github.com/ryan-summers/usb-device.git", branch = "rs/issue-82/short-data-stage" }
 usbd-hid = "0.5"
 usbd-dfu-rt = "0.1"
 
@@ -89,8 +89,8 @@ defmt-rtt = "0.3"
 micromath = "2.0"
 
 [patch.crates-io]
-# Fix enumeration on Windows: https://github.com/mvirkkunen/usb-device/issues/82
-usb-device = { git = "https://github.com/ryan-summers/usb-device.git", branch = "rs/issue-82/short-data-stage" }
+# TODO: move to published versions when it includes https://github.com/rust-embedded-community/usb-device/pull/83
+usb-device = { git = "https://github.com/rust-embedded-community/usb-device.git", rev = "202e5ee29b0d28e2c9c011541259e1633b2ada5a" }
 
 [dev-dependencies]
 assert_float_eq = "1.1"
