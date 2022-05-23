@@ -26,7 +26,8 @@ where
     queue: ConstGenericRingBuffer<P, N>,
     tx: TX,
     id_counter: PacketId,
-    retransmissions: u8,
+    // TODO: implement retransmission? it is probably unnecessary as we have good data integrity
+    _retransmissions: u8,
 }
 
 impl<P, TX, const N: usize> TransmitQueue<P> for Transmitter<P, TX, N>
@@ -50,7 +51,7 @@ where
             queue: ConstGenericRingBuffer::new(),
             tx,
             id_counter: 0,
-            retransmissions: 0,
+            _retransmissions: 0,
         }
     }
 

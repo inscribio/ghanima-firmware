@@ -77,6 +77,7 @@ struct Joystick<'a> {
 // Movement plane
 enum Plane {
     Xy,
+    #[allow(dead_code)]
     Scroll,
 }
 

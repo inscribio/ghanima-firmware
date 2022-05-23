@@ -97,7 +97,9 @@ mod code {
     const M_PLUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Up)));
     const M_MINUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Down)));
 
+    #[allow(dead_code)]
     const L_UP: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Up)));
+    #[allow(dead_code)]
     const L_DOWN: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Down)));
 
     static LAYERS: Layers = layout! {
