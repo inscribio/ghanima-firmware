@@ -986,7 +986,7 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 [[package]]
 name = "usb-device"
 version = "0.2.8"
-source = "git+https://github.com/ryan-summers/usb-device.git?branch=rs/issue-82/short-data-stage#abdf0045e374535cf73db57bc85749470604f6c7"
+source = "git+https://github.com/rust-embedded-community/usb-device.git?rev=202e5ee29b0d28e2c9c011541259e1633b2ada5a#202e5ee29b0d28e2c9c011541259e1633b2ada5a"
 
 [[package]]
 name = "usbd-dfu-rt"
