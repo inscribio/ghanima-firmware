@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use serde::{Serialize, Deserialize};
-use postcard::flavors::{Cobs, Slice};
+use postcard::ser_flavors::{Cobs, Slice};
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 
@@ -186,9 +186,9 @@ impl<const N: usize> Accumulator<N> {
             self.head = 0;
 
             // Decode COBS-encoded data
-            let size = match postcard_cobs::decode_in_place(&mut self.buf[..head]) {
-                // Omit the sentinel byte
-                Ok(size) => size.saturating_sub(1),
+            let size = match cobs::decode_in_place(&mut self.buf[..head]) {
+                // Size of decoded data without sentinel
+                Ok(size) => size,
                 // Error could happen if some code pointed outside of the sentinel-delimited packet
                 Err(_) => return FeedResult::CobsDecodingError(release),
             };
@@ -227,10 +227,49 @@ impl<const N: usize> Accumulator<N> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    use core::iter;
     use std::vec::Vec;
+    use std::string::String;
     use crate::hal_ext::checksum_mock::Crc32;
+
+    // Transforms "0b11001111 1001 0001 d15 x0f" into [0xcf, 0x91, 15, 0x0f]
+    pub fn bytes(description: &str) -> Vec<u8> {
+        let parts = description.split_whitespace();
+        parts.flat_map(|s| {
+            if s.starts_with('#') {  // Comment
+                vec![]
+            } else if s.starts_with('c') {  // ASCII characters
+                s[1..].bytes().collect()
+            } else if s.starts_with('d') {  // Decimal
+                vec![u8::from_str_radix(&s[1..], 10).unwrap()]
+            } else if s.starts_with('x') {  // Hexadecimal
+                let s = &s[1..];
+                assert!(s.len() % 2 == 0, "Each format must describe multiple of a byte");
+                let n_bytes = s.len();
+                assert!(s.is_ascii());
+                s.as_bytes().chunks(2).map(|pair| {
+                    let base = '0' as u8;
+                    u8::from_str_radix(&String::from_utf8(vec![pair[0], pair[1]]).unwrap(), 16).unwrap()
+                }).collect()
+            } else {  // Binary
+                // Remove underscores
+                let s = s.chars().filter_map(|c| if c == '_' {
+                    None
+                } else {
+                    Some(c)
+                }).collect::<Vec<_>>();
+
+                // Parse as binary
+                assert!(s.len() % 8 == 0, "Each format must describe multiple of a byte");
+                s.chunks_exact(8).map(|bits| {
+                    let bitstr: String = bits.iter().collect();
+                    u8::from_str_radix(&bitstr, 2).unwrap()
+                }).collect()
+            }
+        }).collect()
+    }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     struct Message {
@@ -247,22 +286,28 @@ mod tests {
     fn serialize_to_slice() {
         let mut crc = Crc32::new();
         let mut buf = [0u8; 16];
-        let msg = Message { a: 0xaa0055bb, b: 0x1234, c: 0xff };
+        let msg = Message { a: 0x000a55bb, b: 0x1234, c: 0xff };
         let data = msg.to_slice(&mut crc, &mut buf).unwrap();
-        assert_eq!(data, [3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0])
+        assert_eq!(data, bytes(r"
+            d11
+            1_0111011 1_0101011 00101001
+            1_0110100 0_0100100  xff
+            xfe xab x30 xf7
+            d0
+        "));
     }
 
     #[test]
     fn deserialize_with_accumulator() {
         let mut crc = Crc32::new();
         let mut acc = Accumulator::<32>::new();
-        let buf = &[
-            0x12, 0x34, 0x56, 0x78, 0x90, 0x00,                                   // 1
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,  // 2
-            3, 0xee, 0xdd, 3, 0xbb, 0xaa, 0x00,                                   // 3
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,  // 4
-            0x00, 0x2,                                                            // 5
-        ];
+        let buf = &bytes(r"
+            x12 x34 x56 x78 x90 x00                                                       #1
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #2
+            d3 xee xdd d3 xbb xaa d0                                                      #3
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #4
+            d0 x02                                                                        #5
+        ");
 
         // 1
         let buf = match acc.feed::<Message>(&mut crc, buf) {
@@ -275,7 +320,7 @@ mod tests {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert_eq!(msg, Message { a: 0xaa0055bb, b: 0x1234, c: 0xff });
+        assert_eq!(msg, Message { a: 0x000a55bb, b: 0x1234, c: 0xff });
 
         // 3
         let buf = match acc.feed::<Message>(&mut crc, buf) {
@@ -288,7 +333,7 @@ mod tests {
             FeedResult::Success { msg, remaining } => (remaining, msg),
             r => panic!("Unexpected result: {:02x?}", r),
         };
-        assert_eq!(msg, Message { a: 0xaa0055bb, b: 0x1234, c: 0xff });
+        assert_eq!(msg, Message { a: 0x000a55bb, b: 0x1234, c: 0xff });
 
         // 5
         let buf = match acc.feed::<Message>(&mut crc, buf) {
@@ -302,34 +347,34 @@ mod tests {
     fn deserialize_iter_from_slice() {
         let mut crc = Crc32::new();
         let mut acc = Accumulator::<32>::new();
-        let buf = [
-            0x12, 0x34, 0x56, 0x78, 0x90, 0x00,
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
-            0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x00,
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
-            0x00, 0x2,
-        ];
+        let buf = &bytes(r"
+            x12 x34 x56 x78 x90 x00                                                       #1
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #2
+            d3 xee xdd d3 xbb xaa d0                                                      #3
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #4
+            d0 x02                                                                        #5
+        ");
         let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
             .filter_map(|r| r.ok())
             .collect::<Vec<_>>();
-        assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 2]);
+        assert_eq!(msgs, vec![Message { a: 0x000a55bb, b: 0x1234, c: 0xff }; 2]);
     }
 
     #[test]
     fn deserialize_iter_from_slice_missing() {
         let mut crc = Crc32::new();
         let mut acc = Accumulator::<32>::new();
-        let buf = [
-            0x12, 0x34, 0x56, 0x78, 0x90,  // no 0x00 so decoding should fail
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
-            0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x00,
-            3, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0x13, 0x64, 0x58, 0x18, 0,
-            0x00, 0x2,
-        ];
+        let buf = &bytes(r"
+            x12 x34 x56 x78 x90 x90  #no_0x00_so_decoding_should_fail                     #1
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #2
+            d3 xee xdd d3 xbb xaa d0                                                      #3
+            d11 1_0111011 1_0101011 00101001 1_0110100 0_0100100 xff xfe xab x30 xf7 d0   #4
+            d0 x02                                                                        #5
+        ");
         let msgs = Message::iter_from_slice(&mut acc, &mut crc, &buf)
             .filter_map(|r| r.ok())
             .collect::<Vec<_>>();
-        assert_eq!(msgs, vec![Message { a: 0xaa0055bb, b: 0x1234, c: 0xff }; 1]);
+        assert_eq!(msgs, vec![Message { a: 0x000a55bb, b: 0x1234, c: 0xff }; 1]);
     }
 
     #[derive(Serialize)]
@@ -345,11 +390,19 @@ mod tests {
     #[test]
     fn serialize_to_slice_with_ref() {
         let mut crc = Crc32::new();
-        let mut buf = [0u8; 16];
+        let mut buf = [0u8; 18];
         let other = &Message { a: 0xaa0055bb, b: 0x1234, c: 0xff };
         let msg = MessageWithRef { id: 0xbaad, other };
         let data = msg.to_slice(&mut crc, &mut buf).unwrap();
-        assert_eq!(data, [5, 0xad, 0xba, 0xbb, 0x55, 9, 0xaa, 0x34, 0x12, 0xff, 0xfe, 0xc9, 0x4d, 0xb0, 0])
+        assert_eq!(data, bytes(r"
+            d16
+            xad 1_1110101 000000_10
+            1_0111011 1_0101011 1_0000001 1_1010000 0000_1010
+            1_0110100 0_0100100
+            xff
+            xbb x13 xc5 x0f
+            d0
+        "));
     }
 
     // Deserialize with references probably won't work for types other than &str or &[u8]
@@ -366,17 +419,17 @@ mod tests {
     #[test]
     fn serialize_to_slice_with_simple_ref() {
         let mut crc = Crc32::new();
-        let mut buf = [0u8; 18];
-        let name = "Yossarian";
+        let mut buf = [0u8; 32];
+        let name = "Yossarian";  // bytes: 89, 111, 115, 115, 97, 114, 105, 97, 110
         let msg = MessageWithSimpleRef { id: 0xbaad, name };
         let data = msg.to_slice(&mut crc, &mut buf).unwrap();
-        assert_eq!(data, [
-            17,
-            0xad, 0xba,
-            9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
-            0xc5, 0xab, 0x20, 0xd6,
-            0
-        ])
+        assert_eq!(data, bytes(r"
+            d18
+            xad 1_1110101 000000_10
+            d9 cYossarian
+            x77 xa0 xce x3f
+            d0
+        "));
     }
 
     #[test]
@@ -392,17 +445,32 @@ mod tests {
             0,
             4, 0x22, 0x33, 0x44, 0
         ];
+        let buf = &bytes(r"
+            xff xee xdd xcc d0
+            d18
+            xad 1_1110101 000000_10
+            d9 cYossarian
+            x77 xa0 xce x3f
+            d0
+            d4 x22 x33 x44 d0
+        ");
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
         assert!(matches!(msg.unwrap(), Err(DeserError::CobsDecodingError)));
-        assert_eq!(buf, [
-            17, 0xad, 0xba, 9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
-            0xc5, 0xab, 0x20, 0xd6, 0, 4, 0x22, 0x33, 0x44, 0
-        ]);
+        assert_eq!(buf, bytes(r"
+            d18
+            xad 1_1110101 000000_10
+            d9 cYossarian
+            x77 xa0 xce x3f
+            d0
+            d4 x22 x33 x44 d0
+        "));
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
         assert_eq!(msg.unwrap().unwrap(), MessageWithSimpleRef { id: 0xbaad, name: "Yossarian" });
-        assert_eq!(buf, [4, 0x22, 0x33, 0x44, 0]);
+        assert_eq!(buf, bytes(r"
+            d4 x22 x33 x44 d0
+        "));
 
         let (msg, buf) = MessageWithSimpleRef::get_from_slice(&mut acc, &mut crc, &buf);
         assert!(matches!(msg.unwrap(), Err(DeserError::ChecksumError)));

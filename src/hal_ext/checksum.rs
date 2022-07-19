@@ -1,5 +1,5 @@
 use num::PrimInt;
-use postcard::flavors::SerFlavor;
+use postcard::ser_flavors::Flavor;
 
 /// Checksum generator
 ///
@@ -98,7 +98,7 @@ pub enum Error {
 /// **little-endian** order!
 pub struct ChecksumEncoder<'a, F, C>
 where
-    F: SerFlavor,
+    F: Flavor,
     C: ChecksumGen,
 {
     flavor: F,
@@ -107,7 +107,7 @@ where
 
 impl<'a, F, C> ChecksumEncoder<'a, F, C>
 where
-    F: SerFlavor,
+    F: Flavor,
     C: ChecksumGen,
 {
     /// Initialize the encoder with clear state
@@ -117,27 +117,27 @@ where
     }
 }
 
-impl<'a, F, C> SerFlavor for ChecksumEncoder<'a, F, C>
+impl<'a, F, C> Flavor for ChecksumEncoder<'a, F, C>
 where
-    F: SerFlavor,
+    F: Flavor,
     C: ChecksumGen,
 {
-    type Output = <F as SerFlavor>::Output;
+    type Output = <F as Flavor>::Output;
 
-    fn try_push(&mut self, data: u8) -> Result<(), ()> {
+    fn try_push(&mut self, data: u8) -> postcard::Result<()> {
         self.state.push(&[data]);
         self.flavor.try_push(data)
     }
 
-    fn try_extend(&mut self, data: &[u8]) -> Result<(), ()> {
+    fn try_extend(&mut self, data: &[u8]) -> postcard::Result<()> {
         self.state.push(data);
         self.flavor.try_extend(data)
     }
 
-    fn release(mut self) -> Result<Self::Output, ()> {
+    fn finalize(mut self) -> postcard::Result<Self::Output> {
         let mut checksum = self.state.get();
         self.flavor.try_extend(C::as_le_bytes(&mut checksum))?;
-        self.flavor.release()
+        self.flavor.finalize()
     }
 }
 

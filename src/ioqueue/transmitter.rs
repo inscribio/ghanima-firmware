@@ -127,6 +127,7 @@ mod tests {
     use std::cell::Cell;
     use crate::hal_ext::dma::mock::DmaTxMock;
     use crate::hal_ext::checksum_mock::Crc32;
+    use crate::ioqueue::packet::tests::bytes;
 
     // Explicit type because using just [] yields "multiple `impl`s of PartialEq" because of the crate `fixed`
     const EMPTY: [u8; 0] = [];
@@ -149,8 +150,9 @@ mod tests {
         tx.push(Message(0xaabb, 0xcc));
         assert_eq!(sent.take(), EMPTY);
 
-        // Before COBS = id(00 00) 0(bb aa) 1(cc) crc32(23 09 66 61)
-        let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
+        // Message                     encoded (varints, checksum)
+        // id(00 00) 0(bb aa) 1(cc) -> id(00) 0(1_0111011 1_1010101 000000_10) 1(cc) crc32(ee e6 af 2c)
+        let cobs = bytes("d1  d9  1_0111011 1_1010101 000000_10  xcc  xee xe6 xaf x2c  d0");
 
         tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
@@ -169,11 +171,11 @@ mod tests {
             tx.push(Message(0xaabb, 0xcc));
             assert_eq!(sent.take(), EMPTY);
         }
-        let cobs = [
-            1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0,     // id(00 00)
-            2, 0x01, 8, 0xbb, 0xaa, 0xcc, 0xae, 0x6e, 0x6b, 0x28, 0,  // id(01 00)
-            2, 0x02, 8, 0xbb, 0xaa, 0xcc, 0x39, 0xc6, 0x7c, 0xf3, 0,  // id(02 00)
-        ];
+        let cobs = bytes(r"
+            d1   d9  1_0111011 1_1010101 000000_10  xcc  xee xe6 xaf x2c  d0  #id=0x0000
+            d10 x01  1_0111011 1_1010101 000000_10  xcc  x63 x81 xa2 x65  d0  #id=0x0001
+            d10 x02  1_0111011 1_1010101 000000_10  xcc  xf4 x29 xb5 xbe  d0  #id=0x0002
+        ");
 
         tx.tick(&mut crc);
         assert_eq!(sent.take(), cobs);
@@ -192,11 +194,11 @@ mod tests {
             tx.push(Message(0xaabb, 0xcc));
             assert_eq!(sent.take(), EMPTY);
         }
-        let cobs = [
-            1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0,     // id(00 00)
-            2, 0x01, 8, 0xbb, 0xaa, 0xcc, 0xae, 0x6e, 0x6b, 0x28, 0,  // id(01 00)
-            2, 0x02, 8, 0xbb, 0xaa, 0xcc, 0x39, 0xc6, 0x7c, 0xf3, 0,  // id(02 00)
-        ];
+        let cobs = bytes(r"
+            d1   d9  1_0111011 1_1010101 000000_10  xcc  xee xe6 xaf x2c  d0  #id=0x0000
+            d10 x01  1_0111011 1_1010101 000000_10  xcc  x63 x81 xa2 x65  d0  #id=0x0001
+            d10 x02  1_0111011 1_1010101 000000_10  xcc  xf4 x29 xb5 xbe  d0  #id=0x0002
+        ");
 
         // cobs.len()=33 so it won't fit in the first tick
         tx.tick(&mut crc);
@@ -217,7 +219,7 @@ mod tests {
         let mut tx = Transmitter::<Message, _, 4>::new(dma);
 
         tx.push(Message(0xaabb, 0xcc));
-        let cobs = [1, 1, 8, 0xbb, 0xaa, 0xcc, 0x23, 0x09, 0x66, 0x61, 0];
+        let cobs = bytes("d1  d9  1_0111011 1_1010101 000000_10  xcc  xee xe6 xaf x2c  d0");
 
         tx.tick(&mut crc);
         assert_eq!(sent.take(), EMPTY);
