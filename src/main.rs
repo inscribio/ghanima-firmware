@@ -3,7 +3,6 @@
 
 use panic_probe as _;
 use defmt_rtt as _;
-use stm32f0 as _;
 use stm32f0xx_hal as hal;
 use ghanima as lib;
 
