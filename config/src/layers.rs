@@ -1,4 +1,4 @@
-use proc_macro2::{TokenStream, Ident, Span};
+use proc_macro2::{TokenStream, Ident, Span, Punct, Spacing};
 use quote::{quote, ToTokens, TokenStreamExt};
 use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
@@ -41,6 +41,10 @@ pub enum HoldTapConfig {
     Default,
     HoldOnOtherKeyPress,
     PermissiveHold,
+    // This should take a function pointer as parameter, but it makes no sense for representing
+    // these in JSON. Instead it should be possible to pass a function name and assume that it
+    // is already defined somewhere in the firmware.
+    Custom(String),
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -238,7 +242,6 @@ pub enum KeyCode {
 
 impl_enum_to_tokens! {
     enum KeyCode: keyberon::key_code::KeyCode,
-    enum HoldTapConfig: keyberon::action::HoldTapConfig,
 }
 
 impl<T: ToTokens> ToTokens for Act<T> {
@@ -275,12 +278,48 @@ impl<T: ToTokens> ToTokens for Act<T> {
     }
 }
 
+impl ToTokens for HoldTapConfig {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let c = quote! { keyberon::action::HoldTapConfig };
+        println!("tokens: {:#?}", quote! { #c::Default });
+        let t = match self {
+            HoldTapConfig::Default => quote! { #c::Default },
+            HoldTapConfig::HoldOnOtherKeyPress => quote! { #c::HoldOnOtherKeyPress },
+            HoldTapConfig::PermissiveHold => quote! { #c::PermissiveHold },
+            HoldTapConfig::Custom(s) => {
+                let mut f = TokenStream::new();
+                let idents = s.split("::")
+                    .map(|i| Ident::new(i, Span::call_site()))
+                    .enumerate()
+                    .for_each(|(i, ident)| {
+                        if i != 0 {
+                            // Add ::
+                            f.append(Punct::new(':', Spacing::Joint));
+                            f.append(Punct::new(':', Spacing::Alone));
+                        }
+                        f.append_all(quote! { #ident });
+                    });
+                quote! { #c::Custom(#f) }
+            },
+        };
+        tokens.append_all(t);
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use crate::format::assert_tokens_eq;
     use crate::custom;
 
     use super::*;
+
+    #[test]
+    fn hold_tap_config_custom_fn() {
+        let custom = HoldTapConfig::Custom("crate::module::function".to_string());
+        assert_tokens_eq(quote! { #custom }, quote! {
+            keyberon::action::HoldTapConfig::Custom(crate::module::function)
+        });
+    }
 
     pub fn example_json() -> serde_json::Value {
         serde_json::json!([
