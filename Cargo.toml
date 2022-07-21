@@ -65,8 +65,7 @@ usbd-hid = "0.6"
 usbd-dfu-rt = "0.1"
 
 # TODO: use official version when 0.2 is released
-# keyberon = { git = "https://github.com/jedrzejboczar/keyberon", branch = "pub-current-layer" }
-keyberon = { path = "./keyberon/" }
+keyberon = { git = "https://github.com/jedrzejboczar/keyberon", branch = "pub-current-layer" }
 
 static_assertions = "1.1"
 generic-array = "0.14"
