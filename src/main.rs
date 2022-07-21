@@ -32,7 +32,7 @@ mod app {
         serial_rx: SerialRx,
         crc: crc::Crc,
         leds: keyboard::LedController<'static>,
-        keyboard: keyboard::Keyboard,
+        keyboard: keyboard::Keyboard<{ config::N_LAYERS }>,
     }
 
     #[local]

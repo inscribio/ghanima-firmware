@@ -4,10 +4,12 @@ use serde::{Deserialize, Serialize};
 use crate::bsp::{NCOLS, NROWS, NLEDS, ColPin, RowPin, sides::BoardSide};
 use crate::utils::InfallibleResult;
 
+type PressedKeys = [[bool; NCOLS]; NROWS];
+
 /// Keyboard key matrix scanner
 pub struct Keys {
     matrix: matrix::Matrix<ColPin, RowPin, NCOLS, NROWS>,
-    debouncer: debounce::Debouncer<matrix::PressedKeys<NCOLS, NROWS>>,
+    debouncer: debounce::Debouncer<PressedKeys>,
     side: BoardSide,
     pressed: PressedLedKeys,
 }
@@ -24,7 +26,7 @@ impl Keys {
         rows: [RowPin; NROWS],
         debounce_cnt: u16,
     ) -> Self {
-        let initial = matrix::PressedKeys::default;
+        let initial = Default::default;
         Self {
             side,
             matrix: matrix::Matrix::new(cols, rows).infallible(),

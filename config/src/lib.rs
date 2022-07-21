@@ -28,7 +28,7 @@ impl ToTokens for KeyboardConfig {
         let timeout = &self.timeout;
         tokens.append_all(quote! {
             crate::keyboard::KeyboardConfig {
-                layers: #layers,
+                layers: &#layers,
                 mouse: &#mouse,
                 leds: #leds,
                 timeout: #timeout,
@@ -38,9 +38,50 @@ impl ToTokens for KeyboardConfig {
 }
 
 impl KeyboardConfig {
+    fn n_layers(&self) -> usize {
+        self.layers.len()
+    }
+
+    fn n_rows(&self) -> usize {
+        let n_rows = self.layers.get(0)
+            .map(|l| l.len())
+            .unwrap_or(0);
+        self.layers.iter()
+            .enumerate()
+            .for_each(|(i, l)| {
+                assert_eq!(l.len(), n_rows,
+                    "Wrong number of rows in layer {}: {} vs {}", i, l.len(), n_rows)
+            });
+        n_rows
+    }
+
+    fn n_cols(&self) -> usize {
+        let n_cols = self.layers.get(0)
+            .and_then(|l| l.get(0).map(|r| r.len()))
+            .unwrap_or(0);
+        self.layers.iter()
+            .enumerate()
+            .for_each(|(li, l)| l.iter()
+                .enumerate()
+                .for_each(|(ri, r)| {
+                    assert_eq!(r.len(), n_cols,
+                        "Wrong number of columns in layer {} row {}: {} vs {}", li, ri, r.len(), n_cols)
+                })
+            );
+        n_cols
+    }
+
     fn file_tokens(&self) -> TokenStream {
+        let n_layers = self.n_layers();
+        let n_cols = self.n_cols();
+        let n_rows = self.n_rows();
         quote! {
-            pub static CONFIG: crate::keyboard::KeyboardConfig = #self;
+            pub const CONFIG: crate::keyboard::KeyboardConfig<N_LAYERS> = #self;
+            pub const N_LAYERS: usize = #n_layers;
+            #[allow(dead_code)]
+            pub const N_COLS: usize = #n_cols;
+            #[allow(dead_code)]
+            pub const N_ROWS: usize = #n_rows;
         }
     }
 
@@ -214,7 +255,7 @@ mod tests {
         let mouse = mouse::tests::example_code();
         quote! {
             crate::keyboard::KeyboardConfig {
-                layers: #layers,
+                layers: &#layers,
                 mouse: &#mouse,
                 leds: #leds,
                 timeout: 1000u32,

@@ -25,6 +25,7 @@ use serde::{Serialize, Deserialize};
 use usb_device::device::UsbDeviceState;
 use crate::bsp::sides::BoardSide;
 use crate::bsp::usb::Usb;
+use crate::bsp::{NCOLS, NROWS};
 use crate::ioqueue;
 use role::Role;
 use leds::KeyboardState;
@@ -42,10 +43,10 @@ pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX
 pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::Message, RX, N, B>;
 
 /// Split keyboard logic
-pub struct Keyboard {
+pub struct Keyboard<const L: usize> {
     keys: keys::Keys,
     fsm: role::Fsm,
-    layout: layout::Layout<Action>,
+    layout: layout::Layout<{ 2 * NCOLS}, NROWS, L, Action>,
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
@@ -60,9 +61,9 @@ pub struct Keyboard {
 }
 
 /// Keyboard configuration
-pub struct KeyboardConfig {
+pub struct KeyboardConfig<const L: usize> {
     /// Keyboard layers configuration
-    pub layers: layout::Layers<actions::Action>,
+    pub layers: &'static layout::Layers<{ 2 * NCOLS}, NROWS, L, actions::Action>,
     /// Configuration of mouse emulation
     pub mouse: &'static mouse::MouseConfig,
     /// Configuration of RGB LED lightning
@@ -79,10 +80,10 @@ pub struct LedsUpdate {
     brightness: Option<Inc>,
 }
 
-impl Keyboard {
+impl<const L: usize> Keyboard<L> {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, config: &KeyboardConfig) -> (Self, LedController) {
+    pub fn new(keys: keys::Keys, config: &KeyboardConfig<L>) -> (Self, LedController) {
         let side = *keys.side();
         let leds = LedController::new(side, &config.leds);
         let fsm = role::Fsm::with(side, config.timeout);
@@ -258,6 +259,7 @@ impl Keyboard {
                     // else number of data written. Any other Err should never happen - would be
                     // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
                     let ok = usb.keyboard.write(report.as_bytes())
+                        .map_err(|_| ())
                         .expect("Bug in class implementation") > 0;
                     if ok {
                         // Consume the report on success

@@ -9,7 +9,7 @@ pub type Layers<T> = Vec<Vec<Vec<Act<T>>>>;
 
 pub fn to_tokens<T: ToTokens>(layers: &Layers<T>) -> TokenStream {
     quote! {
-        &[ #(&[ #(&[ #(#layers),* ]),* ]),* ]
+        [ #([ #([ #(#layers),* ]),* ]),* ]
     }
 }
 
@@ -349,9 +349,9 @@ pub mod tests {
 
     pub fn example_code() -> TokenStream {
         quote! {
-            &[
-                &[
-                    &[
+            [
+                [
+                    [
                         keyberon::action::Action::NoOp,
                         keyberon::action::Action::Trans,
                         keyberon::action::Action::KeyCode(keyberon::key_code::KeyCode::Kb2),
