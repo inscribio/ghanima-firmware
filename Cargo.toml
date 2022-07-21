@@ -89,7 +89,7 @@ micromath = "2.0"
 
 [patch.crates-io]
 # TODO: move to published versions when it includes https://github.com/rust-embedded-community/usb-device/pull/83
-usb-device = { git = "https://github.com/rust-embedded-community/usb-device.git", rev = "202e5ee29b0d28e2c9c011541259e1633b2ada5a" }
+usb-device = { git = "https://github.com/rust-embedded-community/usb-device.git", rev = "eaf9709b90e505e1451f74ae9b9c4badc329aba8" }
 
 [dev-dependencies]
 assert_float_eq = "1.1"
