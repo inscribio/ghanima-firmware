@@ -46,7 +46,7 @@ mod code {
                 timeout: $tout,
                 hold: &$hold,
                 tap: &$tap,
-                tap_hold_interval: 0,
+                tap_hold_interval: 300,
                 config: HTC,
             }
         };
