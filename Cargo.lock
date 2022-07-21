@@ -85,6 +85,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
+name = "bitfield"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,13 +135,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "cobs"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ba02a97a2bd10f4b59b25c7973101c79642302776489e030cd13cdab09ed15"
+
+[[package]]
 name = "cortex-m"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ff967e867ca14eba0c34ac25cd71ea98c678e741e3915d923999bb2fe7c826"
 dependencies = [
  "bare-metal 0.2.5",
- "bitfield",
+ "bitfield 0.13.2",
  "embedded-hal",
  "volatile-register",
 ]
@@ -335,7 +347,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_float_eq",
- "bitfield",
+ "bitfield 0.14.0",
+ "cobs",
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtic",
@@ -356,13 +369,11 @@ dependencies = [
  "num",
  "panic-probe",
  "postcard",
- "postcard-cobs 0.2.0",
  "rgb",
  "ringbuffer",
  "serde",
  "smlang",
  "static_assertions",
- "stm32f0",
  "stm32f0xx-hal",
  "systick-monotonic",
  "usb-device",
@@ -588,26 +599,14 @@ checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
 
 [[package]]
 name = "postcard"
-version = "0.7.3"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a25c0b0ae06fcffe600ad392aabfa535696c8973f2253d9ac83171924c58a858"
+checksum = "41f5465c5e5a38e04552d8fb53ebcf4f58124ab3bbd0c02add043b33f82792e5"
 dependencies = [
+ "cobs",
  "heapless",
- "postcard-cobs 0.1.5-pre",
  "serde",
 ]
-
-[[package]]
-name = "postcard-cobs"
-version = "0.1.5-pre"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c68cb38ed13fd7bc9dd5db8f165b7c8d9c1a315104083a2b10f11354c2af97f"
-
-[[package]]
-name = "postcard-cobs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78eac0ec394e2eb837b258d587ec78cf19974fbe5ada0068e2ee732533b52fbd"
 
 [[package]]
 name = "prettyplease"
@@ -986,7 +985,7 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 [[package]]
 name = "usb-device"
 version = "0.2.8"
-source = "git+https://github.com/rust-embedded-community/usb-device.git?rev=202e5ee29b0d28e2c9c011541259e1633b2ada5a#202e5ee29b0d28e2c9c011541259e1633b2ada5a"
+source = "git+https://github.com/rust-embedded-community/usb-device.git?rev=eaf9709b90e505e1451f74ae9b9c4badc329aba8#eaf9709b90e505e1451f74ae9b9c4badc329aba8"
 
 [[package]]
 name = "usbd-dfu-rt"
@@ -999,9 +998,9 @@ dependencies = [
 
 [[package]]
 name = "usbd-hid"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "183b7e65bbd75512aedf250deda89394c74ae3118b79fe41f159e8503e1d5d7f"
+checksum = "28ab3359cb8ad713361abb84030f120d7350488d75949ad4bb39f53a1a8321dd"
 dependencies = [
  "serde",
  "ssmarshal",
@@ -1015,7 +1014,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e00430c0b39caf3957aba6c2b2824f8e70e1ac0278941418bf1fe35f9566d64"
 dependencies = [
- "bitfield",
+ "bitfield 0.13.2",
 ]
 
 [[package]]
