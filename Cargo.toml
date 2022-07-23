@@ -66,7 +66,7 @@ usbd-hid = "0.6"
 usbd-dfu-rt = "0.1"
 
 # TODO: use official version when 0.2 is released
-keyberon = { git = "https://github.com/TeXitoi/keyberon", rev = "57aa0d306b60432e2eede2e33ae9a0cacfb70166" }
+keyberon = { git = "https://github.com/TeXitoi/keyberon", rev = "29e960e" }
 
 static_assertions = "1.1"
 generic-array = "0.14"

@@ -14,7 +14,7 @@ mod generated {
 #[cfg(not(feature = "json-config"))]
 mod code {
     use keyberon::{
-        action::{self, k, l, d, m, Action::*, HoldTapConfig},
+        action::{self, k, l, d, m, Action::*, HoldTapConfig, HoldTapAction},
         key_code::KeyCode::*,
         layout::{self, layout},
     };
@@ -42,13 +42,13 @@ mod code {
 
     macro_rules! ht {
         ($hold:expr, $tap:expr, $tout:expr) => {
-            HoldTap {
+            HoldTap(&HoldTapAction {
                 timeout: $tout,
-                hold: &$hold,
-                tap: &$tap,
+                hold: $hold,
+                tap: $tap,
                 tap_hold_interval: 300,
                 config: HTC,
-            }
+            })
         };
         ($hold:expr, $tap:expr) => {
             ht!($hold, $tap, HOLDTAP_TIMEOUT)
@@ -65,18 +65,18 @@ mod code {
     const LCTRL_ESC: Action = ht!(k(LCtrl), k(Escape));
     const RCTRL_QUOTE: Action = ht!(k(RCtrl), k(Quote));
 
-    const CA_LEFT: Action = m(&[LCtrl, LAlt, Left]);
-    const CA_RIGHT: Action = m(&[LCtrl, LAlt, Right]);
-    const CA_UP: Action = m(&[LCtrl, LAlt, Up]);
-    const CA_DOWN: Action = m(&[LCtrl, LAlt, Down]);
-    const SG_LEFT: Action = m(&[LShift, LGui, Left]);
-    const SG_RIGHT: Action = m(&[LShift, LGui, Right]);
-    const SG_PGUP: Action = m(&[LGui, LShift, PgUp]);
-    const SG_PGDOWN: Action = m(&[LGui, LShift, PgDown]);
+    const CA_LEFT: Action = m(&[LCtrl, LAlt, Left].as_slice());
+    const CA_RIGHT: Action = m(&[LCtrl, LAlt, Right].as_slice());
+    const CA_UP: Action = m(&[LCtrl, LAlt, Up].as_slice());
+    const CA_DOWN: Action = m(&[LCtrl, LAlt, Down].as_slice());
+    const SG_LEFT: Action = m(&[LShift, LGui, Left].as_slice());
+    const SG_RIGHT: Action = m(&[LShift, LGui, Right].as_slice());
+    const SG_PGUP: Action = m(&[LGui, LShift, PgUp].as_slice());
+    const SG_PGDOWN: Action = m(&[LGui, LShift, PgDown].as_slice());
 
     const PSCREEN_ALL: Action = k(PScreen);
-    const PSCREEN_WIN: Action = m(&[LAlt, PScreen]);
-    const PSCREEN_SEL: Action = m(&[LShift, PScreen]);
+    const PSCREEN_WIN: Action = m(&[LAlt, PScreen].as_slice());
+    const PSCREEN_SEL: Action = m(&[LShift, PScreen].as_slice());
 
     const PREVIOUS: Action = k(MediaPreviousSong);
     const NEXT: Action = k(MediaNextSong);

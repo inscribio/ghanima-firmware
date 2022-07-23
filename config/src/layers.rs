@@ -254,22 +254,22 @@ impl<T: ToTokens> ToTokens for Act<T> {
                 quote! { #act::KeyCode(#keycode) }
             },
             Act::MultipleKeyCodes(keycodes) => {
-                quote! { #act::MultipleKeyCodes( &[ #( #keycodes ),* ] ) }
+                quote! { #act::MultipleKeyCodes( &[ #( #keycodes ),* ].as_slice() ) }
             },
             Act::MultipleActions(actions) => {
-                quote! { #act::MultipleActions( &[ #( #actions ),* ] ) }
+                quote! { #act::MultipleActions( &[ #( #actions ),* ].as_slice() ) }
             },
             Act::Layer(layer) => quote! { #act::Layer(#layer) },
             Act::DefaultLayer(layer) => quote! { #act::DefaultLayer(#layer) },
             Act::HoldTap { timeout, hold, tap, config, tap_hold_interval } => {
                 quote! {
-                    #act::HoldTap {
+                    #act::HoldTap(&keyberon::action::HoldTapAction {
                         timeout: #timeout,
-                        hold: &#hold,
-                        tap: &#tap,
+                        hold: #hold,
+                        tap: #tap,
                         config: #config,
                         tap_hold_interval: #tap_hold_interval,
-                    }
+                    })
                 }
             },
             Act::Custom(custom) => quote! { #act::Custom(#custom) }
@@ -405,20 +405,20 @@ pub mod tests {
                         keyberon::action::Action::MultipleKeyCodes(&[
                             keyberon::key_code::KeyCode::LCtrl,
                             keyberon::key_code::KeyCode::C,
-                        ]),
+                        ].as_slice()),
                         keyberon::action::Action::MultipleActions(&[
                             keyberon::action::Action::KeyCode(keyberon::key_code::KeyCode::Q),
                             keyberon::action::Action::Layer(2usize),
-                        ]),
+                        ].as_slice()),
                         keyberon::action::Action::Layer(3usize),
                         keyberon::action::Action::DefaultLayer(2usize),
-                        keyberon::action::Action::HoldTap {
+                        keyberon::action::Action::HoldTap(&keyberon::action::HoldTapAction {
                             timeout: 180u16,
-                            hold: &keyberon::action::Action::Layer(2usize),
-                            tap: &keyberon::action::Action::KeyCode(keyberon::key_code::KeyCode::Space),
+                            hold: keyberon::action::Action::Layer(2usize),
+                            tap: keyberon::action::Action::KeyCode(keyberon::key_code::KeyCode::Space),
                             config: keyberon::action::HoldTapConfig::Default,
                             tap_hold_interval: 100u16,
-                        },
+                        }),
                         keyberon::action::Action::Custom(
                             crate::keyboard::actions::Action::Mouse(
                                 crate::keyboard::actions::MouseAction::Move(
