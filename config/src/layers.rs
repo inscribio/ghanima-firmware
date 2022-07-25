@@ -288,7 +288,7 @@ impl ToTokens for HoldTapConfig {
             HoldTapConfig::PermissiveHold => quote! { #c::PermissiveHold },
             HoldTapConfig::Custom(s) => {
                 let mut f = TokenStream::new();
-                let idents = s.split("::")
+                s.split("::")
                     .map(|i| Ident::new(i, Span::call_site()))
                     .enumerate()
                     .for_each(|(i, ident)| {
@@ -318,6 +318,14 @@ pub mod tests {
         let custom = HoldTapConfig::Custom("crate::module::function".to_string());
         assert_tokens_eq(quote! { #custom }, quote! {
             keyberon::action::HoldTapConfig::Custom(crate::module::function)
+        });
+    }
+
+    #[test]
+    fn hold_tap_config_custom_no_colons() {
+        let custom = HoldTapConfig::Custom("myfunction".to_string());
+        assert_tokens_eq(quote! { #custom }, quote! {
+            keyberon::action::HoldTapConfig::Custom(myfunction)
         });
     }
 
