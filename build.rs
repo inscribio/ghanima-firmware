@@ -32,7 +32,7 @@ fn json_config(out: &Path) -> Result<()>  {
     // Generate config schema
     KeyboardConfig::schema_to_file(&out.join("schema.json"))
         .context("While generating JSON schema")?;
-    KeyboardConfig::schema_to_file(&Path::new("./schema.json"))
+    KeyboardConfig::schema_to_file(Path::new("./schema.json"))
         .context("While generating JSON schema")?;
 
     // Generate config from JSON if enabled
@@ -54,7 +54,7 @@ fn json_config(out: &Path) -> Result<()>  {
 
 fn main() -> Result<()>  {
     let out = &PathBuf::from(env::var_os("OUT_DIR").context("Could not get OUT_DIR")?);
-    memory(&out)?;
-    json_config(&out)?;
+    memory(out)?;
+    json_config(out)?;
     Ok(())
 }
