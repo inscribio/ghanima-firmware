@@ -15,10 +15,27 @@ mod app {
 
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{crc, spi, uart, dma::{DmaSplit, DmaTx}};
+    use lib::hal_ext::{crc, spi, uart, watchdog, dma::{DmaSplit, DmaTx}};
     use lib::{keyboard, config, ioqueue};
 
+    // MCU clock frequencies
+    const SYSCLK_MHZ: u32 = 48;
+    const PCLK_MHZ: u32 = 24;
+    const CRYSTAL_CLK_MHZ: u32 = 12;
+
+    /// Base frequency of a "tick"
+    const TICK_FREQUENCY_HZ: u32 = 1000;
+    // Prescalers that define task frequencies in multiples of a "tick"
+    const KEYBOARD_PRESCALER: u32 = 1;
+    const LEDS_PRESCALER: u32 = 10;
+    const JOY_PRESCALER: u32 = 10;
+    const DEBUG_PRESCALER: u32 = 1000;
+
+    const ERROR_LED_DURATION_MS: u32 = 1000;
     const DEBOUNCE_COUNT: u16 = 5;
+
+    const WATCHDOG_WINDOW_START_MS: u32 = 30;
+    const WATCHDOG_WINDOW_END_MS: u32 = 60;
 
     type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
     type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
@@ -39,6 +56,7 @@ mod app {
     struct Local {
         timer: hal::timers::Timer<hal::pac::TIM15>,
         joy: joystick::Joystick,
+        watchdog: watchdog::WindowWatchdog,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -56,26 +74,39 @@ mod app {
         let mut dev = cx.device;
 
         // Automatically enter sleep mode when leaving an ISR
-        if cfg!(feature = "idle-sleep") {
+        // Disable when watchdog is active, so that we always enter idle task to feed it.
+        if cfg!(feature = "idle-sleep") && !cfg!(feature = "watchdog") {
             core.SCB.set_sleeponexit();
         }
 
         // Clock configuration (may use external crystal, but it is not needed for STM32F072)
-        let sysclk: hal::time::Hertz = 48.mhz().into();
-        let pclk: hal::time::Hertz = 24.mhz().into();
-        let crystal_clk: hal::time::Hertz = 12.mhz().into();
-
         let clk_config = dev.RCC
             .configure()
             .enable_crs(dev.CRS) // synchronization to USB SOF
-            .sysclk(sysclk)
-            .pclk(pclk);
+            .sysclk(SYSCLK_MHZ.mhz())
+            .pclk(PCLK_MHZ.mhz());
         let clk_config = if cfg!(feature = "crystal") {
-            clk_config.hse(crystal_clk, hal::rcc::HSEBypassMode::NotBypassed)
+            clk_config.hse(CRYSTAL_CLK_MHZ.mhz(), hal::rcc::HSEBypassMode::NotBypassed)
         } else {
             clk_config.hsi48()
         };
         let mut rcc = clk_config.freeze(&mut dev.FLASH);
+
+        // Check if a watchdog reset occured, clear the flags
+        let was_watchdog_reset = watchdog::reset_flags::was_window_watchdog(&mut rcc);
+        watchdog::reset_flags::clear(&mut rcc);
+
+        // Watchdog
+        const PARAMS: watchdog::WindowParams = watchdog::WindowParams::new(
+            PCLK_MHZ * 1_000_000,
+            WATCHDOG_WINDOW_START_MS * 1000,
+            WATCHDOG_WINDOW_END_MS * 1000,
+        );
+        let mut watchdog = watchdog::WindowWatchdog::new(dev.WWDG, PARAMS);
+        if cfg!(feature = "watchdog") {
+            watchdog.stop_on_debug(true, &mut dev.DBGMCU, &mut rcc);
+            watchdog.start(&mut rcc);
+        };
 
         // Pinout
         let gpioa = dev.GPIOA.split(&mut rcc);
@@ -135,7 +166,7 @@ mod app {
         let mut spi_tx = spi::SpiTx::new(dev.SPI2, rgb_tx, dma.ch5, &mut cx.local.led_buf[..], 3.mhz(), &mut rcc);
 
         // configure periodic timer
-        let mut timer = hal::timers::Timer::tim15(dev.TIM15, 1.khz(), &mut rcc);
+        let mut timer = hal::timers::Timer::tim15(dev.TIM15, TICK_FREQUENCY_HZ.hz(), &mut rcc);
         timer.listen(hal::timers::Event::TimeOut);
 
         // USB
@@ -156,6 +187,17 @@ mod app {
             keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
             &config::CONFIG,
         );
+
+        // If there was abnormal reset, signalize it using LEDs
+        if was_watchdog_reset {
+            defmt::error!("Watchdog triggered system reset");
+            let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
+            for (i, led) in leds.set_overwrite(ticks as u16).leds.iter_mut().enumerate() {
+                if i % 4 == 0 {
+                    led.r = 255;
+                }
+            }
+        }
         // Send a first transfer ASAP with all LEDs in initial state
         spi_tx.push(|buf| leds.tick(0).serialize_to_slice(buf)).unwrap();
         spi_tx.start().unwrap();
@@ -164,7 +206,11 @@ mod app {
             defmt::warn!("Joystick not detected");
         }
 
+        let mono = systick_monotonic::Systick::new(core.SYST, rcc.clocks.sysclk().0);
+
         debug::tasks::trace::run(|| defmt::info!("Liftoff!"));
+
+        watchdog.maybe_feed();
 
         let shared = Shared {
             usb,
@@ -179,9 +225,8 @@ mod app {
         let local = Local {
             timer,
             joy,
+            watchdog,
         };
-
-        let mono = systick_monotonic::Systick::new(core.SYST, sysclk.0);
 
         (shared, local, init::Monotonics(mono))
     }
@@ -194,24 +239,26 @@ mod app {
             let t = cx.local.t;
             *t += 1;
 
-            if *t % 10 == 0 {
+            if *t % LEDS_PRESCALER == 0 {
                 // ignore error if we're too slow
                 if leds_tick::spawn(*t).is_err() {
                     defmt::warn!("Spawn failed: leds_tick");
                 };
             }
 
-            if *t % 10 == 0 {
+            if *t % JOY_PRESCALER == 0 {
                 if read_joystick::spawn().is_err() {
                     defmt::warn!("Spawn failed: read_joystick");
                 };
             }
 
-            if keyboard_tick::spawn(*t).is_err() {
-                defmt::error!("Spawn failed: keyboard_tick");
+            if *t % KEYBOARD_PRESCALER == 0 {
+                if keyboard_tick::spawn(*t).is_err() {
+                    defmt::error!("Spawn failed: keyboard_tick");
+                }
             }
 
-            if *t % 1000 == 0 {
+            if *t % DEBUG_PRESCALER == 0 {
                 if debug_report::spawn().is_err() {
                     defmt::warn!("Spawn failed: debug_report");
                 }
@@ -255,7 +302,9 @@ mod app {
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
         // Update LED patterns
-        update_leds_state::spawn(t, leds_update).map_err(|_| ()).unwrap();
+        if update_leds_state::spawn(t, leds_update).is_err() {
+            defmt::warn!("Spawn failed: update_leds_state");
+        };
         debug::tasks::task::exit();
     }
 
@@ -391,12 +440,15 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    #[idle]
-    fn idle(_cx: idle::Context) -> ! {
+    #[idle(local = [watchdog])]
+    fn idle(cx: idle::Context) -> ! {
         loop {
+            cx.local.watchdog.maybe_feed();
+
             if cfg!(feature = "debug-tasks") {
                 debug::tasks::task::idle();
             }
+
             if cfg!(feature = "idle-sleep") {
                 rtic::export::wfi();
             } else {

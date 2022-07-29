@@ -16,6 +16,7 @@ pub struct LedController<'a> {
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
     side: BoardSide,
     brightness: u8,
+    overwrite_counter: u16,
 }
 
 /// Generates the color for a single LED depending on current time
@@ -43,7 +44,18 @@ impl<'a> LedController<'a> {
             patterns: Default::default(),
             pattern_candidates: Default::default(),
             brightness: u8::MAX/2,
+            overwrite_counter: 0,
         }
+    }
+
+    /// Configure pattern overwrite for given duration
+    ///
+    /// This returns [`Leds`] which should be manually configured
+    /// by setting required colors. Normal patterns will not be used
+    /// ([`Leds`] will not be modified) for the duration of `ticks`.
+    pub fn set_overwrite(&mut self, ticks: u16) -> &mut Leds {
+        self.overwrite_counter = ticks;
+        &mut self.leds
     }
 
     /// Update currently applicable patterns based on keyboard state
@@ -85,10 +97,14 @@ impl<'a> LedController<'a> {
         let patterns = self.patterns.iter_mut();
         let leds = self.leds.leds.iter_mut();
 
-        for (pattern, led) in patterns.zip(leds) {
-            *led = pattern.tick(time)
-                .map(|channel| Self::dimmed(channel, self.brightness))
-                .map(Leds::gamma_correction);
+        if self.overwrite_counter > 0 {
+            self.overwrite_counter -= 1;
+        } else {
+            for (pattern, led) in patterns.zip(leds) {
+                *led = pattern.tick(time)
+                    .map(|channel| Self::dimmed(channel, self.brightness))
+                    .map(Leds::gamma_correction);
+            }
         }
 
         &self.leds

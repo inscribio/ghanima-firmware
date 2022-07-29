@@ -2,7 +2,7 @@ use core::mem::MaybeUninit;
 use cortex_m::{peripheral::SCB, asm::bootload};
 use usbd_dfu_rt::DfuRuntimeOps;
 
-use crate::hal::usb;
+use crate::hal::{pac, usb};
 
 const MAGIC_JUMP_BOOTLOADER: u32 = 0xdeadbeef;
 const SYSTEM_MEMORY_BASE: u32 = 0x1fffc800;
@@ -34,7 +34,10 @@ pub unsafe fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
 
 #[cortex_m_rt::pre_init]
 unsafe fn jump_bootloader() {
-    if MAGIC.assume_init() == MAGIC_JUMP_BOOTLOADER {
+    // Verify that this was a software reset
+    let software_reset = (*pac::RCC::ptr()).csr.read().sftrstf().bit_is_set();
+
+    if software_reset && MAGIC.assume_init() == MAGIC_JUMP_BOOTLOADER {
         // reset the magic value not to jump again
         MAGIC.as_mut_ptr().write(0);
         // jump to bootloader located in System Memory

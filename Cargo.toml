@@ -5,11 +5,12 @@ authors = ["Jędrzej Boczar <jedrzej.boczar@gmail.com>"]
 edition = "2021"
 
 [features]
-default = ["idle-sleep"]
+default = ["idle-sleep", "watchdog"]
 idle-sleep = []
 crystal = []
 debug-tasks = []
 json-config = []
+watchdog = []
 
 [[bin]]
 name = "ghanima"

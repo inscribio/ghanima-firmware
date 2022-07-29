@@ -13,6 +13,8 @@ pub mod reboot;
 pub mod spi;
 /// UART with DMA
 pub mod uart;
+/// System watchdog
+pub mod watchdog;
 
 mod checksum;
 mod circ_buf;
