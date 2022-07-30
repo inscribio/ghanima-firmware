@@ -193,9 +193,9 @@ mod app {
             defmt::error!("Watchdog triggered system reset");
             let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
             for (i, led) in leds.set_overwrite(ticks as u16).leds.iter_mut().enumerate() {
-                if i % 4 == 0 {
-                    led.r = 255;
-                }
+                led.r = if i % 4 == 0 { 255 } else { 0 };
+                led.g = 0;
+                led.b = 0;
             }
         }
         // Send a first transfer ASAP with all LEDs in initial state
