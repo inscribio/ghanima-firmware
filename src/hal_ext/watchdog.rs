@@ -108,8 +108,8 @@ impl WindowParams {
     /// Make sure to use this function to compute a `const` value, e.g.
     ///
     /// ```rust
-    /// # use crate::hal_ext::watchdog::{WindowWatchdog, WindowWatchdogParams};
-    /// const PARAMS: WindowWatchdogParams = WindowWatchdog::calculate_params(24_000_000, 30, 70);
+    /// # use ghanima::hal_ext::watchdog::{WindowWatchdog, WindowParams};
+    /// const PARAMS: WindowParams = WindowParams::new(24_000_000, 30_000, 70_000);
     /// ```
     ///
     /// This way assertions in this function will result in compile-time errors.
