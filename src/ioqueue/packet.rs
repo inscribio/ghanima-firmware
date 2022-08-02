@@ -229,7 +229,6 @@ impl<const N: usize> Accumulator<N> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use core::iter;
     use std::vec::Vec;
     use std::string::String;
     use crate::hal_ext::checksum_mock::Crc32;
@@ -247,10 +246,8 @@ pub mod tests {
             } else if s.starts_with('x') {  // Hexadecimal
                 let s = &s[1..];
                 assert!(s.len() % 2 == 0, "Each format must describe multiple of a byte");
-                let n_bytes = s.len();
                 assert!(s.is_ascii());
                 s.as_bytes().chunks(2).map(|pair| {
-                    let base = '0' as u8;
                     u8::from_str_radix(&String::from_utf8(vec![pair[0], pair[1]]).unwrap(), 16).unwrap()
                 }).collect()
             } else {  // Binary
@@ -436,15 +433,6 @@ pub mod tests {
     fn deserialize_from_slice_with_ref() {
         let mut crc = Crc32::new();
         let mut acc = Accumulator::<20>::new();
-        let buf = [
-            0xff, 0xee, 0xdd, 0xcc, 0,
-            17,
-            0xad, 0xba,
-            9, b'Y', b'o', b's', b's', b'a', b'r', b'i', b'a', b'n',
-            0xc5, 0xab, 0x20, 0xd6,
-            0,
-            4, 0x22, 0x33, 0x44, 0
-        ];
         let buf = &bytes(r"
             xff xee xdd xcc d0
             d18

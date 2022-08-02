@@ -36,7 +36,6 @@ mod tests {
     use crate::keyboard::keys::PressedLedKeys;
     use crate::keyboard::leds::{KeyboardState, KeyboardLedsState};
     use crate::ioqueue::packet::PacketSer;
-    use crate::ioqueue::packet::tests::bytes;
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
         let mut buf = [0; 32];
