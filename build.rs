@@ -37,12 +37,21 @@ fn json_config(out: &Path) -> Result<()>  {
 
     // Generate config from JSON if enabled
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_JSON_CONFIG");
+    println!("cargo:rerun-if-env-changed=GHANIMA_JSON_CONFIG");
     if env::var_os("CARGO_FEATURE_JSON_CONFIG").is_some() {
-        println!("cargo:rerun-if-changed=ghanima.json");
-        let json = Path::new("./ghanima.json");
+        // Get path from env variable or use default
+        let default_path = String::from("ghanima.json");
+        let path = env::var_os("GHANIMA_JSON_CONFIG")
+            .map(|s| s.into_string())
+            .transpose()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "CARGO_FEATURE_JSON_CONFIG is not utf-8"))?
+            .unwrap_or(default_path);
+
+        println!("cargo:rerun-if-changed={}", path);
+        let json = Path::new(&path);
 
         let config = KeyboardConfig::from_file(json)
-            .context("While reading ghanima.json")?;
+            .context(format!("While reading {}", path))?;
 
         config.to_file(&out.join("config.rs"))
             // .context(format!("With config:\n{:#?}", config))
