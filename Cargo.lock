@@ -457,7 +457,7 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 [[package]]
 name = "keyberon"
 version = "0.2.0"
-source = "git+https://github.com/TeXitoi/keyberon?rev=57aa0d306b60432e2eede2e33ae9a0cacfb70166#57aa0d306b60432e2eede2e33ae9a0cacfb70166"
+source = "git+https://github.com/TeXitoi/keyberon?rev=29e960e#29e960e7ca0a1f79196e441a4abd65a7d9f79ea5"
 dependencies = [
  "arraydeque",
  "either",
@@ -470,7 +470,7 @@ dependencies = [
 [[package]]
 name = "keyberon-macros"
 version = "0.1.0"
-source = "git+https://github.com/TeXitoi/keyberon?rev=57aa0d306b60432e2eede2e33ae9a0cacfb70166#57aa0d306b60432e2eede2e33ae9a0cacfb70166"
+source = "git+https://github.com/TeXitoi/keyberon?rev=29e960e#29e960e7ca0a1f79196e441a4abd65a7d9f79ea5"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
