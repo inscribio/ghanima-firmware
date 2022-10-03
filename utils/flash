@@ -32,13 +32,17 @@ die() {
 while (( $# > 0 )); do
     case "$1" in
         -h|--help)
-            echo "Usage: $(basename $0) [--first-flash] [--prebuilt] [-- [CARGO_FLAGS...]]"
+            echo "Usage: $(basename $0) [--first-flash] [--no-detach] [--prebuilt] [-- [CARGO_FLAGS...]]"
             exit 0 ;;
         --first-flash)
             first=yes ;;
         --prebuilt)
             shift
             prebuilt="$1" ;;
+        --no-detach)
+            nodetach=yes ;;
+        --dry-run)
+            dry_run=yes ;;
         --)
             shift
             break ;;
@@ -123,12 +127,16 @@ detach_keyboard() {
     iserial=$(lsusb_string $keyboard_id 'iSerial')
     info "Found keyboard: $imanufacturer | $iproduct | $iserial"
 
-    # check before detaching to avoid loosing keyboard unnecesarily
+    # check before detaching to avoid loosing keyboard unnecessarily
     check_firmware || die "Firmware check failed"
 
     # detach to bootloader
-    info "Detaching keyboard to bootloader ..."
-    dfu-util --detach --device $keyboard_id  # || die "Detaching to bootloader failed"
+    info "Detaching keyboard $keyboard_id to bootloader ..."
+    if [[ ${dry_run:-no} != 'yes' ]]; then
+        dfu-util --detach --device $keyboard_id  # || die "Detaching to bootloader failed"
+    else
+        die "DRY RUN: keyboard won't be detached so stopping here"
+    fi
 }
 
 flash_firmware_dfu() {
@@ -146,13 +154,15 @@ flash_firmware_dfu() {
     find_bootloader || die "Could not find DFU bootloader device"
 
     info "Flashing device ..."
-    dfu-util \
-        --device $stm32dfu_id \
-        --alt 0 \
-        --dfuse-address "0x08000000:$dfu_modifiers" \
-        --download "$firmware" \
-        --reset \
-        # || die "Flashing via DFU failed"
+    if [[ ${dry_run:-no} != 'yes' ]]; then
+        dfu-util \
+            --device $stm32dfu_id \
+            --alt 0 \
+            --dfuse-address "0x08000000:$dfu_modifiers" \
+            --download "$firmware" \
+            --reset \
+            # || die "Flashing via DFU failed"
+    fi
 }
 
 flash_firmware_openocd() {
@@ -168,7 +178,7 @@ flash_firmware_openocd() {
 if find_stlink; then
     info "Found ST-LINK. Flashing using OpenOCD ..."
     flash_firmware_openocd
-elif find_keyboard; then
+elif [[ ${nodetach:-no} != 'yes' ]] && find_keyboard; then
     detach_keyboard
     flash_firmware_dfu
 elif find_bootloader; then
