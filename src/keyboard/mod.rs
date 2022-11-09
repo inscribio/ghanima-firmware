@@ -20,7 +20,6 @@ mod msg;
 mod role;
 
 use keyberon::layout::{self, Event};
-use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBufferRead, RingBuffer};
 use serde::{Serialize, Deserialize};
 
 use usb_device::device::UsbDeviceState;
@@ -33,7 +32,7 @@ use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::KeyboardReport;
+use hid::{KeyboardReport, HidReportQueue};
 
 pub use keys::Keys;
 pub use leds::LedController;
@@ -52,14 +51,7 @@ pub struct Keyboard<const L: usize> {
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
-    // TODO: instead of having large queue, use smarter way of merging following keyboard reports
-    // e.g. when pressing 4 keys, instead of inserting [A], [A, B], [A, B, C], [A, B, C, D], we
-    // would first insert [A], then update that report; similarly when releasing:
-    // [A, B, C, D], [A, B, C], [A, B], [A]
-    // would be merged into all-to-nothing. But we must make sure that we don't accidentally miss
-    // something when merging.
-    report_queue: ConstGenericRingBuffer<KeyboardReport, 8>,
-    report_missed: bool,
+    keyboard_reports: HidReportQueue<KeyboardReport, 8>,
 }
 
 /// Keyboard configuration
@@ -100,8 +92,7 @@ impl<const L: usize> Keyboard<L> {
             pressed_right: Default::default(),
         };
         let pressed_other = Default::default();
-        let report_queue = ConstGenericRingBuffer::new();
-        let report_missed = false;
+        let keyboard_reports = HidReportQueue::new();
         let keyboard = Self {
             keys,
             fsm,
@@ -109,8 +100,7 @@ impl<const L: usize> Keyboard<L> {
             mouse,
             prev_state,
             pressed_other,
-            report_queue,
-            report_missed,
+            keyboard_reports,
         };
         (keyboard, leds)
     }
@@ -222,8 +212,10 @@ impl<const L: usize> Keyboard<L> {
                 brightness: None,
             };
 
+            // TODO: auto-enable NumLock by checking leds state
             // Advance keyboard time
             let custom = self.layout.tick();
+            self.keyboard_reports.push(self.layout.keycodes().collect());
             if let Some((action, pressed)) = custom.transposed() {
                 self.handle_action(action, pressed, &mut update);
             }
@@ -233,38 +225,7 @@ impl<const L: usize> Keyboard<L> {
 
             // Push USB reports
             if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
-                // TODO: auto-enable NumLock by checking leds state
-                let kb_report: KeyboardReport = self.layout.keycodes().collect();
-
-                // Add new report only if it is different than the previous one.
-                let add = self.report_queue.back()
-                    .map(|prev| &kb_report != prev)
-                    .unwrap_or(true);
-
-                // If we missed a report (ring buffer overflow) then we must make sure that an
-                // additional report will be sent to synchronize the HID state.
-                if add || (self.report_missed && self.report_queue.is_empty()) {
-                    self.report_missed = self.report_queue.is_full();
-                    // We're using a small queue to avoid dropping reports, but keyboard HID report
-                    // is just a set of keys being pressed, so just ignore reports if we are unable
-                    // to push them. If USB host polls so rarely then there's no real point in queueing,
-                    // more - host will just miss some keys (though this may lead to problems like a key
-                    // press being locked).
-                    self.report_queue.push(kb_report);
-                }
-
-                if let Some(report) = self.report_queue.peek() {
-                    // Call to .write() will return Ok(0) if the previous report hasn't been sent yet,
-                    // else number of data written. Any other Err should never happen - would be
-                    // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
-                    let ok = usb.keyboard.push_keyboard_report(report)
-                        .map_err(|_| ())
-                        .expect("Bug in class implementation") > 0;
-                    if ok {
-                        // Consume the report on success
-                        self.report_queue.skip();
-                    }
-                }
+                self.keyboard_reports.send(|r| usb.keyboard.push_keyboard_report(r));
 
                 // Try to push USB mouse report
                 self.mouse.push_report(&usb.mouse);
