@@ -20,7 +20,7 @@ mod code {
     };
     use rgb::RGB8;
 
-    use crate::keyboard::{mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig}, actions::LedAction};
+    use crate::keyboard::{mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig}, actions::{LedAction, ConsumerKey}};
     use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
     use crate::keyboard::KeyboardConfig;
     use crate::keyboard::actions::Action as CustomAction;
@@ -78,13 +78,13 @@ mod code {
     const PSCREEN_WIN: Action = m(&[LAlt, PScreen].as_slice());
     const PSCREEN_SEL: Action = m(&[LShift, PScreen].as_slice());
 
-    const PREVIOUS: Action = k(MediaPreviousSong);
-    const NEXT: Action = k(MediaNextSong);
-    const PLAYPAUSE: Action = k(MediaPlayPause);
-    const STOP: Action = k(MediaStop);
-    const MUTE: Action = k(MediaMute);
-    const VOL_UP: Action = k(MediaVolUp);
-    const VOL_DOWN: Action = k(MediaVolDown);
+    const PREVIOUS: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::PrevTrack));
+    const NEXT: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::NextTrack));
+    const PLAYPAUSE: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::PlayPause));
+    const STOP: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::Stop));
+    const MUTE: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::Mute));
+    const VOL_UP: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::VolumeIncrement));
+    const VOL_DOWN:  Action = Action::Custom(CustomAction::Consumer(ConsumerKey::VolumeDecrement));
 
     const M_L: Action = Action::Custom(CustomAction::Mouse(MouseAction::Click(MouseButton::Left)));
     const M_R: Action = Action::Custom(CustomAction::Mouse(MouseAction::Click(MouseButton::Right)));
