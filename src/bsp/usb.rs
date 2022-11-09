@@ -1,8 +1,6 @@
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::{UsbDevice, UsbVidPid, UsbDeviceBuilder};
 use usbd_dfu_rt::DfuRuntimeClass;
-use usbd_hid::descriptor::{MouseReport, SerializedDescriptor};
-use usbd_hid::hid_class::HIDClass;
 
 use crate::hal::usb;
 use crate::hal_ext::reboot;

@@ -32,7 +32,7 @@ use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::{KeyboardReport, HidReportQueue, HidClass, HidConsumer, ConsumerReport};
+use hid::{KeyboardReport, HidReportQueue, HidClass, ConsumerReport};
 
 pub use keys::Keys;
 pub use leds::LedController;

@@ -1,5 +1,5 @@
 use usb_device::class_prelude::*;
-use usbd_hid::{hid_class::{HIDClass, ReportType}, descriptor::generator_prelude::*};
+use usbd_hid::{hid_class::HIDClass, descriptor::generator_prelude::*};
 
 /// MouseReport describes a report and its companion descriptor than can be used
 /// to send mouse movements and button presses to a host.

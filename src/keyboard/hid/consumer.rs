@@ -1,5 +1,5 @@
 use usb_device::class_prelude::*;
-use usbd_hid::{hid_class::{HIDClass, ReportType}, descriptor::generator_prelude::*};
+use usbd_hid::{hid_class::HIDClass, descriptor::generator_prelude::*};
 
 /// MediaKeyboardReport describes a report and descriptor that can be used to
 /// send consumer control commands to the host.
