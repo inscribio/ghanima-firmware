@@ -1,3 +1,4 @@
+mod consumer;
 mod keyboard;
 mod mouse;
 
@@ -5,8 +6,9 @@ use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBuf
 use usb_device::{UsbError, class_prelude::*};
 use usbd_hid::descriptor::AsInputReport;
 
-pub use keyboard::{HidKeyboard, KeyboardLeds, KeyboardReport};
+pub use keyboard::{HidKeyboard, KeyboardReport, KeyboardLeds};
 pub use mouse::{HidMouse, MouseReport};
+pub use consumer::{HidConsumer, ConsumerReport, ConsumerKey};
 
 /// Specific HID class
 pub trait HidClass<'a, B: UsbBus + 'a> {

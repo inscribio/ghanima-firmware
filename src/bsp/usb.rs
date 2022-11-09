@@ -6,7 +6,7 @@ use usbd_hid::hid_class::HIDClass;
 
 use crate::hal::usb;
 use crate::hal_ext::reboot;
-use crate::keyboard::hid::{HidKeyboard, HidMouse, HidClass};
+use crate::keyboard::hid::{HidKeyboard, HidMouse, HidConsumer, HidClass};
 use super::sides::BoardSide;
 
 type Bus = usb::UsbBusType;
@@ -16,6 +16,7 @@ pub struct Usb {
     pub dev: UsbDevice<'static, Bus>,
     pub keyboard: HidKeyboard<'static, Bus>,
     pub mouse: HidMouse<'static, Bus>,
+    pub consumer: HidConsumer<'static, Bus>,
     // this does not need to be share but it should be cleaner to have it here
     pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
 }
@@ -25,6 +26,7 @@ impl Usb {
         // Classes
         let keyboard = HidKeyboard::new(bus);
         let mouse = HidMouse::new(bus);
+        let consumer = HidConsumer::new(bus);
         // NOTE: Create it last or else the device won't enumerate on Windows. It seems that Windows
         // does not like having DFU interface with number 0 and will report invalid configuration
         // descriptor.
@@ -44,11 +46,16 @@ impl Usb {
             .composite_with_iads()
             .build();
 
-        Self { dev, keyboard, mouse, dfu }
+        Self { dev, keyboard, mouse, consumer, dfu }
     }
 
     /// Periodic USB poll
     pub fn poll(&mut self) -> bool {
-        self.dev.poll(&mut [self.keyboard.class(), self.mouse.class(), &mut self.dfu])
+        self.dev.poll(&mut [
+            self.keyboard.class(),
+            self.mouse.class(),
+            self.consumer.class(),
+            &mut self.dfu,
+        ])
     }
 }

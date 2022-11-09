@@ -1,3 +1,4 @@
+pub use crate::keyboard::hid::ConsumerKey;
 pub use crate::utils::Inc;
 
 /// Additional key actions
@@ -6,6 +7,8 @@ pub enum Action {
     Led(LedAction),
     /// Use mouse emulation
     Mouse(MouseAction),
+    /// Send USB HID consumer page keys
+    Consumer(ConsumerKey),
 }
 
 

@@ -32,7 +32,7 @@ use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::{KeyboardReport, HidReportQueue, HidClass};
+use hid::{KeyboardReport, HidReportQueue, HidClass, HidConsumer, ConsumerReport};
 
 pub use keys::Keys;
 pub use leds::LedController;
@@ -52,6 +52,7 @@ pub struct Keyboard<const L: usize> {
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
     keyboard_reports: HidReportQueue<KeyboardReport, 8>,
+    consumer_reports: HidReportQueue<ConsumerReport, 1>,
 }
 
 /// Keyboard configuration
@@ -93,6 +94,7 @@ impl<const L: usize> Keyboard<L> {
         };
         let pressed_other = Default::default();
         let keyboard_reports = HidReportQueue::new();
+        let consumer_reports = HidReportQueue::new();
         let keyboard = Self {
             keys,
             fsm,
@@ -101,6 +103,7 @@ impl<const L: usize> Keyboard<L> {
             prev_state,
             pressed_other,
             keyboard_reports,
+            consumer_reports,
         };
         (keyboard, leds)
     }
@@ -226,6 +229,7 @@ impl<const L: usize> Keyboard<L> {
             // Push USB reports
             if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
                 self.keyboard_reports.send(&mut usb.keyboard);
+                self.consumer_reports.send(&mut usb.consumer);
 
                 // Try to push USB mouse report
                 self.mouse.push_report(usb.mouse.class());
@@ -261,7 +265,15 @@ impl<const L: usize> Keyboard<L> {
                     LedAction::Brightness(inc) => update.brightness = Some(*inc),
                 }
             },
-            Action::Mouse(mouse) => self.mouse.handle_action(mouse, pressed),
+            Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
+            Action::Consumer(key) => {
+                let report = if pressed {
+                    (*key).into()
+                } else {
+                    ConsumerReport { usage_id: 0 }
+                };
+                self.consumer_reports.push(report);
+            },
         };
     }
 }
