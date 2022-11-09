@@ -32,7 +32,7 @@ use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::{KeyboardReport, HidReportQueue};
+use hid::{KeyboardReport, HidReportQueue, HidClass};
 
 pub use keys::Keys;
 pub use leds::LedController;
@@ -47,7 +47,7 @@ pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::M
 pub struct Keyboard<const L: usize> {
     keys: keys::Keys,
     fsm: role::Fsm,
-    layout: layout::Layout<{ 2 * NCOLS}, NROWS, L, Action>,
+    layout: layout::Layout<{ 2 * NCOLS }, NROWS, L, Action>,
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
     pressed_other: PressedLedKeys,
@@ -225,10 +225,10 @@ impl<const L: usize> Keyboard<L> {
 
             // Push USB reports
             if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
-                self.keyboard_reports.send(|r| usb.keyboard.push_keyboard_report(r));
+                self.keyboard_reports.send(&mut usb.keyboard);
 
                 // Try to push USB mouse report
-                self.mouse.push_report(&usb.mouse);
+                self.mouse.push_report(usb.mouse.class());
             }
 
             // Transfer LED updates

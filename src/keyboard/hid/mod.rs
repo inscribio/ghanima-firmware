@@ -1,9 +1,25 @@
 mod keyboard;
+mod mouse;
 
 use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBufferRead, RingBuffer};
-use usb_device::UsbError;
+use usb_device::{UsbError, class_prelude::*};
+use usbd_hid::descriptor::AsInputReport;
 
 pub use keyboard::{HidKeyboard, KeyboardLeds, KeyboardReport};
+pub use mouse::{HidMouse, MouseReport};
+
+/// Specific HID class
+pub trait HidClass<'a, B: UsbBus + 'a> {
+    type Report: AsInputReport;
+
+    /// Get underlying USB HID class
+    fn class(&mut self) -> &mut usbd_hid::hid_class::HIDClass<'a, B>;
+
+    /// Push report to endpoint
+    fn push_report(&mut self, report: &Self::Report) -> usb_device::Result<usize> {
+        self.class().push_input(report)
+    }
+}
 
 /// Helper queue for sending USB HID reports
 ///
@@ -17,7 +33,7 @@ pub struct HidReportQueue<R, const N: usize> {
 }
 
 impl<R, const N: usize> HidReportQueue<R, N>
-    where R: PartialEq
+    where R: AsInputReport + PartialEq
 {
     pub fn new() -> Self {
         Self {
@@ -65,14 +81,16 @@ impl<R, const N: usize> HidReportQueue<R, N>
     ///
     /// When `write_report` returns `Err` other than `UsbError::WouldBlock`, which means
     /// there is a bug in class implementation.
-    pub fn send<F>(&mut self, write_report: F)
-        where F: FnOnce(&R) -> Result<usize, UsbError>
+    pub fn send<'a, C, B>(&mut self, hid: &mut C)
+        where
+            B: UsbBus + 'a,
+            C: HidClass<'a, B, Report = R>,
     {
         if let Some(report) = self.queue.peek() {
             // Call to .write() will return Ok(0) if the previous report hasn't been sent yet,
             // else number of data written. Any other Err should never happen - would be
             // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
-            let ok = write_report(report)
+            let ok = hid.class().push_input(report)
                 .or_else(|e| match e {
                     UsbError::WouldBlock => Ok(0),
                     e => Err(e),

@@ -64,16 +64,6 @@ impl<'a, B: UsbBus> HidKeyboard<'a, B> {
         }
     }
 
-    /// Get underlying USB class to be passed to poll()
-    pub fn class(&mut self) -> &mut dyn UsbClass<B> {
-        &mut self.hid
-    }
-
-    /// Push keyboard report to endpoint
-    pub fn push_keyboard_report(&mut self, report: &KeyboardReport) -> usb_device::Result<usize> {
-        self.hid.push_input(report)
-    }
-
     /// Get current state of keyboard LEDs additionally returning true state changed since last read
     pub fn leds(&mut self) -> (KeyboardLeds, bool) {
         let mut changed = false;
@@ -99,6 +89,14 @@ impl<'a, B: UsbBus> HidKeyboard<'a, B> {
             config: ProtocolModeConfig::ForceBoot,
             locale: HidCountryCode::NotSupported,
         }
+    }
+}
+
+impl<'a, B: UsbBus> super::HidClass<'a, B> for HidKeyboard<'a, B> {
+    type Report = KeyboardReport;
+
+    fn class(&mut self) -> &mut usbd_hid::hid_class::HIDClass<'a, B> {
+        &mut self.hid
     }
 }
 
