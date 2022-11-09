@@ -46,7 +46,7 @@ mod condition;
 mod pattern;
 
 pub use pattern::LedController;
-pub use condition::{KeyboardState, KeyboardLedsState};
+pub use condition::KeyboardState;
 
 use rgb::RGB8;
 use super::role::Role;

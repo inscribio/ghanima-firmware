@@ -34,7 +34,8 @@ mod tests {
     use super::*;
     use crate::keyboard::actions::Inc;
     use crate::keyboard::keys::PressedLedKeys;
-    use crate::keyboard::leds::{KeyboardState, KeyboardLedsState};
+    use crate::keyboard::leds::KeyboardState;
+    use crate::keyboard::hid::KeyboardLeds;
     use crate::ioqueue::packet::PacketSer;
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
@@ -86,7 +87,7 @@ mod tests {
     fn verify_leds_update() {
         verify_serialization(Message::Leds(LedsUpdate {
             state: KeyboardState {
-                leds: KeyboardLedsState(0b01010),
+                leds: KeyboardLeds(0b01010),
                 usb_on: true,
                 role: role::Role::Master,
                 layer: 2,

@@ -6,6 +6,8 @@
 
 /// Special keyboard actions
 pub mod actions;
+/// Keyboard related USB HID classes
+pub mod hid;
 /// Keyboard matrix scanner with debouncing
 mod keys;
 /// Keyboard lightning control and configuration
@@ -17,7 +19,6 @@ mod msg;
 /// Role negotiation between keyboard halves
 mod role;
 
-use keyberon::key_code::KbHidReport;
 use keyberon::layout::{self, Event};
 use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBufferRead, RingBuffer};
 use serde::{Serialize, Deserialize};
@@ -32,6 +33,7 @@ use leds::KeyboardState;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
+use hid::KeyboardReport;
 
 pub use keys::Keys;
 pub use leds::LedController;
@@ -56,7 +58,7 @@ pub struct Keyboard<const L: usize> {
     // [A, B, C, D], [A, B, C], [A, B], [A]
     // would be merged into all-to-nothing. But we must make sure that we don't accidentally miss
     // something when merging.
-    report_queue: ConstGenericRingBuffer<KbHidReport, 8>,
+    report_queue: ConstGenericRingBuffer<KeyboardReport, 8>,
     report_missed: bool,
 }
 
@@ -90,7 +92,7 @@ impl<const L: usize> Keyboard<L> {
         let layout = layout::Layout::new(config.layers);
         let mouse = mouse::Mouse::new(config.mouse);
         let prev_state = KeyboardState {
-            leds: leds::KeyboardLedsState(0),
+            leds: hid::KeyboardLeds(0),
             usb_on: false,
             role: fsm.role(),
             layer: layout.current_layer() as u8,
@@ -123,7 +125,7 @@ impl<const L: usize> Keyboard<L> {
     /// This should be called in a fixed period to update internal state, handle communication
     /// between keyboard halves and resolve key events depending on keyboard layout. Returns
     /// [`KeyboardState`] to be passed to the LED controller - possibly a lower priority task.
-    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb<leds::KeyboardLedsState>) -> LedsUpdate
+    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb) -> LedsUpdate
     where
         TX: ioqueue::TransmitQueue<msg::Message>,
         RX: ioqueue::ReceiveQueue<msg::Message>,
@@ -209,7 +211,7 @@ impl<const L: usize> Keyboard<L> {
             // Collect state
             let mut update = LedsUpdate {
                 state: leds::KeyboardState {
-                    leds: *usb.keyboard_leds(),
+                    leds: usb.keyboard.leds().0, // pulls data from HidClass
                     usb_on: usb.dev.state() == UsbDeviceState::Configured,
                     role: self.fsm.role(),
                     layer: self.layout.current_layer() as u8,
@@ -232,7 +234,7 @@ impl<const L: usize> Keyboard<L> {
             // Push USB reports
             if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
                 // TODO: auto-enable NumLock by checking leds state
-                let kb_report: KbHidReport = self.layout.keycodes().collect();
+                let kb_report: KeyboardReport = self.layout.keycodes().collect();
 
                 // Add new report only if it is different than the previous one.
                 let add = self.report_queue.back()
@@ -252,13 +254,10 @@ impl<const L: usize> Keyboard<L> {
                 }
 
                 if let Some(report) = self.report_queue.peek() {
-                    // TODO: Have to set it here and call .write(). Combined with the queueing logic
-                    // we do extra work (all those copies and comparisons) that could be avoided.
-                    usb.keyboard.device_mut().set_keyboard_report(report.clone());
                     // Call to .write() will return Ok(0) if the previous report hasn't been sent yet,
                     // else number of data written. Any other Err should never happen - would be
                     // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
-                    let ok = usb.keyboard.write(report.as_bytes())
+                    let ok = usb.keyboard.push_keyboard_report(report)
                         .map_err(|_| ())
                         .expect("Bug in class implementation") > 0;
                     if ok {

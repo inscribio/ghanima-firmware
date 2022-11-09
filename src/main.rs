@@ -43,7 +43,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb: Usb<keyboard::leds::KeyboardLedsState>,
+        usb: Usb,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
         serial_rx: SerialRx,
@@ -178,7 +178,7 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let usb = Usb::new(usb_bus, &board_side, Default::default());
+        let usb = Usb::new(usb_bus, &board_side);
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);

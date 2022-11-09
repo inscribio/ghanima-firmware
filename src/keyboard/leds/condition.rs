@@ -1,8 +1,8 @@
-use bitfield::bitfield;
 use serde::{Serialize, Deserialize};
 
 use crate::bsp::{NROWS, NCOLS};
 use crate::bsp::sides::BoardSide;
+use crate::keyboard::hid::KeyboardLeds;
 use crate::keyboard::keys::PressedLedKeys;
 use crate::keyboard::role::Role;
 use super::{Keys, Condition, KeyboardLed, LedController};
@@ -10,7 +10,7 @@ use super::{Keys, Condition, KeyboardLed, LedController};
 /// Collection of keyboard state variables that can be used as conditions
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeyboardState {
-    pub leds: KeyboardLedsState,
+    pub leds: KeyboardLeds,
     pub usb_on: bool,
     pub role: Role,
     pub layer: u8,
@@ -21,16 +21,6 @@ pub struct KeyboardState {
 /// Used to keep track of "event flags" for
 #[derive(Clone)]
 pub struct KeyboardStateEvents(KeyboardState);
-
-bitfield! {
-    #[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-    pub struct KeyboardLedsState(u8);
-    pub num_lock, set_num_lock: 0;
-    pub caps_lock, set_caps_lock: 1;
-    pub scroll_lock, set_scroll_lock: 2;
-    pub compose, set_compose: 3;
-    pub kana, set_kana: 4;
-}
 
 impl KeyboardState {
     /// Apply LED controller state update
@@ -123,14 +113,6 @@ impl Keys {
             }
         }
     }
-}
-
-impl keyberon::keyboard::Leds for KeyboardLedsState {
-    fn num_lock(&mut self, status: bool) { self.set_num_lock(status); }
-    fn caps_lock(&mut self, status: bool) { self.set_caps_lock(status); }
-    fn scroll_lock(&mut self, status: bool) { self.set_scroll_lock(status); }
-    fn compose(&mut self, status: bool) { self.set_compose(status); }
-    fn kana(&mut self, status: bool) { self.set_kana(status); }
 }
 
 #[cfg(test)]
