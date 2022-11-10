@@ -264,6 +264,9 @@ impl<const L: usize> Keyboard<L> {
 
                 // Try to push USB mouse report
                 self.mouse.push_report(usb.mouse.class());
+            } else if usb_state != UsbDeviceState::Configured {
+                self.keyboard_reports.clear();
+                self.consumer_reports.clear();
             }
 
             // Disable LEDs when entering suspend mode

@@ -105,4 +105,9 @@ impl<R, const N: usize> HidReportQueue<R, N>
             }
         }
     }
+
+    /// Emtpy the report queue, to be called on USB disconnect/suspend
+    pub fn clear(&mut self) {
+        self.queue.clear();
+    }
 }
