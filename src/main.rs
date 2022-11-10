@@ -208,6 +208,9 @@ mod app {
 
         let mono = systick_monotonic::Systick::new(core.SYST, rcc.clocks.sysclk().0);
 
+        // Configure timestamps logging, u32 is ~50 days.
+        defmt::timestamp!("[{=u32:06}]", monotonics::now().ticks() as u32);
+
         debug::tasks::trace::run(|| defmt::info!("Liftoff!"));
 
         watchdog.maybe_feed();
