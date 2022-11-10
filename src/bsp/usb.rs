@@ -37,6 +37,13 @@ impl Usb {
         // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
         let generic_keyboard = UsbVidPid(0x16c0, 0x27db);
         let dev = UsbDeviceBuilder::new(bus, generic_keyboard)
+            .composite_with_iads()
+            // From my measurements, with all LEDs set to constant white, the keyboard (both halves)
+            // can draw up to 2 Amps, which is totally out of spec, but seems to work anyway.
+            // With half brightness it is around 300 mA.
+            .max_power(500)
+            .supports_remote_wakeup(false) // see https://github.com/stm32-rs/stm32-usbd/issues/28
+            // Device info
             .manufacturer("inscrib.io")
             .product(match side {
                 BoardSide::Left => "ghanima keyboard (L)",
@@ -44,7 +51,6 @@ impl Usb {
             })
             .serial_number(env!("CARGO_PKG_VERSION"))
             .device_release(Self::bcd_device())
-            .composite_with_iads()
             .build();
 
         Self { dev, keyboard, mouse, consumer, dfu }
