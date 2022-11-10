@@ -43,7 +43,7 @@ impl<'a> LedController<'a> {
             side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
-            brightness: u8::MAX/2,
+            brightness: (u8::MAX as u16 * 2 / 3) as u8,
             overwrite_counter: 0,
         }
     }
