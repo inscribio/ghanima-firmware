@@ -81,6 +81,7 @@ rgb = "0.8"
 smlang = "0.5"
 ringbuffer = { version = "0.8", default-features = false }
 either = { version = "1.6", default-features = false }
+pkg-version = "1.0"
 
 # Do not use print-defmt as it blows up binary size - we can live without panic messages
 panic-probe = "0.3"

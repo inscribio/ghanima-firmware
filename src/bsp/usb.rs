@@ -1,3 +1,5 @@
+use pkg_version::{pkg_version_major, pkg_version_minor};
+use static_assertions::const_assert;
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::{UsbDevice, UsbVidPid, UsbDeviceBuilder};
 use usbd_dfu_rt::DfuRuntimeClass;
@@ -41,6 +43,7 @@ impl Usb {
                 BoardSide::Right => "ghanima keyboard (R)"
             })
             .serial_number(env!("CARGO_PKG_VERSION"))
+            .device_release(Self::bcd_device())
             .composite_with_iads()
             .build();
 
@@ -55,5 +58,13 @@ impl Usb {
             self.consumer.class(),
             &mut self.dfu,
         ])
+    }
+
+    const fn bcd_device() -> u16 {
+        const_assert!(pkg_version_major!() < 0xff);
+        const_assert!(pkg_version_minor!() < 0xff);
+        let major: u16 = (pkg_version_major!() & 0xff) << 8;
+        let minor: u16 = pkg_version_minor!() & 0xff;
+        major | minor
     }
 }
