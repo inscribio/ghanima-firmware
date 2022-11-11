@@ -945,8 +945,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "stm32-usbd"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6c94998f166d66b210a164648a0b7866428d8f1e0740bf8a4c5edd89d4750c1"
+source = "git+https://github.com/jedrzejboczar/stm32-usbd?rev=c6f7d12#c6f7d12c524fff31c9f0de0baea0bcdeffcfbddc"
 dependencies = [
  "cortex-m",
  "usb-device",
