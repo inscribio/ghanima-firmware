@@ -1,8 +1,13 @@
+/// Task execution counters
+pub mod counters;
+
 /// Safer interface that allows to use GPIOs or Serial
 pub mod pins;
 
 /// Raw interface better suited for tracing execution of RTIC tasks
 pub mod tasks;
+
+pub use counters::Counter as TaskCounter;
 
 use core::mem::MaybeUninit;
 use static_assertions as sa;

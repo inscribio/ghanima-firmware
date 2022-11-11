@@ -9,6 +9,7 @@ default = ["idle-sleep", "watchdog"]
 idle-sleep = []
 crystal = []
 debug-tasks = []
+task-counters = []
 json-config = []
 watchdog = []
 
