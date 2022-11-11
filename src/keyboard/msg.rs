@@ -32,7 +32,7 @@ impl ioqueue::Packet for Message {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keyboard::actions::Inc;
+    use crate::keyboard::BrightnessUpdate;
     use crate::keyboard::keys::PressedLedKeys;
     use crate::keyboard::leds::KeyboardState;
     use crate::keyboard::hid::KeyboardLeds;
@@ -95,7 +95,7 @@ mod tests {
                 pressed_right: PressedLedKeys::new_raw(0b00001100000000000000000000000011),
             },
             config: None,
-            brightness: Some(Inc::Down),
+            brightness: Some(BrightnessUpdate::Down),
         }),
             // Message::Leds
             &[0x02,

@@ -19,6 +19,7 @@ pub struct Usb {
     pub consumer: HidConsumer<'static, Bus>,
     // this does not need to be share but it should be cleaner to have it here
     pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
+    wake_up_counter: u16,
 }
 
 impl Usb {
@@ -42,7 +43,7 @@ impl Usb {
             // can draw up to 2 Amps, which is totally out of spec, but seems to work anyway.
             // With half brightness it is around 300 mA.
             .max_power(500)
-            .supports_remote_wakeup(false) // see https://github.com/stm32-rs/stm32-usbd/issues/28
+            .supports_remote_wakeup(true)
             // Device info
             .manufacturer("inscrib.io")
             .product(match side {
@@ -53,7 +54,7 @@ impl Usb {
             .device_release(Self::bcd_device())
             .build();
 
-        Self { dev, keyboard, mouse, consumer, dfu }
+        Self { dev, keyboard, mouse, consumer, dfu, wake_up_counter: 0 }
     }
 
     /// Periodic USB poll
@@ -64,6 +65,17 @@ impl Usb {
             self.consumer.class(),
             &mut self.dfu,
         ])
+    }
+
+    /// Set wake up state; call repeatedly, ticks should take 1-15 ms
+    pub fn wake_up_update(&mut self, wake_up: bool, ticks: u16) {
+        if wake_up && self.wake_up_counter == 0 {
+            self.dev.bus().remote_wakeup(true);
+            self.wake_up_counter = ticks;
+        } else {
+            self.wake_up_counter = self.wake_up_counter.saturating_sub(1);
+            self.dev.bus().remote_wakeup(self.wake_up_counter != 0);
+        }
     }
 
     const fn bcd_device() -> u16 {

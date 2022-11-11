@@ -36,6 +36,8 @@ struct PatternIter<'a> {
 }
 
 impl<'a> LedController<'a> {
+    pub const INITIAL_BRIGHTNESS: u8 = (u8::MAX as u16 * 2 / 3) as u8;
+
     pub fn new(side: BoardSide, configurations: &'a LedConfigurations) -> Self {
         Self {
             leds: Leds::new(),
@@ -43,7 +45,7 @@ impl<'a> LedController<'a> {
             side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
-            brightness: (u8::MAX as u16 * 2 / 3) as u8,
+            brightness: Self::INITIAL_BRIGHTNESS,
             overwrite_counter: 0,
         }
     }

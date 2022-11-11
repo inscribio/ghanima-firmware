@@ -50,6 +50,7 @@ pub struct Keyboard<const L: usize> {
     layout: layout::Layout<{ 2 * NCOLS }, NROWS, L, Action>,
     mouse: mouse::Mouse,
     prev_state: KeyboardState,
+    prev_usb_state: UsbDeviceState,
     pressed_other: PressedLedKeys,
     keyboard_reports: HidReportQueue<KeyboardReport, 8>,
     consumer_reports: HidReportQueue<ConsumerReport, 1>,
@@ -72,7 +73,25 @@ pub struct KeyboardConfig<const L: usize> {
 pub struct LedsUpdate {
     state: KeyboardState,
     config: Option<Inc>,
-    brightness: Option<Inc>,
+    brightness: Option<BrightnessUpdate>,
+}
+
+/// Deferred update of LED controller state
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+enum BrightnessUpdate {
+    Up,
+    Down,
+    Disable,
+    Enable,
+}
+
+impl From<Inc> for BrightnessUpdate {
+    fn from(inc: Inc) -> Self {
+        match inc {
+            Inc::Up => Self::Up,
+            Inc::Down => Self::Down,
+        }
+    }
 }
 
 impl<const L: usize> Keyboard<L> {
@@ -104,6 +123,7 @@ impl<const L: usize> Keyboard<L> {
             pressed_other,
             keyboard_reports,
             consumer_reports,
+            prev_usb_state: UsbDeviceState::Default,
         };
         (keyboard, leds)
     }
@@ -129,13 +149,19 @@ impl<const L: usize> Keyboard<L> {
             }
         };
 
+        // Retrieve USB state
+        let usb_state = usb.dev.state();
+        let prev_usb_state = self.prev_usb_state;
+        self.prev_usb_state = usb_state;
+
         // First update USB state in FSM
-        maybe_tx(tx, self.fsm.usb_state(usb.dev.state() == UsbDeviceState::Configured));
+        maybe_tx(tx, self.fsm.usb_state(usb_state == UsbDeviceState::Configured));
 
         // Store LEDs updates from master
         let mut leds_update = None;
 
         // Process RX data
+        let mut was_event = false;
         while let Some(msg) = rx.get() {
             match msg {
                 msg::Message::Role(msg) => {
@@ -143,6 +169,7 @@ impl<const L: usize> Keyboard<L> {
                     maybe_tx(tx, self.fsm.on_rx(msg));
                 },
                 msg::Message::Key(event) => {
+                    was_event = true;
                     match event {
                         Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
@@ -167,6 +194,7 @@ impl<const L: usize> Keyboard<L> {
 
         // Scan keys and push all events
         for event in self.keys.scan() {
+            was_event = true;
             match self.fsm.role() {
                 // Master should handle keyboard logic
                 Role::Master => self.layout.event(event),
@@ -178,6 +206,9 @@ impl<const L: usize> Keyboard<L> {
                 },
             }
         }
+
+        // Process USB wake up FIXME: assumes keyboard tick is 1 kHz
+        usb.wake_up_update(was_event, 9);
 
         if self.fsm.role() == Role::Slave {
             // Slave just uses the LED update from master
@@ -205,7 +236,7 @@ impl<const L: usize> Keyboard<L> {
             let mut update = LedsUpdate {
                 state: leds::KeyboardState {
                     leds: usb.keyboard.leds().0, // pulls data from HidClass
-                    usb_on: usb.dev.state() == UsbDeviceState::Configured,
+                    usb_on: usb_state == UsbDeviceState::Configured,
                     role: self.fsm.role(),
                     layer: self.layout.current_layer() as u8,
                     pressed_left,
@@ -227,12 +258,20 @@ impl<const L: usize> Keyboard<L> {
             self.mouse.tick();
 
             // Push USB reports
-            if self.fsm.role() == Role::Master && usb.dev.state() == UsbDeviceState::Configured {
+            if self.fsm.role() == Role::Master && usb_state == UsbDeviceState::Configured {
                 self.keyboard_reports.send(&mut usb.keyboard);
                 self.consumer_reports.send(&mut usb.consumer);
 
                 // Try to push USB mouse report
                 self.mouse.push_report(usb.mouse.class());
+            }
+
+            // Disable LEDs when entering suspend mode
+            match (prev_usb_state, usb_state) {
+                (UsbDeviceState::Suspend, UsbDeviceState::Suspend) => {},
+                (_, UsbDeviceState::Suspend) => update.brightness = Some(BrightnessUpdate::Disable),
+                (UsbDeviceState::Suspend, _) => update.brightness = Some(BrightnessUpdate::Enable),
+                _ => {},
             }
 
             // Transfer LED updates
@@ -261,8 +300,8 @@ impl<const L: usize> Keyboard<L> {
         match action {
             Action::Led(led) => if !pressed {  // only on release
                 match led {
-                    LedAction::Cycle(inc) => update.config = Some(*inc),
-                    LedAction::Brightness(inc) => update.brightness = Some(*inc),
+                    LedAction::Cycle(inc) => update.config = Some((*inc).into()),
+                    LedAction::Brightness(inc) => update.brightness = Some((*inc).into()),
                 }
             },
             Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
@@ -289,8 +328,10 @@ impl LedsUpdate {
         }
         if let Some(inc) = self.brightness {
             let new = match inc {
-                Inc::Up => leds.brightness().saturating_add(Self::BRIGHTNESS_INC),
-                Inc::Down => leds.brightness().saturating_sub(Self::BRIGHTNESS_INC),
+                BrightnessUpdate::Up => leds.brightness().saturating_add(Self::BRIGHTNESS_INC),
+                BrightnessUpdate::Down => leds.brightness().saturating_sub(Self::BRIGHTNESS_INC),
+                BrightnessUpdate::Disable => 0,
+                BrightnessUpdate::Enable => LedController::INITIAL_BRIGHTNESS,
             };
             leds.set_brightness(new);
         }
