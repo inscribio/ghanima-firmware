@@ -313,7 +313,11 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    #[task(priority = 2, capacity = 1, shared = [serial_tx, serial_rx, crc, usb, keyboard, keyboard_cnt])]
+    #[task(
+        priority = 2, capacity = 1,
+        shared = [serial_tx, serial_rx, crc, usb, keyboard, keyboard_cnt],
+        local = [prev_leds_update: Option<keyboard::LedsUpdate> = None],
+    )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
         debug::tasks::task::enter();
         let keyboard_tick::SharedResources {
@@ -334,10 +338,14 @@ mod app {
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
-        // Update LED patterns
-        if update_leds_state::spawn(t, leds_update).is_err() {
+        // Update LED patterns if there is any meaningful change (as applying updates is expensive)
+        let any_change = cx.local.prev_leds_update.as_ref()
+            .map(|s| leds_update.any_change(s))
+            .unwrap_or(true);
+        *cx.local.prev_leds_update = Some(leds_update.clone());
+        if any_change && update_leds_state::spawn(t, leds_update).is_err() {
             defmt::warn!("Spawn failed: update_leds_state");
-        };
+        }
 
         debug::tasks::task::exit();
     }
@@ -409,7 +417,7 @@ mod app {
                         .expect("Trying to serialize new data but DMA transfer is not finished");
                 });
 
-                 spi_tx.start()
+                spi_tx.start()
                     .expect("If we were able to serialize we must be able to start!");
                 debug::tasks::trace::start();
             });
@@ -476,10 +484,10 @@ mod app {
         cx.shared.dma_spi_cnt.lock(|cnt| cnt.inc());
 
         cx.shared.spi_tx.lock(|spi_tx| {
-           spi_tx.on_interrupt()
-               .as_option()
-               .transpose()
-               .expect("Unexpected interrupt");
+            spi_tx.on_interrupt()
+                .as_option()
+                .transpose()
+                .expect("Unexpected interrupt");
         });
 
         debug::tasks::trace::end();
@@ -514,9 +522,7 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, uart_cnt], local = [
-           empty_count: usize = 0,
-    ])]
+    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, uart_cnt])]
     fn uart_interrupt(mut cx: uart_interrupt::Context) {
         debug::tasks::task::enter();
         cx.shared.uart_cnt.lock(|cnt| cnt.inc());
