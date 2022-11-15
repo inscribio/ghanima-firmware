@@ -1,4 +1,4 @@
-pub use crate::keyboard::hid::ConsumerKey;
+pub use usbd_human_interface_device::page::Consumer as ConsumerKey;
 pub use crate::utils::Inc;
 
 /// Additional key actions

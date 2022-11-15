@@ -62,7 +62,7 @@ embedded-hal = "0.2"
 embedded-dma = "0.2"
 
 usb-device = "0.2"
-usbd-hid = "0.6"
+usbd-human-interface-device = "0.3"
 usbd-dfu-rt = "0.1"
 
 # TODO: use official version when 0.2 is released
@@ -82,6 +82,8 @@ smlang = "0.6"
 ringbuffer = { version = "0.10", default-features = false }
 either = { version = "1.6", default-features = false }
 pkg-version = "1.0"
+frunk = { version = "0.4", default-features = false }
+packed_struct = { version = "0.10", default-features = false }
 
 # Do not use print-defmt as it blows up binary size - we can live without panic messages
 panic-probe = "0.3"
@@ -91,6 +93,7 @@ micromath = "2.0"
 
 [patch.crates-io]
 stm32-usbd = { git = "https://github.com/jedrzejboczar/stm32-usbd", rev = "c6f7d12" }
+usbd-human-interface-device = { git = "https://github.com/dlkj/usbd-human-interface-device", rev = "7121470" }
 
 [dev-dependencies]
 assert_float_eq = "1.1"

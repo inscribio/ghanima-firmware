@@ -22,7 +22,9 @@ mod role;
 use keyberon::layout::{self, Event};
 use serde::{Serialize, Deserialize};
 
+use usb_device::UsbError;
 use usb_device::device::UsbDeviceState;
+use usbd_human_interface_device::UsbHidError;
 use crate::bsp::sides::BoardSide;
 use crate::bsp::usb::Usb;
 use crate::bsp::{NCOLS, NROWS};
@@ -31,7 +33,6 @@ use role::Role;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::{KeyboardReport, HidReportQueue, HidClass, ConsumerReport};
 
 pub use keys::Keys;
 pub use leds::{LedController, KeyboardState};
@@ -50,8 +51,8 @@ pub struct Keyboard<const L: usize> {
     prev_update: LedsUpdate,
     prev_usb_state: UsbDeviceState,
     pressed_other: PressedLedKeys,
-    keyboard_reports: HidReportQueue<KeyboardReport, 8>,
-    consumer_reports: HidReportQueue<ConsumerReport, 1>,
+    keyboard_reports: hid::HidReportQueue<hid::KeyboardReport, 8>,
+    consumer_reports: hid::HidReportQueue<hid::ConsumerReport, 1>,
 }
 
 /// Keyboard configuration
@@ -115,8 +116,8 @@ impl<const L: usize> Keyboard<L> {
             brightness: None,
         };
         let pressed_other = Default::default();
-        let keyboard_reports = HidReportQueue::new();
-        let consumer_reports = HidReportQueue::new();
+        let keyboard_reports = hid::HidReportQueue::new();
+        let consumer_reports = hid::HidReportQueue::new();
         let keyboard = Self {
             keys,
             fsm,
@@ -238,7 +239,7 @@ impl<const L: usize> Keyboard<L> {
             // Collect state
             let mut update = LedsUpdate {
                 state: leds::KeyboardState {
-                    leds: usb.keyboard.leds().0, // pulls data from HidClass
+                    leds: usb.keyboard_leds(),
                     usb_on: usb_state == UsbDeviceState::Configured,
                     role: self.fsm.role(),
                     layer: self.layout.current_layer() as u8,
@@ -252,7 +253,7 @@ impl<const L: usize> Keyboard<L> {
             // TODO: auto-enable NumLock by checking leds state
             // Advance keyboard time
             let custom = self.layout.tick();
-            self.keyboard_reports.push(self.layout.keycodes().collect());
+            // self.keyboard_reports.push(self.layout.keycodes().collect());
             if let Some((action, pressed)) = custom.transposed() {
                 self.handle_action(action, pressed, &mut update);
             }
@@ -262,11 +263,43 @@ impl<const L: usize> Keyboard<L> {
 
             // Push USB reports
             if self.fsm.role() == Role::Master && usb_state == UsbDeviceState::Configured {
-                self.keyboard_reports.send(&mut usb.keyboard);
-                self.consumer_reports.send(&mut usb.consumer);
+                // TODO: Err::Duplicate
+                let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
+                let consumer: &hid::ConsumerInterface<'_, _> = usb.hid.interface();
+                let mouse: &hid::MouseInterface<'_, _> = usb.hid.interface();
+
+                // TODO: what with my queue? keyboard.write_report only accepts iterator
+                let i = hid::KeyboardIter(self.layout.keycodes());
+                if let Err(e) = keyboard.write_report(i) {
+                    match e {
+                        UsbHidError::WouldBlock => {},
+                        UsbHidError::Duplicate => {},
+                        UsbHidError::UsbError(UsbError::WouldBlock) => {},
+                        _ => panic!("Unexpected UsbHidError"),
+                    }
+                }
+                // self.keyboard_reports.send(|r| keyboard.write_report(r)
+                //     .or_else(|e| match e {
+                //         UsbHidError::WouldBlock => Err(UsbError::WouldBlock),
+                //         UsbHidError::Duplicate => Ok(()),
+                //         UsbHidError::UsbError(e) => Err(e),
+                //         UsbHidError::SerializationError => Err(UsbError::ParseError),
+                //     })
+                //     .map(|_| 1));
+
+                self.consumer_reports.send(|r| consumer.write_report(r));
 
                 // Try to push USB mouse report
-                self.mouse.push_report(usb.mouse.class());
+                self.mouse.push_report(|r| {
+                    match mouse.write_report(r) {
+                        Ok(_) => true,
+                        Err(e) => match e {
+                            UsbHidError::WouldBlock | UsbHidError::UsbError(UsbError::WouldBlock) => false,
+                            UsbHidError::Duplicate => false,
+                            _ => panic!("Unexpected UsbHidError"),
+                        },
+                    }
+                });
             } else if usb_state != UsbDeviceState::Configured {
                 self.keyboard_reports.clear();
                 self.consumer_reports.clear();
@@ -312,11 +345,10 @@ impl<const L: usize> Keyboard<L> {
             },
             Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
             Action::Consumer(key) => {
-                let report = if pressed {
-                    (*key).into()
-                } else {
-                    ConsumerReport { usage_id: 0 }
-                };
+                let mut report = hid::ConsumerReport::default();
+                if pressed {
+                    report.codes[0] = (*key).into()
+                }
                 self.consumer_reports.push(report);
             },
         };

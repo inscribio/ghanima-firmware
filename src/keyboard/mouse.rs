@@ -1,8 +1,8 @@
 use usb_device::class_prelude::UsbBus;
-use usbd_hid::{descriptor::MouseReport, hid_class::HIDClass};
 use bitfield::bitfield;
 
 use super::actions::{MouseAction, MouseButton, MouseMovement};
+use super::hid::MouseReport;
 
 /// USB mouse emulation
 pub struct Mouse {
@@ -184,22 +184,23 @@ impl Mouse {
     }
 
     /// Try to push mouse report to endpoint or keep current info for the next report.
-    pub fn push_report<'a, B: UsbBus>(&mut self, hid: &HIDClass<'a, B>) -> bool {
+    pub fn push_report<F>(&mut self, push: F)
+        where F: FnOnce(&MouseReport) -> bool
+    {
         let (x, y, pan, wheel) = self.get_speeds();
-        let report = MouseReport { buttons: self.buttons.0, x, y, wheel, pan };
+        let report = MouseReport {
+            buttons: self.buttons.0,
+            x,
+            y,
+            vertical_wheel: wheel,
+            horizontal_wheel: pan,
+        };
 
-        match hid.push_input(&report) {
-            Ok(_len) => {
-                self.xy.consume();
-                self.scroll.consume();
-                self.joystick.x_acc.consume();
-                self.joystick.y_acc.consume();
-                true
-            }
-            Err(e) => match e {
-                usb_device::UsbError::WouldBlock => false,
-                _ => Err(e).unwrap(),
-            },
+        if push(&report) {
+            self.xy.consume();
+            self.scroll.consume();
+            self.joystick.x_acc.consume();
+            self.joystick.y_acc.consume();
         }
     }
 }

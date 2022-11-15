@@ -20,10 +20,10 @@ mod code {
     };
     use rgb::RGB8;
 
-    use crate::keyboard::{mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig}, actions::{LedAction, ConsumerKey}};
-    use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc};
-    use crate::keyboard::KeyboardConfig;
     use crate::keyboard::actions::Action as CustomAction;
+    use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc, LedAction, ConsumerKey};
+    use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig};
+    use crate::keyboard::KeyboardConfig;
     use crate::keyboard::leds::*;
     use crate::bsp::{NCOLS, NROWS};
 
@@ -78,8 +78,8 @@ mod code {
     const PSCREEN_WIN: Action = m(&[LAlt, PScreen].as_slice());
     const PSCREEN_SEL: Action = m(&[LShift, PScreen].as_slice());
 
-    const PREVIOUS: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::PrevTrack));
-    const NEXT: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::NextTrack));
+    const PREVIOUS: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::ScanPreviousTrack));
+    const NEXT: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::ScanNextTrack));
     const PLAYPAUSE: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::PlayPause));
     const STOP: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::Stop));
     const MUTE: Action = Action::Custom(CustomAction::Consumer(ConsumerKey::Mute));
