@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+if (( $# < 1 )) || [[ "$1" =~ ^(-h|--help)$ ]]; then
+    echo "Usage: $(basename $0) ELF"
+    echo "Dissassemble given elf file"
+    exit 1
+fi
+
+elf="$1"
+
+mkdir -p /tmp/disassemble
+name="$(basename "$elf")"
+out_file="$(mktemp "/tmp/disassemble/$name.XXXXXX.asm")"
+
+arm-none-eabi-objdump -D "$elf" | arm-none-eabi-c++filt > $out_file
+echo "$out_file"

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+if (( $# < 2 )); then
+    echo "Usage: $(basename $0) ELF_1 ELF_2 [ARGS]"
+    echo "Compare code size of two ELF files"
+    exit 1
+fi
+
+default_args="-HaF"
+
+elf_1="$1"
+elf_2="$2"
+args="${3:-$default_args}"
+
+temp_dir=$(mktemp --directory /tmp/compare-elf-size.XXXXXX)
+
+generate-size() {
+    local dst
+    dst="$temp_dir/$(basename "$1")"
+    elf-size-analyze -t arm-none-eabi- -w 120 --no-color $args "$1" | cut -c -120 > "$dst"
+    echo "$dst"
+}
+
+size_1="$(generate-size "$elf_1")"
+size_2="$(generate-size "$elf_2")"
+
+nvim -d "$size_1" "$size_2" -c "set diffopt+=iwhite,linematch:600" -c "diffupdate"
