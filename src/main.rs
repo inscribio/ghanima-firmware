@@ -210,8 +210,8 @@ mod app {
             }
         }
         // Send a first transfer ASAP with all LEDs in initial state
-        spi_tx.push(|buf| leds.tick(0).serialize_to_slice(buf)).unwrap();
-        spi_tx.start().unwrap();
+        spi_tx.push(|buf| leds.tick(0).serialize_to_slice(buf)).map_err(drop).unwrap();
+        spi_tx.start().map_err(drop).unwrap();
 
         if !joy.detect() {
             defmt::warn!("Joystick not detected");
@@ -414,10 +414,12 @@ mod app {
                 debug::tasks::trace::run(|| {
                     // TODO: try to use .serialize()
                     spi_tx.push(|buf| colors.serialize_to_slice(buf))
+                        .map_err(drop)
                         .expect("Trying to serialize new data but DMA transfer is not finished");
                 });
 
                 spi_tx.start()
+                    .map_err(drop)
                     .expect("If we were able to serialize we must be able to start!");
                 debug::tasks::trace::start();
             });

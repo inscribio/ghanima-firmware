@@ -44,7 +44,7 @@ bitfield! {
 
 impl From<KeyboardLedsReport> for KeyboardLeds {
     fn from(leds: KeyboardLedsReport) -> Self {
-        let bytes: [u8; 1] = leds.pack().map_err(drop).unwrap();
+        let bytes: [u8; 1] = leds.pack().map_err(|_| ()).unwrap();
         KeyboardLeds(bytes[0])
     }
 }
@@ -151,7 +151,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
                     UsbError::WouldBlock => Ok(0),
                     e => Err(e),
                 })
-                .map_err(drop)
+                .map_err(|_| ())
                 .expect("Bug in class implementation") > 0;
             if ok {
                 // Consume the report on success

@@ -1,4 +1,3 @@
-use usb_device::class_prelude::UsbBus;
 use bitfield::bitfield;
 
 use super::actions::{MouseAction, MouseButton, MouseMovement};

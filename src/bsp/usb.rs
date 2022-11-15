@@ -66,7 +66,7 @@ impl Usb {
             let keyboard: &hid::KeyboardInterface<'_, _> = self.hid.interface();
             match keyboard.read_report() {
                 Err(UsbError::WouldBlock) => {},
-                Err(e) => panic!("Keyboard read_report failed"),
+                Err(_) => panic!("Keyboard read_report failed"),
                 Ok(leds) => {
                     self.keyboard_leds = leds.into();
                     got_data = false;
