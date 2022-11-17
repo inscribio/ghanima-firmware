@@ -93,7 +93,7 @@ micromath = "2.0"
 
 [patch.crates-io]
 stm32-usbd = { git = "https://github.com/jedrzejboczar/stm32-usbd", rev = "c6f7d12" }
-usbd-human-interface-device = { git = "https://github.com/jedrzejboczar/usbd-human-interface-device", rev = "e5e00db" }
+usbd-human-interface-device = { git = "https://github.com/dlkj/usbd-human-interface-device", rev = "8daaa3f" }
 
 [dev-dependencies]
 assert_float_eq = "1.1"
