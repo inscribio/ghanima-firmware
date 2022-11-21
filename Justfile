@@ -1,5 +1,7 @@
 ### Build ###
 
+config-test-env := 'CARGO_TARGET_DIR=/tmp/cargo-target-ghanima-config DEFMT_LOG=off'
+
 # Build firmware and generate .bin file
 build *ARGS:
     cargo build --release {{ARGS}}
@@ -37,7 +39,7 @@ test *ARGS:
 
 # Run firmware-config tests
 test-config *ARGS:
-    cd config && cargo test --target x86_64-unknown-linux-gnu {{ARGS}}
+    cd config && {{config-test-env}} cargo test --target x86_64-unknown-linux-gnu {{ARGS}}
 
 # Continuously run firmware tests
 watch-test *ARGS:
@@ -45,4 +47,4 @@ watch-test *ARGS:
 
 # Continuously run firmware-config tests
 watch-test-config *ARGS:
-    cd config && DEFMT_LOG=off cargo watch -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
+    cd config && {{config-test-env}} cargo watch -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
