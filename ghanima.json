@@ -4,280 +4,231 @@
       [
         {
           "KeyCode": "Grave"
-
         },
         {
           "KeyCode": "Kb1"
-
         },
         {
           "KeyCode": "Kb2"
-
         },
         {
           "KeyCode": "Kb3"
-
         },
         {
           "KeyCode": "Kb4"
-
         },
         {
           "KeyCode": "Kb5"
-
         },
         {
           "KeyCode": "Kb6"
-
         },
         {
           "KeyCode": "Kb7"
-
         },
         {
           "KeyCode": "Kb8"
-
         },
         {
           "KeyCode": "Kb9"
-
         },
         {
           "KeyCode": "Kb0"
-
         },
         {
           "KeyCode": "Bslash"
-
         }
       ],
       [
         {
           "KeyCode": "Tab"
-
         },
         {
           "KeyCode": "Q"
-
         },
         {
           "KeyCode": "W"
-
         },
         {
           "KeyCode": "E"
-
         },
         {
           "KeyCode": "R"
-
         },
         {
           "KeyCode": "T"
-
         },
         {
           "KeyCode": "Y"
-
         },
         {
           "KeyCode": "U"
-
         },
         {
           "KeyCode": "I"
-
         },
         {
           "KeyCode": "O"
-
         },
         {
           "KeyCode": "P"
-
         },
         {
           "KeyCode": "BSpace"
-
         }
       ],
       [
         {
           "HoldTap": {
-            "timeout": 180,
             "hold": {
               "KeyCode": "LCtrl"
-
             },
             "tap": {
               "KeyCode": "Escape"
-
             },
             "config": "Default",
-            "tap_hold_interval": 0
+            "tap_hold_interval": 0,
+            "timeout": 180
           }
         },
         {
           "KeyCode": "A"
-
         },
         {
           "KeyCode": "S"
-
         },
         {
           "KeyCode": "D"
-
         },
         {
           "KeyCode": "F"
-
         },
         {
           "KeyCode": "G"
-
         },
         {
           "KeyCode": "H"
-
         },
         {
           "KeyCode": "J"
-
         },
         {
           "KeyCode": "K"
-
         },
         {
           "KeyCode": "L"
-
         },
         {
           "KeyCode": "SColon"
-
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "KeyCode": "RCtrl"
-
-          },
-          "tap": {
-            "KeyCode": "Quote"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "KeyCode": "RCtrl"
+            },
+            "tap": {
+              "KeyCode": "Quote"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         }
       ],
       [
         {
           "KeyCode": "LShift"
-
         },
         {
           "KeyCode": "Z"
-
         },
         {
           "KeyCode": "X"
-
         },
         {
           "KeyCode": "C"
-
         },
         {
           "KeyCode": "V"
-
         },
         {
           "KeyCode": "B"
-
         },
         {
           "KeyCode": "N"
-
         },
         {
           "KeyCode": "M"
-
         },
         {
           "KeyCode": "Comma"
-
         },
         {
           "KeyCode": "Dot"
-
         },
         {
           "KeyCode": "Slash"
-
         },
         {
           "KeyCode": "RShift"
-
         }
       ],
       [
         {
           "KeyCode": "LGui"
-
         },
         {
           "KeyCode": "LAlt"
-
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 1
-
-          },
-          "tap": {
-            "KeyCode": "Space"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 1
+            },
+            "tap": {
+              "KeyCode": "Space"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         "NoOp",
         {
-          "Custom": { "Mouse": { "Click": "Left" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Left"
+            }
+          }
         },
         "NoOp",
         "NoOp",
         {
-          "Custom": { "Mouse": { "Click": "Right" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Right"
+            }
+          }
         },
         "NoOp",
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 2
-
-          },
-          "tap": {
-            "KeyCode": "Enter"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 2
+            },
+            "tap": {
+              "KeyCode": "Enter"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         {
           "KeyCode": "RAlt"
-
         },
         {
           "KeyCode": "LGui"
-
         }
       ]
     ],
@@ -285,51 +236,39 @@
       [
         {
           "KeyCode": "F12"
-
         },
         {
           "KeyCode": "F1"
-
         },
         {
           "KeyCode": "F2"
-
         },
         {
           "KeyCode": "F3"
-
         },
         {
           "KeyCode": "F4"
-
         },
         {
           "KeyCode": "F5"
-
         },
         {
           "KeyCode": "F6"
-
         },
         {
           "KeyCode": "F7"
-
         },
         {
           "KeyCode": "F8"
-
         },
         {
           "KeyCode": "F9"
-
         },
         {
           "KeyCode": "F10"
-
         },
         {
           "KeyCode": "F11"
-
         }
       ],
       [
@@ -337,27 +276,23 @@
         "Trans",
         {
           "KeyCode": "Home"
-
         },
         {
           "KeyCode": "Up"
-
         },
         {
           "KeyCode": "End"
-
         },
         {
           "KeyCode": "PgUp"
-
         },
         "Trans",
         {
           "MultipleKeyCodes": [
-              "LShift",
-              "Kb9"
-            ]
-          },
+            "LShift",
+            "Kb9"
+          ]
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
@@ -369,16 +304,15 @@
             "LShift",
             "Minus"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "Equal"
           ]
-                  },
+        },
         {
           "KeyCode": "Delete"
-
         }
       ],
       [
@@ -386,36 +320,28 @@
         "Trans",
         {
           "KeyCode": "Left"
-
         },
         {
           "KeyCode": "Down"
-
         },
         {
           "KeyCode": "Right"
-
         },
         {
           "KeyCode": "PgDown"
-
         },
         "Trans",
         {
           "KeyCode": "LBracket"
-
         },
         {
           "KeyCode": "RBracket"
-
         },
         {
           "KeyCode": "Minus"
-
         },
         {
           "KeyCode": "Equal"
-
         },
         "Trans"
       ],
@@ -432,13 +358,13 @@
             "LShift",
             "LBracket"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "RBracket"
           ]
-                  },
+        },
         "Trans",
         "Trans",
         "Trans"
@@ -454,25 +380,22 @@
         "Trans",
         {
           "KeyCode": "Delete"
-
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 3
-
-          },
-          "tap": {
-            "KeyCode": "Enter"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 3
+            },
+            "tap": {
+              "KeyCode": "Enter"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         {
           "KeyCode": "LAlt"
-
         },
         "Trans"
       ]
@@ -481,7 +404,6 @@
       [
         {
           "KeyCode": "NumLock"
-
         },
         "Trans",
         "Trans",
@@ -495,7 +417,6 @@
         "Trans",
         {
           "KeyCode": "Insert"
-
         }
       ],
       [
@@ -505,22 +426,18 @@
             "LShift",
             "Kb8"
           ]
-                  },
+        },
         {
           "KeyCode": "Kp7"
-
         },
         {
           "KeyCode": "Kp8"
-
         },
         {
           "KeyCode": "Kp9"
-
         },
         {
           "KeyCode": "Minus"
-
         },
         "Trans",
         {
@@ -528,70 +445,61 @@
             "LShift",
             "Kb9"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "Kb0"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "Minus"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "Equal"
           ]
-                  },
+        },
         "Trans"
       ],
       [
         {
           "KeyCode": "CapsLock"
-
         },
         {
           "KeyCode": "Slash"
-
         },
         {
           "KeyCode": "Kp4"
-
         },
         {
           "KeyCode": "Kp5"
-
         },
         {
           "KeyCode": "Kp6"
-
         },
         {
           "MultipleKeyCodes": [
             "LShift",
             "Equal"
           ]
-                  },
+        },
         "Trans",
         {
           "KeyCode": "LBracket"
-
         },
         {
           "KeyCode": "RBracket"
-
         },
         {
           "KeyCode": "Minus"
-
         },
         {
           "KeyCode": "Equal"
-
         },
         "Trans"
       ],
@@ -599,28 +507,22 @@
         "Trans",
         {
           "KeyCode": "Kp0"
-
         },
         {
           "KeyCode": "Kp1"
-
         },
         {
           "KeyCode": "Kp2"
-
         },
         {
           "KeyCode": "Kp3"
-
         },
         {
           "KeyCode": "Equal"
-
         },
         "Trans",
         {
           "KeyCode": "Enter"
-
         },
         "Trans",
         "Trans",
@@ -631,18 +533,17 @@
         "Trans",
         "Trans",
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 3
-
-          },
-          "tap": {
-            "KeyCode": "Space"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 3
+            },
+            "tap": {
+              "KeyCode": "Space"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         "Trans",
         "Trans",
@@ -660,27 +561,34 @@
         "Trans",
         {
           "DefaultLayer": 0
-
         },
         {
           "DefaultLayer": 4
-
         },
         "Trans",
         "Trans",
         "Trans",
         "Trans",
         {
-          "Custom": { "Mouse": { "Sensitivity": "Down" } }
-
+          "Custom": {
+            "Mouse": {
+              "Sensitivity": "Down"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Click": "Mid" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Mid"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Sensitivity": "Up" } }
-
+          "Custom": {
+            "Mouse": {
+              "Sensitivity": "Up"
+            }
+          }
         },
         "Trans",
         "Trans"
@@ -688,8 +596,9 @@
       [
         "Trans",
         {
-          "KeyCode": "MediaVolUp"
-
+          "Custom": {
+            "Consumer": "VolumeIncrement"
+          }
         },
         {
           "MultipleKeyCodes": [
@@ -697,57 +606,70 @@
             "LGui",
             "Left"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LCtrl",
             "LAlt",
             "Up"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LShift",
             "LGui",
             "Right"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LGui",
             "LShift",
             "PgUp"
           ]
-                  },
-        {
-          "Custom": { "Mouse": { "Move": "WheelUp" } }
-
         },
         {
-          "Custom": { "Mouse": { "Click": "Left" } }
-
+          "Custom": {
+            "Mouse": {
+              "Move": "WheelUp"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Move": "Up" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Left"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Click": "Right" } }
-
+          "Custom": {
+            "Mouse": {
+              "Move": "Up"
+            }
+          }
+        },
+        {
+          "Custom": {
+            "Mouse": {
+              "Click": "Right"
+            }
+          }
         },
         {
           "MultipleKeyCodes": [
             "LShift",
             "PScreen"
           ]
-                  },
+        },
         "Trans"
       ],
       [
         "Trans",
         {
-          "KeyCode": "MediaVolDown"
-
+          "Custom": {
+            "Consumer": "VolumeDecrement"
+          }
         },
         {
           "MultipleKeyCodes": [
@@ -755,84 +677,103 @@
             "LAlt",
             "Left"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LCtrl",
             "LAlt",
             "Down"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LCtrl",
             "LAlt",
             "Right"
           ]
-                  },
+        },
         {
           "MultipleKeyCodes": [
             "LGui",
             "LShift",
             "PgDown"
           ]
-                  },
-        {
-          "Custom": { "Mouse": { "Move": "WheelDown" } }
-
         },
         {
-          "Custom": { "Mouse": { "Move": "Left" } }
-
+          "Custom": {
+            "Mouse": {
+              "Move": "WheelDown"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Move": "Down" } }
-
+          "Custom": {
+            "Mouse": {
+              "Move": "Left"
+            }
+          }
         },
         {
-          "Custom": { "Mouse": { "Move": "Right" } }
-
+          "Custom": {
+            "Mouse": {
+              "Move": "Down"
+            }
+          }
+        },
+        {
+          "Custom": {
+            "Mouse": {
+              "Move": "Right"
+            }
+          }
         },
         {
           "MultipleKeyCodes": [
             "LAlt",
             "PScreen"
           ]
-                  },
+        },
         "Trans"
       ],
       [
         "Trans",
         {
-          "KeyCode": "MediaMute"
-
+          "Custom": {
+            "Consumer": "Mute"
+          }
         },
         {
-          "KeyCode": "MediaPreviousSong"
-
+          "Custom": {
+            "Consumer": "ScanPreviousTrack"
+          }
         },
         {
-          "KeyCode": "MediaPlayPause"
-
+          "Custom": {
+            "Consumer": "PlayPause"
+          }
         },
         {
-          "KeyCode": "MediaNextSong"
-
+          "Custom": {
+            "Consumer": "ScanNextTrack"
+          }
         },
         {
-          "KeyCode": "MediaStop"
-
+          "Custom": {
+            "Consumer": "Stop"
+          }
         },
         {
-          "Custom": { "Mouse": { "Click": "Left" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Left"
+            }
+          }
         },
         "Trans",
         "Trans",
         "Trans",
         {
           "KeyCode": "PScreen"
-
         },
         "Trans"
       ],
@@ -855,286 +796,290 @@
       [
         {
           "KeyCode": "Escape"
-
         },
         {
           "KeyCode": "Kb1"
-
         },
         {
           "KeyCode": "Kb2"
-
         },
         {
           "KeyCode": "Kb3"
-
         },
         {
           "KeyCode": "Kb4"
-
         },
         {
           "KeyCode": "Kb5"
-
         },
         {
           "KeyCode": "Kb6"
-
         },
         {
           "KeyCode": "Kb7"
-
         },
         {
           "KeyCode": "Kb8"
-
         },
         {
           "KeyCode": "Kb9"
-
         },
         {
           "KeyCode": "Kb0"
-
         },
         {
           "KeyCode": "Bslash"
-
         }
       ],
       [
         {
           "KeyCode": "Tab"
-
         },
         {
           "KeyCode": "Q"
-
         },
         {
           "KeyCode": "W"
-
         },
         {
           "KeyCode": "E"
-
         },
         {
           "KeyCode": "R"
-
         },
         {
           "KeyCode": "T"
-
         },
         {
           "KeyCode": "Y"
-
         },
         {
           "KeyCode": "U"
-
         },
         {
           "KeyCode": "I"
-
         },
         {
           "KeyCode": "O"
-
         },
         {
           "KeyCode": "P"
-
         },
         {
           "KeyCode": "BSpace"
-
         }
       ],
       [
         {
           "KeyCode": "LCtrl"
-
         },
         {
           "KeyCode": "A"
-
         },
         {
           "KeyCode": "S"
-
         },
         {
           "KeyCode": "D"
-
         },
         {
           "KeyCode": "F"
-
         },
         {
           "KeyCode": "G"
-
         },
         {
           "KeyCode": "H"
-
         },
         {
           "KeyCode": "J"
-
         },
         {
           "KeyCode": "K"
-
         },
         {
           "KeyCode": "L"
-
         },
         {
           "KeyCode": "SColon"
-
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "KeyCode": "RCtrl"
-
-          },
-          "tap": {
-            "KeyCode": "Quote"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "KeyCode": "RCtrl"
+            },
+            "tap": {
+              "KeyCode": "Quote"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         }
       ],
       [
         {
           "KeyCode": "LShift"
-
         },
         {
           "KeyCode": "Z"
-
         },
         {
           "KeyCode": "X"
-
         },
         {
           "KeyCode": "C"
-
         },
         {
           "KeyCode": "V"
-
         },
         {
           "KeyCode": "B"
-
         },
         {
           "KeyCode": "N"
-
         },
         {
           "KeyCode": "M"
-
         },
         {
           "KeyCode": "Comma"
-
         },
         {
           "KeyCode": "Dot"
-
         },
         {
           "KeyCode": "Slash"
-
         },
         {
           "KeyCode": "RShift"
-
         }
       ],
       [
         {
           "KeyCode": "LGui"
-
         },
         {
           "KeyCode": "LAlt"
-
         },
         {
           "KeyCode": "Space"
-
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 1
-
-          },
-          "tap": {
-            "KeyCode": "Space"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 1
+            },
+            "tap": {
+              "KeyCode": "Space"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         {
-          "Custom": { "Mouse": { "Click": "Left" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Left"
+            }
+          }
         },
         "NoOp",
         "NoOp",
         {
-          "Custom": { "Mouse": { "Click": "Right" } }
-
+          "Custom": {
+            "Mouse": {
+              "Click": "Right"
+            }
+          }
         },
         {
-          "HoldTap": { "timeout": 180,
-          "hold": {
-            "Layer": 2
-
-          },
-          "tap": {
-            "KeyCode": "Enter"
-
-          },
-          "config": "Default",
-          "tap_hold_interval": 0 }
-
+          "HoldTap": {
+            "hold": {
+              "Layer": 2
+            },
+            "tap": {
+              "KeyCode": "Enter"
+            },
+            "config": "Default",
+            "tap_hold_interval": 0,
+            "timeout": 180
+          }
         },
         {
           "KeyCode": "Enter"
-
         },
         {
           "KeyCode": "RAlt"
-
         },
         {
           "KeyCode": "LGui"
-
         }
       ]
     ]
   ],
+  "mouse": {
+    "x": {
+      "invert": false,
+      "profile": {
+        "delay": 50,
+        "divider": 10000,
+        "max_speed": 15000,
+        "start_speed": 5000,
+        "acceleration_time": 750
+      }
+    },
+    "y": {
+      "invert": false,
+      "profile": {
+        "delay": 50,
+        "divider": 10000,
+        "max_speed": 15000,
+        "start_speed": 5000,
+        "acceleration_time": 750
+      }
+    },
+    "pan": {
+      "invert": false,
+      "profile": {
+        "delay": 50,
+        "divider": 1000,
+        "max_speed": 50,
+        "start_speed": 25,
+        "acceleration_time": 750
+      }
+    },
+    "wheel": {
+      "invert": true,
+      "profile": {
+        "delay": 50,
+        "divider": 1000,
+        "max_speed": 50,
+        "start_speed": 25,
+        "acceleration_time": 750
+      }
+    },
+    "joystick": {
+      "max": 4000,
+      "min": 175,
+      "divider": 800,
+      "invert_x": false,
+      "invert_y": true,
+      "swap_axes": false
+    }
+  },
   "leds": [
     {
+      "layers": [],
       "default": [
         {
           "keys": "All",
-          "condition": "Always",
           "pattern": {
+            "phase": {
+              "x": 0,
+              "y": 0
+            },
             "repeat": "Wrap",
             "transitions": [
               {
@@ -1173,19 +1118,17 @@
                 "duration": 1500,
                 "interpolation": "Linear"
               }
-            ],
-            "phase": {
-              "x": 0,
-              "y": 0
-            }
-          }
+            ]
+          },
+          "condition": "Always"
         },
         {
           "keys": "All",
-          "condition": {
-            "Pressed": true
-          },
           "pattern": {
+            "phase": {
+              "x": 0,
+              "y": 0
+            },
             "repeat": "Once",
             "transitions": [
               {
@@ -1215,21 +1158,19 @@
                 "duration": 250,
                 "interpolation": "Linear"
               }
-            ],
-            "phase": {
-              "x": 0,
-              "y": 0
-            }
+            ]
+          },
+          "condition": {
+            "Pressed": true
           }
         },
         {
           "keys": "All",
-          "condition": {
-            "Not": {
-              "Led": "NumLock"
-            }
-          },
           "pattern": {
+            "phase": {
+              "x": 0,
+              "y": 0
+            },
             "repeat": "Wrap",
             "transitions": [
               {
@@ -1241,17 +1182,21 @@
                 "duration": 0,
                 "interpolation": "Piecewise"
               }
-            ],
-            "phase": {
-              "x": 0,
-              "y": 0
+            ]
+          },
+          "condition": {
+            "Not": {
+              "Led": "NumLock"
             }
           }
         },
         {
           "keys": "All",
-          "condition": { "Led": "CapsLock" },
           "pattern": {
+            "phase": {
+              "x": 0,
+              "y": 0
+            },
             "repeat": "Wrap",
             "transitions": [
               {
@@ -1263,66 +1208,14 @@
                 "duration": 0,
                 "interpolation": "Piecewise"
               }
-            ],
-            "phase": {
-              "x": 0,
-              "y": 0
-            }
+            ]
+          },
+          "condition": {
+            "Led": "CapsLock"
           }
         }
-      ],
-      "layers": []
+      ]
     }
   ],
-  "mouse": {
-    "x": {
-      "invert": false,
-      "profile": {
-        "divider": 10000,
-        "delay": 50,
-        "acceleration_time": 750,
-        "start_speed": 5000,
-        "max_speed": 15000
-      }
-    },
-    "y": {
-      "invert": false,
-      "profile": {
-        "divider": 10000,
-        "delay": 50,
-        "acceleration_time": 750,
-        "start_speed": 5000,
-        "max_speed": 15000
-      }
-    },
-    "wheel": {
-      "invert": true,
-      "profile": {
-        "divider": 1000,
-        "delay": 50,
-        "acceleration_time": 750,
-        "start_speed": 25,
-        "max_speed": 50
-      }
-    },
-    "pan": {
-      "invert": false,
-      "profile": {
-        "divider": 1000,
-        "delay": 50,
-        "acceleration_time": 750,
-        "start_speed": 25,
-        "max_speed": 50
-      }
-    },
-    "joystick": {
-      "min": 175,
-      "max": 4000,
-      "divider": 800,
-      "swap_axes": false,
-      "invert_x": false,
-      "invert_y": true
-    }
-  },
   "timeout": 1000
 }
