@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "ghanima"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_float_eq",
@@ -1149,7 +1149,7 @@ dependencies = [
 [[package]]
 name = "usbd-human-interface-device"
 version = "0.3.1"
-source = "git+https://github.com/dlkj/usbd-human-interface-device?rev=8daaa3f#8daaa3fa2b45612331b7e9f987defc11464f246d"
+source = "git+https://github.com/jedrzejboczar/usbd-human-interface-device?rev=d0acf48#d0acf486cc78069cc8848a4d0370fa713a69c437"
 dependencies = [
  "delegate",
  "frunk",
