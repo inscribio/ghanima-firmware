@@ -33,7 +33,7 @@ use role::Role;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
-use hid::KeyCodeIterExt;
+use hid::KeyCodeIterExt as _;
 
 pub use keys::Keys;
 pub use leds::{LedController, KeyboardState};
@@ -262,30 +262,26 @@ impl<const L: usize> Keyboard<L> {
             // Advance mouse emulation time
             self.mouse.tick();
 
+            // Advance usbd-human-interface-device keyboard time FIXME: assumes 1 kHz
+            let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
+            keyboard.tick().ok();
+
+            // Push next report
+            self.keyboard_reports.push(hid::KeyboardReport::new(self.layout.keycodes().as_page()));
+
             // Push USB reports
             if self.fsm.role() == Role::Master && usb_state == UsbDeviceState::Configured {
-                // TODO: Err::Duplicate
-                let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
                 let consumer: &hid::ConsumerInterface<'_, _> = usb.hid.interface();
                 let mouse: &hid::MouseInterface<'_, _> = usb.hid.interface();
 
-                // TODO: what with my queue? keyboard.write_report only accepts iterator
-                if let Err(e) = keyboard.write_report(self.layout.keycodes().as_page()) {
-                    match e {
-                        UsbHidError::WouldBlock => {},
-                        UsbHidError::Duplicate => {},
-                        UsbHidError::UsbError(UsbError::WouldBlock) => {},
-                        _ => panic!("Unexpected UsbHidError"),
-                    }
-                }
-                // self.keyboard_reports.send(|r| keyboard.write_report(r)
-                //     .or_else(|e| match e {
-                //         UsbHidError::WouldBlock => Err(UsbError::WouldBlock),
-                //         UsbHidError::Duplicate => Ok(()),
-                //         UsbHidError::UsbError(e) => Err(e),
-                //         UsbHidError::SerializationError => Err(UsbError::ParseError),
-                //     })
-                //     .map(|_| 1));
+                self.keyboard_reports.send(|r| keyboard.write_report(r)
+                    .or_else(|e| match e {
+                        UsbHidError::WouldBlock => Err(UsbError::WouldBlock),
+                        UsbHidError::Duplicate => Ok(()),
+                        UsbHidError::UsbError(e) => Err(e),
+                        UsbHidError::SerializationError => Err(UsbError::ParseError),
+                    })
+                    .map(|_| 1));
 
                 self.consumer_reports.send(|r| consumer.write_report(r));
 
