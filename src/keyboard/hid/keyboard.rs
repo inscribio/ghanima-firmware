@@ -1,9 +1,8 @@
 use bitfield::bitfield;
 use keyberon::key_code::KeyCode;
+use packed_struct::PackedStruct as _;
 use serde::{Serialize, Deserialize};
-use usb_device::class_prelude::*;
-use usbd_hid::{hid_class::{HIDClass, ReportType}, descriptor::generator_prelude::*};
-
+use usbd_human_interface_device::device::keyboard::KeyboardLedsReport;
 
 bitfield! {
     /// State of HID keyboard LEDs
@@ -16,123 +15,36 @@ bitfield! {
     pub kana, set_kana: 4;
 }
 
-/// Keyboard report compatible with Boot Keyboard
-///
-/// A standard HID report compatible with Boot Keyboard (see HID specification, Appendix B).
-/// It can handle all modifier keys and up to 6 keys pressed at the same time.
-#[gen_hid_descriptor(
-    (collection = APPLICATION, usage_page = GENERIC_DESKTOP, usage = KEYBOARD) = {
-        (usage_page = KEYBOARD, usage_min = 0xe0, usage_max = 0xe7) = {
-            #[packed_bits 8] #[item_settings data,variable,absolute] modifier = input;
-        };
-        (usage_min = 0x00, usage_max = 0xff) = {
-            #[item_settings constant,variable,absolute] reserved=input;
-        };
-        (usage_page = LEDS, usage_min = 0x01, usage_max = 0x05) = {
-            #[packed_bits 5] #[item_settings data,variable,absolute] leds = output;
-        };
-        // It would make sense to use usage_max=0xdd but boot keyboard uses 0xff. This way
-        // keycodes >= KeyCode::LCtrl (notably - "unofficial media") should still work
-        // (though these only work on linux, we should use different usage page for media).
-        (usage_page = KEYBOARD, usage_min = 0x00, usage_max = 0xff) = {
-            #[item_settings data,array,absolute] keycodes = input;
-        };
-    }
-)]
-#[derive(Default, Eq, PartialEq)]
-pub struct KeyboardReport {
-    /// Modifier keys packed bits
-    pub modifier: u8,
-    /// Boot keyboard reserved field
-    pub reserved: u8,
-    /// LED states (host -> device)
-    pub leds: u8,
-    /// Boot keyboard keycodes list
-    pub keycodes: [u8; 6],
-}
-
-pub struct HidKeyboard<'a, B: UsbBus> {
-    hid: HIDClass<'a, B>,
-    leds: KeyboardLeds,
-}
-
-impl<'a, B: UsbBus> HidKeyboard<'a, B> {
-    pub fn new(alloc: &'a UsbBusAllocator<B>) -> Self {
-        Self {
-            hid: HIDClass::new_ep_in_with_settings(alloc, KeyboardReport::desc(), 10, Self::settings()),
-            leds: KeyboardLeds(0),
-        }
-    }
-
-    /// Get current state of keyboard LEDs additionally returning true state changed since last read
-    pub fn leds(&mut self) -> (KeyboardLeds, bool) {
-        let mut changed = false;
-        let mut data = 0u8;
-        if let Ok(info) = self.hid.pull_raw_report(core::slice::from_mut(&mut data)) {
-            if let ReportType::Output = info.report_type {
-                if info.report_id == 0 && info.len == 1 {
-                    if self.leds.0 != data {
-                        self.leds.0 = data;
-                        changed = true;
-                    }
-                }
-            }
-        }
-        (self.leds, changed)
-    }
-
-    const fn settings() -> usbd_hid::hid_class::HidClassSettings {
-        use usbd_hid::hid_class::*;
-        HidClassSettings {
-            subclass: HidSubClass::Boot,
-            protocol: HidProtocol::Keyboard,
-            config: ProtocolModeConfig::ForceBoot,
-            locale: HidCountryCode::NotSupported,
-        }
+impl From<KeyboardLedsReport> for KeyboardLeds {
+    fn from(leds: KeyboardLedsReport) -> Self {
+        let bytes: [u8; 1] = leds.pack().map_err(|_| ()).unwrap();
+        KeyboardLeds(bytes[0])
     }
 }
 
-impl<'a, B: UsbBus> super::HidClass<'a, B> for HidKeyboard<'a, B> {
-    type Report = KeyboardReport;
+/// Key code iterator adapter from keyberon to usbd_human_interface_device
+pub struct KeyboardIter<I>(I);
 
-    fn class(&mut self) -> &mut usbd_hid::hid_class::HIDClass<'a, B> {
-        &mut self.hid
+impl<I> Iterator for KeyboardIter<I>
+    where I: Iterator<Item = KeyCode>
+{
+    type Item = usbd_human_interface_device::page::Keyboard;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+            .map(|kc| (kc as u8).into())
     }
 }
 
-impl core::iter::FromIterator<KeyCode> for KeyboardReport {
-    fn from_iter<T>(iter: T) -> Self
-where
-        T: IntoIterator<Item = KeyCode>,
-    {
-        let mut res = Self::default();
-        for kc in iter {
-            res.pressed(kc);
-        }
-        res
-    }
+/// Extension trait for adapting keyberon key code iterator to usbd_human_interface_device
+pub trait KeyCodeIterExt: Sized {
+    fn as_page(self) -> KeyboardIter<Self>;
 }
 
-impl KeyboardReport {
-    /// Add the given key code to the report. If the report is full,
-    /// it will be set to `ErrorRollOver`.
-    pub fn pressed(&mut self, kc: KeyCode) {
-        use KeyCode::*;
-        match kc {
-            No => (),
-            ErrorRollOver | PostFail | ErrorUndefined => self.set_all(kc),
-            kc if kc.is_modifier() => self.modifier |= kc.as_modifier_bit(),
-            _ => self.keycodes
-                .iter_mut()
-                .find(|c| **c == 0)
-                .map(|c| *c = kc as u8)
-                .unwrap_or_else(|| self.set_all(ErrorRollOver)),
-        }
-    }
-
-    fn set_all(&mut self, kc: KeyCode) {
-        for c in &mut self.keycodes.iter_mut() {
-            *c = kc as u8;
-        }
+impl<I> KeyCodeIterExt for I
+    where I: Iterator<Item = KeyCode>
+{
+    fn as_page(self) -> KeyboardIter<Self> {
+        KeyboardIter(self)
     }
 }

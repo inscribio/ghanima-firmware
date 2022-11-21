@@ -33,6 +33,7 @@ use role::Role;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
 use keys::PressedLedKeys;
+use hid::KeyCodeIterExt;
 
 pub use keys::Keys;
 pub use leds::{LedController, KeyboardState};
@@ -269,8 +270,7 @@ impl<const L: usize> Keyboard<L> {
                 let mouse: &hid::MouseInterface<'_, _> = usb.hid.interface();
 
                 // TODO: what with my queue? keyboard.write_report only accepts iterator
-                let i = hid::KeyboardIter(self.layout.keycodes());
-                if let Err(e) = keyboard.write_report(i) {
+                if let Err(e) = keyboard.write_report(self.layout.keycodes().as_page()) {
                     match e {
                         UsbHidError::WouldBlock => {},
                         UsbHidError::Duplicate => {},
