@@ -18,6 +18,7 @@ pub struct KeyboardConfig {
     mouse: mouse::MouseConfig,
     leds: leds::LedConfigurations,
     timeout: u32,
+    bootload_strict: bool,
 }
 
 impl ToTokens for KeyboardConfig {
@@ -26,12 +27,14 @@ impl ToTokens for KeyboardConfig {
         let leds = leds::to_tokens(&self.leds);
         let mouse = &self.mouse;
         let timeout = &self.timeout;
+        let bootload_strict = &self.bootload_strict;
         tokens.append_all(quote! {
             crate::keyboard::KeyboardConfig {
                 layers: &#layers,
                 mouse: &#mouse,
                 leds: #leds,
                 timeout: #timeout,
+                bootload_strict: #bootload_strict,
             }
         })
     }
@@ -236,7 +239,8 @@ mod tests {
             "layers": layers::tests::example_json(),
             "leds": leds::tests::example_json(),
             "mouse": mouse::tests::example_json(),
-            "timeout": 1000u32
+            "timeout": 1000u32,
+            "bootload_strict": true,
         })
     }
 
@@ -246,6 +250,7 @@ mod tests {
             leds: leds::tests::example_config(),
             mouse: mouse::tests::example_config(),
             timeout: 1000,
+            bootload_strict: true,
         }
     }
 
@@ -259,6 +264,7 @@ mod tests {
                 mouse: &#mouse,
                 leds: #leds,
                 timeout: 1000u32,
+                bootload_strict: true,
             }
         }
     }

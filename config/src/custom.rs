@@ -14,6 +14,8 @@ pub enum Action {
     Mouse(MouseAction),
     /// Send USB HID consumer page keys
     Consumer(ConsumerKey),
+    /// Perform special firmware-related actions
+    Firmware(FirmwareAction)
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -51,6 +53,13 @@ pub enum MouseMovement {
     WheelDown,
     PanLeft,
     PanRight,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
+pub enum FirmwareAction {
+    AllowBootloader,
+    JumpToBootloader,
+    Reboot,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -422,10 +431,6 @@ pub enum ConsumerKey {
     ACDistributeVertically,
 }
 
-impl_enum_to_tokens! {
-    enum ConsumerKey: usbd_human_interface_device::page::Consumer,
-}
-
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Inc {
     Up,
@@ -436,10 +441,12 @@ impl_enum_to_tokens! {
     enum MouseButton: crate::keyboard::actions::MouseButton,
     enum MouseMovement: crate::keyboard::actions::MouseMovement,
     enum Inc: crate::utils::Inc,
+    enum ConsumerKey: usbd_human_interface_device::page::Consumer,
+    enum FirmwareAction: crate::keyboard::actions::FirmwareAction,
 }
 
 impl_enum_tuple_to_tokens! {
-    enum Action: crate::keyboard::actions::Action { Led(led), Mouse(mouse), Consumer(consumer) }
+    enum Action: crate::keyboard::actions::Action { Led(led), Mouse(mouse), Consumer(consumer), Firmware(firmware) }
     enum LedAction: crate::keyboard::actions::LedAction { Cycle(inc), Brightness(inc) }
     enum MouseAction: crate::keyboard::actions::MouseAction { Click(button), Move(movement), Sensitivity(inc) }
 }
@@ -454,7 +461,8 @@ pub mod tests {
         serde_json::json!([
             { "Led": { "Cycle": "Up" } },
             { "Mouse": { "Move": "PanLeft" } },
-            { "Consumer": "VolumeIncrement" }
+            { "Consumer": "VolumeIncrement" },
+            { "Firmware": "AllowBootloader" },
         ])
     }
 
@@ -463,6 +471,7 @@ pub mod tests {
             Action::Led(LedAction::Cycle(Inc::Up)),
             Action::Mouse(MouseAction::Move(MouseMovement::PanLeft)),
             Action::Consumer(ConsumerKey::VolumeIncrement),
+            Action::Firmware(FirmwareAction::AllowBootloader),
         ]
     }
 
@@ -481,6 +490,9 @@ pub mod tests {
                 ),
                 crate::keyboard::actions::Action::Consumer(
                     usbd_human_interface_device::page::Consumer::VolumeIncrement
+                ),
+                crate::keyboard::actions::Action::Firmware(
+                    crate::keyboard::actions::FirmwareAction::AllowBootloader
                 ),
             ]
         }
