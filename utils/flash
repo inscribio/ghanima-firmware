@@ -32,7 +32,7 @@ die() {
 while (( $# > 0 )); do
     case "$1" in
         -h|--help)
-            echo "Usage: $(basename $0) [--first-flash] [--no-detach] [--prebuilt] [-- [CARGO_FLAGS...]]"
+            echo "Usage: $(basename $0) [--dry-run] [--first-flash] [--no-detach] [--prebuilt] [-- [CARGO_FLAGS...]]"
             exit 0 ;;
         --first-flash)
             first=yes ;;
