@@ -46,12 +46,38 @@ unsafe fn jump_bootloader() {
 }
 
 /// Implements switching to USB DFU mode via rebooting to an embedded DFU bootloader
-pub struct DfuBootloader;
+pub struct DfuBootloader {
+    allow: bool,
+}
+
+impl DfuBootloader {
+    pub fn new(allow: bool) -> Self {
+        Self { allow }
+    }
+
+    pub fn set_allowed(&mut self, allowed: bool) {
+        self.allow = allowed;
+    }
+
+    pub fn reboot(&mut self, bootloader: bool, usb_bus: Option<&usb::UsbBusType>) {
+        unsafe { reboot(bootloader, usb_bus) }
+    }
+}
 
 impl DfuRuntimeOps for DfuBootloader {
-    fn enter(&mut self) {
+    fn detach(&mut self) {
         // I suspect this works without force_reenumeration because we actually reset
         // the system twice: once on sys_reset, then in jump_bootloader, but not sure.
         unsafe { reboot(true, None); }
     }
+
+    fn allow(&mut self, timeout: u16) -> Option<u16> {
+        if self.allow {
+            Some(timeout)
+        } else {
+            None
+        }
+    }
+
+    const WILL_DETACH: bool = false;
 }

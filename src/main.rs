@@ -189,7 +189,7 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let usb = Usb::new(usb_bus, &board_side);
+        let usb = Usb::new(usb_bus, &board_side, config::CONFIG.bootload_strict);
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
@@ -324,11 +324,14 @@ mod app {
             serial_tx: mut tx,
             serial_rx: rx,
             crc,
-            usb,
+            mut usb,
             keyboard,
             mut keyboard_cnt,
         } = cx.shared;
         keyboard_cnt.lock(|cnt| cnt.inc());
+
+        // Bootloader reboot may happen here
+        usb.lock(|usb| usb.dfu.tick(KEYBOARD_PRESCALER.try_into().unwrap()));
 
         // Run main keyboard logic
         let leds_update = (&mut tx, rx, usb, keyboard).lock(|tx, rx, usb, keyboard| {

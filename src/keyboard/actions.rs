@@ -9,6 +9,8 @@ pub enum Action {
     Mouse(MouseAction),
     /// Send USB HID consumer page keys
     Consumer(ConsumerKey),
+    /// Perform special firmware-related actions
+    Firmware(FirmwareAction)
 }
 
 
@@ -48,4 +50,20 @@ pub enum MouseMovement {
     WheelDown,
     PanLeft,
     PanRight,
+}
+
+/// Special actions related to keyboard firmware
+pub enum FirmwareAction {
+    /// Allow host to request "jump to bootloader" to flash firmware
+    ///
+    /// If `bootload_strict` is set in config, then keyboard will refuse
+    /// any DFU detach requests until this action is invoked. This is a
+    /// security mechanism as some program could in theory try to flash new
+    /// firmware without user's knowledge.
+    AllowBootloader,
+    /// Jump to bootloader manually
+    // FIXME: currently device fails to enumerate after reset
+    JumpToBootloader,
+    /// Reset processor without jumping to bootloader
+    Reboot,
 }

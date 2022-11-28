@@ -20,7 +20,7 @@ mod code {
     };
     use rgb::RGB8;
 
-    use crate::keyboard::actions::Action as CustomAction;
+    use crate::keyboard::actions::{Action as CustomAction, FirmwareAction};
     use crate::keyboard::actions::{MouseAction, MouseButton, MouseMovement, Inc, LedAction, ConsumerKey};
     use crate::keyboard::mouse::{MouseConfig, SpeedProfile, AxisConfig, JoystickConfig};
     use crate::keyboard::KeyboardConfig;
@@ -35,6 +35,7 @@ mod code {
         mouse: &MOUSE,
         leds: LEDS,
         timeout: 1000,
+        bootload_strict: true,
     };
 
     const HOLDTAP_TIMEOUT: u16 = 180;
@@ -98,6 +99,12 @@ mod code {
     const M_PLUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Up)));
     const M_MINUS: Action = Action::Custom(CustomAction::Mouse(MouseAction::Sensitivity(Inc::Down)));
 
+    const BOOTLOAD_ON: Action = Action::Custom(CustomAction::Firmware(FirmwareAction::AllowBootloader));
+    #[allow(dead_code)]
+    const BOOTLOADER: Action = Action::Custom(CustomAction::Firmware(FirmwareAction::JumpToBootloader));
+    #[allow(dead_code)]
+    const REBOOT: Action = Action::Custom(CustomAction::Firmware(FirmwareAction::Reboot));
+
     #[allow(dead_code)]
     const L_UP: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Up)));
     #[allow(dead_code)]
@@ -128,11 +135,11 @@ mod code {
             [ t          t      {L3_SPACE} t   t     t   t t     t   t   t   t      ]
         }
         { // Layer 3 (hold left->right or right->left)
-            [ t   {LDEF}     {LGAM}     t           t          t             t          {M_MINUS}  {M_M}    {M_PLUS}  t               t ]
-            [ t   {VOL_UP}   {SG_LEFT}  {CA_UP}     {SG_RIGHT} {SG_PGUP}     {M_S_UP}   {M_L}      {M_UP}   {M_R}     {PSCREEN_SEL}   t ]
-            [ t   {VOL_DOWN} {CA_LEFT}  {CA_DOWN}   {CA_RIGHT} {SG_PGDOWN}   {M_S_DOWN} {M_LEFT}   {M_DOWN} {M_RIGHT} {PSCREEN_WIN}   t ]
-            [ t   {MUTE}     {PREVIOUS} {PLAYPAUSE} {NEXT}     {STOP}        {M_L}      t          t        t         {PSCREEN_ALL}   t ]
-            [ t   t          t          t           t          t             t          t          t        t         t               t ]
+            [ t   {LDEF}     {LGAM}     t           t          t             t          {M_MINUS}  {M_M}    {M_PLUS}  t               {BOOTLOAD_ON} ]
+            [ t   {VOL_UP}   {SG_LEFT}  {CA_UP}     {SG_RIGHT} {SG_PGUP}     {M_S_UP}   {M_L}      {M_UP}   {M_R}     {PSCREEN_SEL}   t             ]
+            [ t   {VOL_DOWN} {CA_LEFT}  {CA_DOWN}   {CA_RIGHT} {SG_PGDOWN}   {M_S_DOWN} {M_LEFT}   {M_DOWN} {M_RIGHT} {PSCREEN_WIN}   t             ]
+            [ t   {MUTE}     {PREVIOUS} {PLAYPAUSE} {NEXT}     {STOP}        {M_L}      t          t        t         {PSCREEN_ALL}   t             ]
+            [ t   t          t          t           t          t             t          t          t        t         t               t             ]
         }
         { // Default for gaming, etc.
             [ Escape   1 2 3 4 5   6 7 8 9 0   '\\'          ]

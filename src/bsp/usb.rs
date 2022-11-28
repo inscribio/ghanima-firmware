@@ -10,6 +10,8 @@ use crate::hal_ext::reboot;
 use crate::keyboard::hid;
 use super::sides::BoardSide;
 
+pub use reboot::DfuBootloader;
+
 type Bus = usb::UsbBusType;
 
 /// USB resources and class implementations
@@ -23,13 +25,13 @@ pub struct Usb {
 }
 
 impl Usb {
-    pub fn new(bus: &'static UsbBusAllocator<Bus>, side: &BoardSide) -> Self {
+    pub fn new(bus: &'static UsbBusAllocator<Bus>, side: &BoardSide, bootload_strict: bool) -> Self {
         // Classes
         let hid = hid::new_hid_class(bus);
         // NOTE: Create it last or else the device won't enumerate on Windows. It seems that Windows
         // does not like having DFU interface with number 0 and will report invalid configuration
         // descriptor.
-        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader);
+        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader::new(!bootload_strict));
 
         // Device
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt

@@ -66,6 +66,8 @@ pub struct KeyboardConfig<const L: usize> {
     pub leds: leds::LedConfigurations,
     /// Timeout for polling the other half about role negotiation
     pub timeout: u32,
+    /// Do not jump to bootloader until FirmwareAction::AllowBootloader is pressed
+    pub bootload_strict: bool,
 }
 
 /// Deferred update of LED controller state
@@ -256,7 +258,7 @@ impl<const L: usize> Keyboard<L> {
             let custom = self.layout.tick();
             // self.keyboard_reports.push(self.layout.keycodes().collect());
             if let Some((action, pressed)) = custom.transposed() {
-                self.handle_action(action, pressed, &mut update);
+                self.handle_action(action, pressed, &mut update, usb);
             }
 
             // Advance mouse emulation time
@@ -331,7 +333,7 @@ impl<const L: usize> Keyboard<L> {
         self.mouse.update_joystick(xy);
     }
 
-    fn handle_action(&mut self, action: &Action, pressed: bool, update: &mut LedsUpdate) {
+    fn handle_action(&mut self, action: &Action, pressed: bool, update: &mut LedsUpdate, usb: &mut Usb) {
         match action {
             Action::Led(led) => if !pressed {  // only on release
                 match led {
@@ -347,6 +349,15 @@ impl<const L: usize> Keyboard<L> {
                 }
                 self.consumer_reports.push(report);
             },
+            Action::Firmware(fw) => if pressed {
+                let bus = usb.dev.bus();
+                let dfu_boot = usb.dfu.ops_mut();
+                match fw {
+                    actions::FirmwareAction::AllowBootloader => dfu_boot.set_allowed(true),
+                    actions::FirmwareAction::JumpToBootloader => dfu_boot.reboot(true, Some(bus)),
+                    actions::FirmwareAction::Reboot => dfu_boot.reboot(false, Some(bus)),
+                }
+            }
         };
     }
 }

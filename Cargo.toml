@@ -63,7 +63,7 @@ embedded-dma = "0.2"
 
 usb-device = "0.2"
 usbd-human-interface-device = "0.3"
-usbd-dfu-rt = "0.1"
+usbd-dfu-rt = "0.2"
 
 # TODO: use official version when 0.2 is released
 keyberon = { git = "https://github.com/TeXitoi/keyberon", rev = "29e960e" }
