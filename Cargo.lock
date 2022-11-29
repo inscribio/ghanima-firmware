@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "ghanima"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_float_eq",
@@ -1139,9 +1139,9 @@ checksum = "1f6cc3adc849b5292b4075fc0d5fdcf2f24866e88e336dd27a8943090a520508"
 
 [[package]]
 name = "usbd-dfu-rt"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52cfd4b94cdfe484efeb57f88f65ddd63876891636c3c9efc65919c4077acca4"
+checksum = "ff4bf9730fde89b29011fc3f1a236a460dd1ef0270998a4c9924218fee4fe5d9"
 dependencies = [
  "usb-device",
 ]
