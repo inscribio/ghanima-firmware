@@ -159,6 +159,7 @@ flash_firmware_dfu() {
         echo -n .
     done
     echo
+    sleep 0.5 # hacky but give it some more time
     find_bootloader || die "Could not find DFU bootloader device"
 
     info "Flashing device ..."
