@@ -119,6 +119,12 @@ find_bootloader() {
     lsusb -d "$stm32dfu_id" > /dev/null
 }
 
+# run dfu-util with output to stdout but also capture output
+exec 5>&1
+dfu_util_detach() {
+    dfu-util --detach --device $keyboard_id 2>&1 | tee >(cat - >&5)
+}
+
 detach_keyboard() {
     find_keyboard || die "Keyboard not found"
 
@@ -133,7 +139,9 @@ detach_keyboard() {
     # detach to bootloader
     info "Detaching keyboard $keyboard_id to bootloader ..."
     if [[ ${dry_run:-no} != 'yes' ]]; then
-        dfu-util --detach --device $keyboard_id  # || die "Detaching to bootloader failed"
+        dfu_util_detach | \
+            ( ! grep -q 'dfu-util: error detaching' ) \
+            || die "Detaching to bootloader failed\nMaybe you forgot to press the AllowBootloader button on keyboard?"
     else
         die "DRY RUN: keyboard won't be detached so stopping here"
     fi
