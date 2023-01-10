@@ -58,6 +58,10 @@ impl Keys {
 }
 
 impl PressedLedKeys {
+    pub(crate) fn from_raw(val: u32) -> Self {
+        Self(val)
+    }
+
     /// Get pressed state of key above given LED
     pub fn is_pressed(&self, led: u8) -> bool {
         debug_assert!(led < NLEDS as u8);

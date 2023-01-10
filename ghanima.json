@@ -1074,152 +1074,148 @@
     }
   },
   "leds": [
-    {
-      "layers": [],
-      "default": [
-        {
-          "keys": "All",
-          "pattern": {
-            "phase": {
-              "x": 0,
-              "y": 0
-            },
-            "repeat": "Wrap",
-            "transitions": [
-              {
-                "color": [
-                  0,
-                  0,
-                  0
-                ],
-                "duration": 1500,
-                "interpolation": "Linear"
-              },
-              {
-                "color": [
-                  251,
-                  188,
-                  0
-                ],
-                "duration": 2000,
-                "interpolation": "Linear"
-              },
-              {
-                "color": [
-                  251,
-                  188,
-                  0
-                ],
-                "duration": 2000,
-                "interpolation": "Linear"
-              },
-              {
-                "color": [
-                  0,
-                  0,
-                  0
-                ],
-                "duration": 1500,
-                "interpolation": "Linear"
-              }
-            ]
+    [
+      {
+        "keys": null,
+        "pattern": {
+          "phase": {
+            "x": 0,
+            "y": 0
           },
-          "condition": "Always"
-        },
-        {
-          "keys": "All",
-          "pattern": {
-            "phase": {
-              "x": 0,
-              "y": 0
+          "repeat": "Wrap",
+          "transitions": [
+            {
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "duration": 1500,
+              "interpolation": "Linear"
             },
-            "repeat": "Once",
-            "transitions": [
-              {
-                "color": [
-                  255,
-                  0,
-                  0
-                ],
-                "duration": 250,
-                "interpolation": "Linear"
-              },
-              {
-                "color": [
-                  255,
-                  0,
-                  0
-                ],
-                "duration": 250,
-                "interpolation": "Linear"
-              },
-              {
-                "color": [
-                  0,
-                  0,
-                  0
-                ],
-                "duration": 250,
-                "interpolation": "Linear"
-              }
-            ]
-          },
-          "condition": {
-            "Pressed": true
-          }
-        },
-        {
-          "keys": "All",
-          "pattern": {
-            "phase": {
-              "x": 0,
-              "y": 0
+            {
+              "color": [
+                251,
+                188,
+                0
+              ],
+              "duration": 2000,
+              "interpolation": "Linear"
             },
-            "repeat": "Wrap",
-            "transitions": [
-              {
-                "color": [
-                  0,
-                  0,
-                  255
-                ],
-                "duration": 0,
-                "interpolation": "Piecewise"
-              }
-            ]
-          },
-          "condition": {
-            "Not": {
-              "Led": "NumLock"
+            {
+              "color": [
+                251,
+                188,
+                0
+              ],
+              "duration": 2000,
+              "interpolation": "Linear"
+            },
+            {
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "duration": 1500,
+              "interpolation": "Linear"
             }
-          }
+          ]
         },
-        {
-          "keys": "All",
-          "pattern": {
-            "phase": {
-              "x": 0,
-              "y": 0
-            },
-            "repeat": "Wrap",
-            "transitions": [
-              {
-                "color": [
-                  0,
-                  255,
-                  0
-                ],
-                "duration": 0,
-                "interpolation": "Piecewise"
-              }
-            ]
+        "condition": "Always"
+      },
+      {
+        "keys": null,
+        "pattern": {
+          "phase": {
+            "x": 0,
+            "y": 0
           },
-          "condition": {
-            "Led": "CapsLock"
+          "repeat": "Once",
+          "transitions": [
+            {
+              "color": [
+                255,
+                0,
+                0
+              ],
+              "duration": 250,
+              "interpolation": "Linear"
+            },
+            {
+              "color": [
+                255,
+                0,
+                0
+              ],
+              "duration": 250,
+              "interpolation": "Linear"
+            },
+            {
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "duration": 250,
+              "interpolation": "Linear"
+            }
+          ]
+        },
+        "condition": "Pressed"
+
+      },
+      {
+        "keys": null,
+        "pattern": {
+          "phase": {
+            "x": 0,
+            "y": 0
+          },
+          "repeat": "Wrap",
+          "transitions": [
+            {
+              "color": [
+                0,
+                0,
+                255
+              ],
+              "duration": 0,
+              "interpolation": "Piecewise"
+            }
+          ]
+        },
+        "condition": {
+          "Not": {
+            "Led": "NumLock"
           }
         }
-      ]
-    }
+      },
+      {
+        "keys": null,
+        "pattern": {
+          "phase": {
+            "x": 0,
+            "y": 0
+          },
+          "repeat": "Wrap",
+          "transitions": [
+            {
+              "color": [
+                0,
+                255,
+                0
+              ],
+              "duration": 0,
+              "interpolation": "Piecewise"
+            }
+          ]
+        },
+        "condition": {
+          "Led": "CapsLock"
+        }
+      }
+    ]
   ],
   "timeout": 1000,
   "bootload_strict": true

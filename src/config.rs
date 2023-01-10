@@ -203,56 +203,53 @@ mod code {
     }
 
     static LEDS: LedConfigurations = &[
-        LedConfig {
-            default: &[
-                LedRule {
-                    keys: Keys::All,
-                    condition: Condition::Always,
-                    pattern: Pattern {
-                        repeat: Repeat::Wrap,
-                        transitions: &[
-                            Transition {
-                                color: NONE,
-                                duration: 1500,
-                                interpolation: Interpolation::Linear,
-                            },
-                            Transition {
-                                color: rgb::RGB::new(251, 188, 0),
-                                duration: 2000,
-                                interpolation: Interpolation::Linear,
-                            },
-                            Transition {
-                                color: rgb::RGB::new(251, 188, 0),
-                                duration: 1000,
-                                interpolation: Interpolation::Linear,
-                            },
-                            Transition {
-                                color: NONE,
-                                duration: 1500,
-                                interpolation: Interpolation::Linear,
-                            },
-                        ],
-                        phase: Phase { x: 0.0, y: 0.0 }
-                    }
-                },
-                LedRule {
-                    keys: Keys::All,
-                    condition: Condition::Pressed(true),
-                    pattern: pattern!(Repeat::Once, 250, [RED, RED, NONE]),
-                },
-                LedRule {
-                    keys: Keys::All,
-                    condition: Condition::Not(&Condition::Led(KeyboardLed::NumLock)),
-                    pattern: constant!(BLUE),
-                },
-                LedRule {
-                    keys: Keys::All,
-                    condition: Condition::Led(KeyboardLed::CapsLock),
-                    pattern: constant!(GREEN),
-                },
-            ],
-            layers: &[],
-        },
+        &[
+            LedRule {
+                keys: None, // all
+                condition: Condition::Always,
+                pattern: Pattern {
+                    repeat: Repeat::Wrap,
+                    transitions: &[
+                        Transition {
+                            color: NONE,
+                            duration: 1500,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: rgb::RGB::new(251, 188, 0),
+                            duration: 2000,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: rgb::RGB::new(251, 188, 0),
+                            duration: 1000,
+                            interpolation: Interpolation::Linear,
+                        },
+                        Transition {
+                            color: NONE,
+                            duration: 1500,
+                            interpolation: Interpolation::Linear,
+                        },
+                    ],
+                    phase: Phase { x: 0.0, y: 0.0 }
+                }
+            },
+            LedRule {
+                keys: None,
+                condition: Condition::Pressed,
+                pattern: pattern!(Repeat::Once, 250, [RED, RED, NONE]),
+            },
+            LedRule {
+                keys: None,
+                condition: Condition::Not(&Condition::Led(KeyboardLed::NumLock)),
+                pattern: constant!(BLUE),
+            },
+            LedRule {
+                keys: None,
+                condition: Condition::Led(KeyboardLed::CapsLock),
+                pattern: constant!(GREEN),
+            },
+        ],
     ];
 
     static MOUSE: MouseConfig = MouseConfig {

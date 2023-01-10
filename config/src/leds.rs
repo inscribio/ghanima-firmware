@@ -7,24 +7,17 @@ use crate::{impl_struct_to_tokens, impl_enum_to_tokens};
 
 pub type LedConfigurations = Vec<LedConfig>;
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
-pub struct LedConfig {
-    default: LayerRules,
-    layers: Vec<LayerRules>,
-}
-
-pub type LayerRules = Vec<LedRule>;
+pub type LedConfig = Vec<LedRule>;
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub struct LedRule {
-    keys: Keys,
+    keys: Option<Keys>,
     condition: Condition,
     pattern: Pattern,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
 pub enum Keys {
-    All,
     Rows(Vec<u8>),
     Cols(Vec<u8>),
     Keys(Vec<(u8, u8)>),
@@ -34,11 +27,14 @@ pub enum Keys {
 pub enum Condition {
     Always,
     Led(KeyboardLed),
-    UsbOn(bool),
+    UsbOn,
     Role(Role),
-    Pressed(bool),
-    KeyPressed(bool, (u8, u8)),
+    Pressed,
+    KeyPressed(u8, u8),
+    Layer(u8),
     Not(Box<Condition>),
+    And(Vec<Condition>),
+    Or(Vec<Condition>),
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -94,7 +90,7 @@ pub struct RGB8(u8, u8, u8);
 
 pub fn to_tokens(configs: &LedConfigurations) -> TokenStream {
     quote! {
-        &[ #( #configs ),* ]
+        &[ #(&[ #(#configs),* ]),* ]
     }
 }
 
@@ -106,30 +102,16 @@ impl_enum_to_tokens! {
 }
 
 impl_struct_to_tokens! {
-    struct LedRule: crate::keyboard::leds::LedRule { keys, condition, pattern, }
+    struct LedRule: crate::keyboard::leds::LedRule { &?keys, condition, pattern, }
     struct Pattern: crate::keyboard::leds::Pattern { repeat, &[transitions], phase, }
     struct Transition: crate::keyboard::leds::Transition { color, duration, interpolation, }
     struct Phase: crate::keyboard::leds::Phase { x, y, }
-}
-
-impl ToTokens for LedConfig {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let defaults = &self.default;
-        let layers = &self.layers;
-        tokens.append_all(quote! {
-            crate::keyboard::leds::LedConfig {
-                default: &[ #( #defaults ),* ],
-                layers: &[ #( &[ #( #layers ),* ] ),* ],
-            }
-        })
-    }
 }
 
 impl ToTokens for Keys {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let leds = quote! { crate::keyboard::leds };
         tokens.append_all(match self {
-            Keys::All => quote! { #leds::Keys::All },
             Keys::Rows(rows) => quote! { #leds::Keys::Rows(&[ #( #rows ),* ]) },
             Keys::Cols(cols) => quote! { #leds::Keys::Cols(&[ #( #cols ),* ]) },
             Keys::Keys(keys) => {
@@ -146,11 +128,14 @@ impl ToTokens for Condition {
         tokens.append_all(match self {
             Condition::Always => quote! { #leds::Condition::Always },
             Condition::Led(led) => quote! { #leds::Condition::Led(#led) },
-            Condition::UsbOn(on) => quote! { #leds::Condition::UsbOn(#on) },
+            Condition::UsbOn => quote! { #leds::Condition::UsbOn },
             Condition::Role(role) => quote! { #leds::Condition::Role(#role) },
-            Condition::Pressed(pressed) => quote! { #leds::Condition::Pressed(#pressed) },
-            Condition::KeyPressed(pressed, (row, col)) => quote! { #leds::Condition::KeyPressed(#pressed, (#row, #col)) },
+            Condition::Pressed => quote! { #leds::Condition::Pressed },
+            Condition::KeyPressed(row, col) => quote! { #leds::Condition::KeyPressed(#row, #col) },
+            Condition::Layer(layer) => quote! { #leds::Condition::Layer(#layer) },
             Condition::Not(cond) => quote! { #leds::Condition::Not(&#cond) },
+            Condition::And(conds) => quote! { #leds::Condition::And(&[ #(#conds),* ]) },
+            Condition::Or(conds) => quote! { #leds::Condition::Or(&[ #(#conds),* ]) },
         })
     }
 }
@@ -175,163 +160,168 @@ pub mod tests {
     pub fn example_json() -> serde_json::Value {
         serde_json::json!(
             [
-                {
-                    "default": [
-                        {
-                            "keys": "All",
-                            "condition": "Always",
-                            "pattern": {
-                                "repeat": "Wrap",
-                                "transitions": [
-                                    {
-                                        "color": [0, 0, 0],
-                                        "duration": 1500,
-                                        "interpolation": "Piecewise",
-                                    },
-                                    {
-                                        "color": [255, 180, 0],
-                                        "duration": 1000,
-                                        "interpolation": "Linear",
-                                    },
-                                ],
-                                "phase": {
-                                    "x": 0.0,
-                                    "y": 0.0,
+                [
+                    {
+                        "keys": null,
+                        "condition": "Always",
+                        "pattern": {
+                            "repeat": "Wrap",
+                            "transitions": [
+                                {
+                                    "color": [0, 0, 0],
+                                    "duration": 1500,
+                                    "interpolation": "Piecewise",
                                 },
+                                {
+                                    "color": [255, 180, 0],
+                                    "duration": 1000,
+                                    "interpolation": "Linear",
+                                },
+                            ],
+                            "phase": {
+                                "x": 0.0,
+                                "y": 0.0,
                             },
                         },
-                        {
-                            "keys": {
-                                "Rows": [0, 1, 3],
-                            },
-                            "condition": {
-                                "Pressed": true,
-                            },
-                            "pattern": {
-                                "repeat": "Once",
-                                "transitions": [
-                                    {
-                                        "color": [255, 255, 255],
-                                        "duration": 250,
-                                        "interpolation": "Linear",
-                                    },
-                                    {
-                                        "color": [0, 0, 0],
-                                        "duration": 250,
-                                        "interpolation": "Linear",
-                                    },
-                                ],
-                                "phase": {
-                                    "x": 0.0,
-                                    "y": 0.0,
+                    },
+                    {
+                        "keys": {
+                            "Rows": [0, 1, 3],
+                        },
+                        "condition": {
+                            "And": [
+                                "Pressed",
+                                { "Not": { "Layer": 0 } },
+                                { "KeyPressed": [2, 3] },
+                            ]
+                        },
+                        "pattern": {
+                            "repeat": "Once",
+                            "transitions": [
+                                {
+                                    "color": [255, 255, 255],
+                                    "duration": 250,
+                                    "interpolation": "Linear",
                                 },
+                                {
+                                    "color": [0, 0, 0],
+                                    "duration": 250,
+                                    "interpolation": "Linear",
+                                },
+                            ],
+                            "phase": {
+                                "x": 0.0,
+                                "y": 0.0,
                             },
                         },
-                    ],
-                    "layers": [],
-                }
+                    },
+                ],
             ]
         )
     }
 
     pub fn example_config() -> LedConfigurations {
         vec![
-            LedConfig {
-                default: vec![
-                    LedRule {
-                        keys: Keys::All,
-                        condition: Condition::Always,
-                        pattern: Pattern {
-                            repeat: Repeat::Wrap,
-                            transitions: vec![
-                                Transition {
-                                    color: RGB8(0, 0, 0),
-                                    duration: 1500,
-                                    interpolation: Interpolation::Piecewise,
-                                },
-                                Transition {
-                                    color: RGB8(255, 180, 0),
-                                    duration: 1000,
-                                    interpolation: Interpolation::Linear,
-                                }
-                            ],
-                            phase: Phase { x: 0.0, y: 0.0 }
-                        }
-                    },
-                    LedRule {
-                        keys: Keys::Rows(vec![0, 1, 3]),
-                        condition: Condition::Pressed(true),
-                        pattern: Pattern {
-                            repeat: Repeat::Once,
-                            transitions: vec![
-                                Transition {
-                                    color: RGB8(255, 255, 255),
-                                    duration: 250,
-                                    interpolation: Interpolation::Linear,
-                                },
-                                Transition {
-                                    color: RGB8(0, 0, 0),
-                                    duration: 250,
-                                    interpolation: Interpolation::Linear,
-                                }
-                            ],
-                            phase: Phase { x: 0.0, y: 0.0 }
-                        }
+            vec![
+                LedRule {
+                    keys: None,
+                    condition: Condition::Always,
+                    pattern: Pattern {
+                        repeat: Repeat::Wrap,
+                        transitions: vec![
+                            Transition {
+                                color: RGB8(0, 0, 0),
+                                duration: 1500,
+                                interpolation: Interpolation::Piecewise,
+                            },
+                            Transition {
+                                color: RGB8(255, 180, 0),
+                                duration: 1000,
+                                interpolation: Interpolation::Linear,
+                            }
+                        ],
+                        phase: Phase { x: 0.0, y: 0.0 }
                     }
-                ],
-                layers: vec![],
-            }
+                },
+                LedRule {
+                    keys: Some(Keys::Rows(vec![0, 1, 3])),
+                    condition: Condition::And(vec![
+                        Condition::Pressed,
+                        Condition::Not(Box::new(Condition::Layer(0))),
+                        Condition::KeyPressed(2, 3),
+                    ]),
+                    pattern: Pattern {
+                        repeat: Repeat::Once,
+                        transitions: vec![
+                            Transition {
+                                color: RGB8(255, 255, 255),
+                                duration: 250,
+                                interpolation: Interpolation::Linear,
+                            },
+                            Transition {
+                                color: RGB8(0, 0, 0),
+                                duration: 250,
+                                interpolation: Interpolation::Linear,
+                            }
+                        ],
+                        phase: Phase { x: 0.0, y: 0.0 }
+                    }
+                }
+            ],
         ]
     }
 
     pub fn example_code() -> TokenStream {
         quote! {
             &[
-                crate::keyboard::leds::LedConfig {
-                    default: &[
-                        crate::keyboard::leds::LedRule {
-                            keys: crate::keyboard::leds::Keys::All,
-                            condition: crate::keyboard::leds::Condition::Always,
-                            pattern: crate::keyboard::leds::Pattern {
-                                repeat: crate::keyboard::leds::Repeat::Wrap,
-                                transitions: &[
-                                    crate::keyboard::leds::Transition {
-                                        color: rgb::RGB8::new(0u8, 0u8, 0u8),
-                                        duration: 1500u16,
-                                        interpolation: crate::keyboard::leds::Interpolation::Piecewise,
-                                    },
-                                    crate::keyboard::leds::Transition {
-                                        color: rgb::RGB8::new(255u8, 180u8, 0u8),
-                                        duration: 1000u16,
-                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
-                                    }
-                                ],
-                                phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
-                            }
-                        },
-                        crate::keyboard::leds::LedRule {
-                            keys: crate::keyboard::leds::Keys::Rows(&[0u8, 1u8, 3u8]),
-                            condition: crate::keyboard::leds::Condition::Pressed(true),
-                            pattern: crate::keyboard::leds::Pattern {
-                                repeat: crate::keyboard::leds::Repeat::Once,
-                                transitions: &[
-                                    crate::keyboard::leds::Transition {
-                                        color: rgb::RGB8::new(255u8, 255u8, 255u8),
-                                        duration: 250u16,
-                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
-                                    },
-                                    crate::keyboard::leds::Transition {
-                                        color: rgb::RGB8::new(0u8, 0u8, 0u8),
-                                        duration: 250u16,
-                                        interpolation: crate::keyboard::leds::Interpolation::Linear,
-                                    }
-                                ],
-                                phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
-                            }
+                &[
+                    crate::keyboard::leds::LedRule {
+                        keys: None,
+                        condition: crate::keyboard::leds::Condition::Always,
+                        pattern: crate::keyboard::leds::Pattern {
+                            repeat: crate::keyboard::leds::Repeat::Wrap,
+                            transitions: &[
+                                crate::keyboard::leds::Transition {
+                                    color: rgb::RGB8::new(0u8, 0u8, 0u8),
+                                    duration: 1500u16,
+                                    interpolation: crate::keyboard::leds::Interpolation::Piecewise,
+                                },
+                                crate::keyboard::leds::Transition {
+                                    color: rgb::RGB8::new(255u8, 180u8, 0u8),
+                                    duration: 1000u16,
+                                    interpolation: crate::keyboard::leds::Interpolation::Linear,
+                                }
+                            ],
+                            phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
                         }
-                    ],
-                    layers: &[],
-                }
+                    },
+                    crate::keyboard::leds::LedRule {
+                        keys: Some(&crate::keyboard::leds::Keys::Rows(&[0u8, 1u8, 3u8])),
+                        condition: crate::keyboard::leds::Condition::And(&[
+                            crate::keyboard::leds::Condition::Pressed,
+                            crate::keyboard::leds::Condition::Not(
+                                &crate::keyboard::leds::Condition::Layer(0u8),
+                            ),
+                            crate::keyboard::leds::Condition::KeyPressed(2u8, 3u8),
+                        ]),
+                        pattern: crate::keyboard::leds::Pattern {
+                            repeat: crate::keyboard::leds::Repeat::Once,
+                            transitions: &[
+                                crate::keyboard::leds::Transition {
+                                    color: rgb::RGB8::new(255u8, 255u8, 255u8),
+                                    duration: 250u16,
+                                    interpolation: crate::keyboard::leds::Interpolation::Linear,
+                                },
+                                crate::keyboard::leds::Transition {
+                                    color: rgb::RGB8::new(0u8, 0u8, 0u8),
+                                    duration: 250u16,
+                                    interpolation: crate::keyboard::leds::Interpolation::Linear,
+                                }
+                            ],
+                            phase: crate::keyboard::leds::Phase { x: 0f32, y: 0f32 }
+                        }
+                    }
+                ],
             ]
         }
     }

@@ -4,7 +4,7 @@ use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
 use crate::keyboard::actions::Inc;
 use crate::utils::CircularIter;
 use super::{LedConfig, Pattern, Repeat, Transition, Interpolation, LedConfigurations};
-use super::condition::KeyboardState;
+use super::condition::{KeyboardState, RuleKeys};
 
 pub type Leds = ws2812b::Leds<NLEDS>;
 
@@ -66,27 +66,20 @@ impl<'a> LedController<'a> {
         self.pattern_candidates.fill(None);
 
         // Scan the rules that we might consider, rules on end of list overwrite previous ones.
-        let config = self.config.current();
-        let layer_rules = config.layers.get(state.layer as usize);
-        core::iter::once(config.default)
-            // Optionally overwritten by layer rules
-            .chain(layer_rules.copied())
-            .for_each(|rules| {
-                for rule in rules {
-                    rule.keys.for_each(|row, col| {
-                        // Only consider rules from this side
-                        if self.side.has_coords((row, col)) {
-                            let local = BoardSide::coords_to_local((row, col));
-                            // Keys iterator iterates only over non-joystick coordinates
-                            let led_num = BoardSide::led_number(local)
-                                .unwrap();
-                            if rule.condition.applies(&state, &self.side, led_num) {
-                                self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
-                            }
-                        }
-                    });
+        for rule in self.config.current().iter() {
+            rule.keys.for_each(|row, col| {
+                // Only consider rules from this side
+                if self.side.has_coords((row, col)) {
+                    let local = BoardSide::coords_to_local((row, col));
+                    // Keys iterator iterates only over non-joystick coordinates
+                    let led_num = BoardSide::led_number(local)
+                        .unwrap();
+                    if rule.condition.applies(&state, &self.side, led_num) {
+                        self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
+                    }
                 }
             });
+        }
 
         for led in 0..NLEDS {
             self.patterns[led].update(time, self.pattern_candidates[led]);

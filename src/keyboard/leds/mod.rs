@@ -56,19 +56,16 @@ use super::role::Role;
 /// Configurations that can be cycled through, but only one is active at a time.
 pub type LedConfigurations = &'static [LedConfig];
 
-/// Configuration of keyboard LED lightning
-pub struct LedConfig {
-    pub default: LayerRules,
-    pub layers: &'static [LayerRules],
-}
-
-/// List of LED pattern rules for a single layer
-pub type LayerRules = &'static [LedRule];
+/// Configuration of keyboard LED lightning consisting of a rules list
+pub type LedConfig = &'static [LedRule];
 
 /// Rule defining LED pattern for given keys if condition applies
 pub struct LedRule {
-    /// Keys to which the rule applies
-    pub keys: Keys,
+    /// Keys to which the rule applies or all keys if `None`
+    ///
+    /// This is a pointer to save memory space (4B pointer vs 12B enum),
+    /// as the "all keys" variant is used most often.
+    pub keys: Option<&'static Keys>,
     /// Condition required for the rule to be active
     pub condition: Condition,
     /// Color pattern used for a LED when the rule applies
@@ -80,8 +77,6 @@ pub struct LedRule {
 /// Note that joystick is not considered as a key, because it has no LED
 /// associated.
 pub enum Keys {
-    /// All keys on this layer
-    All,
     /// All keys from given rows
     Rows(&'static [u8]),
     /// All keys from given columns
@@ -92,22 +87,27 @@ pub enum Keys {
 }
 
 /// Condition for the rule to be used
-#[derive(PartialEq)]
 pub enum Condition {
     /// Always applies
     Always,
     /// Apply this rule if host PC specifies that given LED is on
     Led(KeyboardLed),
-    /// Apply if USB is (dis-)connected
-    UsbOn(bool),
-    /// Apply if the keyboard half acts as a master
+    /// Apply if USB is connected
+    UsbOn,
+    /// Apply if the keyboard half has given role
     Role(Role),
-    /// Apply when this key has given pressed state
-    Pressed(bool),
-    /// Apply when given key has given pressed state
-    KeyPressed(bool, (u8, u8)),
+    /// Apply to current key when this key is pressed
+    Pressed,
+    /// Apply to current key when the given key is pressed
+    KeyPressed(u8, u8),
+    /// Apply when on a given layer
+    Layer(u8),
     /// Applies when the internal condition does not
     Not(&'static Condition),
+    /// Applies when all internal conditions apply
+    And(&'static [Condition]),
+    /// Applies when any of internal conditions apply
+    Or(&'static [Condition]),
 }
 
 /// Standard keyboard LED

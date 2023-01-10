@@ -195,6 +195,14 @@ macro_rules! impl_struct_to_tokens {
     ( @vars $self:ident & $field:ident, $($field_defs:tt)* ) => {
         impl_struct_to_tokens! { @vars $self $field, $($field_defs)* }
     };
+    // For ?field (Option + reference) extract the Option here and add reference to it.
+    ( @vars $self:ident &? $field:ident, $($field_defs:tt)* ) => {
+        let $field = match &$self.$field {
+            Some(inner) => quote! { Some(& #inner) },
+            None => quote! { None },
+        };
+        impl_struct_to_tokens! { @vars $self $($field_defs)* }
+    };
     // Same for &[field]
     ( @vars $self:ident &[ $field:ident ], $($field_defs:tt)* ) => {
         impl_struct_to_tokens! { @vars $self $field, $($field_defs)* }
@@ -216,6 +224,11 @@ macro_rules! impl_struct_to_tokens {
             $field: & #$field,
         });
         impl_struct_to_tokens! { @tokens $tokens $($field_defs)* }
+    };
+    // Take as an Option -> same as normal, extracting of Option done during @vars.
+    // e.g. `Struct { field_a: Some(&field_a) }`
+    ( @tokens $tokens:ident &? $field:ident, $($field_defs:tt)* ) => {
+        impl_struct_to_tokens! { @tokens $tokens $field, $($field_defs)* }
     };
     // Take an array by reference
     // e.g. `Struct { field_a: &[ field_a, ... ] }`
