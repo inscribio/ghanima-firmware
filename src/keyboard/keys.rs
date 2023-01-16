@@ -58,6 +58,7 @@ impl Keys {
 }
 
 impl PressedLedKeys {
+    #[allow(dead_code)]
     pub(crate) fn from_raw(val: u32) -> Self {
         Self(val)
     }
