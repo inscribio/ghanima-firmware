@@ -5,7 +5,7 @@ config-test-env := 'CARGO_TARGET_DIR=/tmp/cargo-target-ghanima-config DEFMT_LOG=
 # Build firmware and generate .bin file
 build *ARGS:
     cargo build --release {{ARGS}}
-    cargo objcopy --release --bin ghanima -- -O binary target/ghanima.bin
+    cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
 
 # Run cargo check on any file change
 watch-check *ARGS:
@@ -28,7 +28,7 @@ run *ARGS:
 # Start debugging with gdb
 gdb *ARGS:
     cargo build --release {{ARGS}}
-    cargo objcopy --release --bin ghanima -- -O binary target/ghanima.bin
+    cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
     cd remote && arm-none-eabi-gdb "../target/thumbv6m-none-eabi/debug/ghanima" -x ./gdbinit
 
 ### Tests ###
