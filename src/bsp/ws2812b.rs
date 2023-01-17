@@ -43,7 +43,7 @@ const SERIAL_SIZE: usize = bytes_for_bits(SERIAL_BITS);
 /// Provides methods to serialize RGB data into format suitable for transmission
 /// via SPI configured with frequency of [`SPI_FREQ`].
 pub struct Leds<const N: usize> {
-    pub leds: [RGB8; N],
+    pub colors: [RGB8; N],
 }
 
 impl<const N: usize> Leds<N> {
@@ -57,7 +57,7 @@ impl<const N: usize> Leds<N> {
     /// Intialize with all LEDs diabled (black)
     pub const fn new() -> Self {
         Self {
-            leds: [RGB8::new(0, 0, 0); N],
+            colors: [RGB8::new(0, 0, 0); N],
         }
     }
 
@@ -123,8 +123,8 @@ impl<const N: usize> Leds<N> {
     ///
     /// If the buffer is not large enough - it must be at least [`Self::BUFFER_SIZE`] bytes.
     pub fn serialize_to_slice(&self, buf: &mut [u8]) -> usize {
-        let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.leds.len()))/8];
-        Self::serialize_colors(&self.leds, data);
+        let data = &mut buf[RESET_BITS_BEFORE/8..(RESET_BITS_BEFORE+led_bits(self.colors.len()))/8];
+        Self::serialize_colors(&self.colors, data);
         Self::BUFFER_SIZE
     }
 
@@ -149,9 +149,9 @@ impl<const N: usize> Leds<N> {
     }
 
     pub fn set_gamma_corrected(&mut self, index: usize, rgb: &RGB8) {
-        self.leds[index].r = Self::gamma_correction(rgb.r);
-        self.leds[index].g = Self::gamma_correction(rgb.g);
-        self.leds[index].b = Self::gamma_correction(rgb.b);
+        self.colors[index].r = Self::gamma_correction(rgb.r);
+        self.colors[index].g = Self::gamma_correction(rgb.g);
+        self.colors[index].b = Self::gamma_correction(rgb.b);
     }
 
     /// Set colors to a pattern suitable for testing LEDs
@@ -167,7 +167,7 @@ impl<const N: usize> Leds<N> {
         let dimmed = |v: usize| {
             ((v * brightness as usize) / 256) as u8
         };
-        for (i, led) in self.leds.iter_mut().enumerate() {
+        for (i, led) in self.colors.iter_mut().enumerate() {
             led.r = Self::gamma_correction(dimmed(reflect(t/1 + 4*i)));
             led.g = Self::gamma_correction(dimmed(reflect(t/2 + 2*i)));
             led.b = Self::gamma_correction(dimmed(reflect(t/3 + 3*i)));

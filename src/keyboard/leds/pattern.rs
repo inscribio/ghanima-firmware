@@ -88,9 +88,9 @@ impl<'a> LedController<'a> {
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
     pub fn tick(&mut self, time: u32) -> &Leds {
-        debug_assert_eq!(self.patterns.len(), self.leds.leds.len());
+        debug_assert_eq!(self.patterns.len(), self.leds.colors.len());
         let patterns = self.patterns.iter_mut();
-        let leds = self.leds.leds.iter_mut();
+        let leds = self.leds.colors.iter_mut();
 
         if self.overwrite_counter > 0 {
             self.overwrite_counter -= 1;

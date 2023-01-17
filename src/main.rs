@@ -203,7 +203,7 @@ mod app {
         if was_watchdog_reset {
             defmt::error!("Watchdog triggered system reset");
             let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
-            for (i, led) in leds.set_overwrite(ticks as u16).leds.iter_mut().enumerate() {
+            for (i, led) in leds.set_overwrite(ticks as u16).colors.iter_mut().enumerate() {
                 led.r = if i % 4 == 0 { 255 } else { 0 };
                 led.g = 0;
                 led.b = 0;
