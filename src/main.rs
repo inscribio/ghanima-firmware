@@ -358,7 +358,7 @@ mod app {
             serial_rx: rx,
             crc,
             mut usb,
-            keyboard,
+            mut keyboard,
             mut keyboard_cnt,
         } = cx.shared;
         keyboard_cnt.lock(|cnt| cnt.inc());
@@ -367,9 +367,7 @@ mod app {
         usb.lock(|usb| usb.dfu.tick(KEYBOARD_PRESCALER.try_into().unwrap()));
 
         // Run main keyboard logic
-        let leds_update = (&mut tx, rx, usb, keyboard).lock(|tx, rx, usb, keyboard| {
-            keyboard.tick((tx, rx), usb)
-        });
+        let leds_update = keyboard.lock(|keyboard| keyboard.tick((&mut tx, rx), usb));
 
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));

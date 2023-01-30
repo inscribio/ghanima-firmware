@@ -19,6 +19,7 @@ mod msg;
 /// Role negotiation between keyboard halves
 mod role;
 
+use rtic::Mutex;
 use keyberon::layout::{self, Event};
 use serde::{Serialize, Deserialize};
 
@@ -143,38 +144,40 @@ impl<const L: usize> Keyboard<L> {
     /// This should be called in a fixed period to update internal state, handle communication
     /// between keyboard halves and resolve key events depending on keyboard layout. Returns
     /// [`KeyboardState`] to be passed to the LED controller - possibly a lower priority task.
-    pub fn tick<TX, RX>(&mut self, (tx, rx): (&mut TX, &mut RX), usb: &mut Usb) -> LedsUpdate
+    pub fn tick<TX, RX>(
+        &mut self,
+        (mut tx, mut rx): (impl Mutex<T=TX>, impl Mutex<T=RX>),
+        mut usb: impl Mutex<T=&'static mut Usb>,
+    ) -> LedsUpdate
     where
         TX: ioqueue::TransmitQueue<msg::Message>,
         RX: ioqueue::ReceiveQueue<msg::Message>,
     {
-        let maybe_tx = |tx: &mut TX, msg: Option<role::Message>| {
-            if let Some(msg) = msg {
-                tx.push(msg.into());
-            }
-        };
-
         // Retrieve USB state
-        let usb_state = usb.dev.state();
+        let usb_state = usb.lock(|usb| usb.dev.state());
         let prev_usb_state = self.prev_usb_state;
         self.prev_usb_state = usb_state;
 
         // First update USB state in FSM
-        maybe_tx(tx, self.fsm.usb_state(usb_state == UsbDeviceState::Configured));
+        if let Some(msg) = self.fsm.usb_state(usb_state == UsbDeviceState::Configured) {
+            tx.lock(|tx| tx.push(msg.into()));
+        }
 
         // Store LEDs updates from master
         let mut leds_update = None;
 
         // Process RX data
-        let mut was_event = false;
-        while let Some(msg) = rx.get() {
+        let mut was_key_event = false;  // check events as any key should trigger usb wakeup from suspend
+        while let Some(msg) = rx.lock(|rx| rx.get()) {
             match msg {
                 msg::Message::Role(msg) => {
                     defmt::info!("Got role::Message: {}", msg);
-                    maybe_tx(tx, self.fsm.on_rx(msg));
+                    if let Some(msg) =  self.fsm.on_rx(msg) {
+                        tx.lock(|tx| tx.push(msg.into()));
+                    }
                 },
                 msg::Message::Key(event) => {
-                    was_event = true;
+                    was_key_event = true;
                     match event {
                         Event::Press(i, j) => defmt::info!("Got KeyPress({=u8}, {=u8})", i, j),
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
@@ -195,11 +198,13 @@ impl<const L: usize> Keyboard<L> {
         }
 
         // Advance FSM time, process timeouts
-        maybe_tx(tx, self.fsm.tick());
+        if let Some(msg) = self.fsm.tick() {
+            tx.lock(|tx| tx.push(msg.into()));
+        }
 
         // Scan keys and push all events
         for event in self.keys.scan() {
-            was_event = true;
+            was_key_event = true;
             match self.fsm.role() {
                 // Master should handle keyboard logic
                 Role::Master => self.layout.event(event),
@@ -207,13 +212,13 @@ impl<const L: usize> Keyboard<L> {
                 Role::Slave => {
                     let (i, j) = event.coord();
                     defmt::info!("Send Key({=u8}, {=u8})", i, j);
-                    tx.push(event.into());
+                    tx.lock(|tx| tx.push(event.into()));
                 },
             }
         }
 
         // Process USB wake up FIXME: assumes keyboard tick is 1 kHz
-        usb.wake_up_update(was_event, 9);
+        usb.lock(|usb| usb.wake_up_update(was_key_event, 9));
 
         if self.fsm.role() == Role::Slave {
             // Slave just uses the LED update from master
@@ -240,7 +245,7 @@ impl<const L: usize> Keyboard<L> {
             // Collect state
             let mut update = LedsUpdate {
                 state: leds::KeyboardState {
-                    leds: usb.keyboard_leds(),
+                    leds: usb.lock(|usb| usb.keyboard_leds()),
                     usb_on: usb_state == UsbDeviceState::Configured,
                     role: self.fsm.role(),
                     layer: self.layout.current_layer() as u8,
@@ -256,47 +261,79 @@ impl<const L: usize> Keyboard<L> {
             let custom = self.layout.tick();
             // self.keyboard_reports.push(self.layout.keycodes().collect());
             if let Some((action, pressed)) = custom.transposed() {
-                self.handle_action(action, pressed, &mut update, usb);
+                match action {
+                    Action::Led(led) => if !pressed {  // only on release
+                        match led {
+                            LedAction::Cycle(inc) => update.config = Some((*inc).into()),
+                            LedAction::Brightness(inc) => update.brightness = Some((*inc).into()),
+                        }
+                    },
+                    Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
+                    Action::Consumer(key) => {
+                        let mut report = hid::ConsumerReport::default();
+                        if pressed {
+                            report.codes[0] = (*key).into()
+                        }
+                        self.consumer_reports.push(report);
+                    },
+                    Action::Firmware(fw) => if pressed {
+                        usb.lock(|usb| {
+                            let bus = usb.dev.bus();
+                            let dfu_boot = usb.dfu.ops_mut();
+                            match fw {
+                                actions::FirmwareAction::AllowBootloader => dfu_boot.set_allowed(true),
+                                actions::FirmwareAction::JumpToBootloader => dfu_boot.reboot(true, Some(bus)),
+                                actions::FirmwareAction::Reboot => dfu_boot.reboot(false, Some(bus)),
+                            }
+                        });
+                    }
+                };
+
             }
 
             // Advance mouse emulation time
             self.mouse.tick();
 
             // Advance usbd-human-interface-device keyboard time FIXME: assumes 1 kHz
-            let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
-            keyboard.tick().ok();
+            usb.lock(|usb| {
+                let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
+                keyboard.tick().ok();
+            });
 
             // Push next report
             self.keyboard_reports.push(hid::KeyboardReport::new(self.layout.keycodes().as_page()));
 
             // Push USB reports
-            if self.fsm.role() == Role::Master && usb_state == UsbDeviceState::Configured {
-                let consumer: &hid::ConsumerInterface<'_, _> = usb.hid.interface();
-                let mouse: &hid::MouseInterface<'_, _> = usb.hid.interface();
+            if usb_state == UsbDeviceState::Configured {
+                usb.lock(|usb| {
+                    let keyboard: &hid::KeyboardInterface<'_, _> = usb.hid.interface();
+                    let consumer: &hid::ConsumerInterface<'_, _> = usb.hid.interface();
+                    let mouse: &hid::MouseInterface<'_, _> = usb.hid.interface();
 
-                self.keyboard_reports.send(|r| keyboard.write_report(r)
-                    .or_else(|e| match e {
-                        UsbHidError::WouldBlock => Err(UsbError::WouldBlock),
-                        UsbHidError::Duplicate => Ok(()),
-                        UsbHidError::UsbError(e) => Err(e),
-                        UsbHidError::SerializationError => Err(UsbError::ParseError),
-                    })
-                    .map(|_| 1));
+                    self.keyboard_reports.send(|r| keyboard.write_report(r)
+                        .or_else(|e| match e {
+                            UsbHidError::WouldBlock => Err(UsbError::WouldBlock),
+                            UsbHidError::Duplicate => Ok(()),
+                            UsbHidError::UsbError(e) => Err(e),
+                            UsbHidError::SerializationError => Err(UsbError::ParseError),
+                        })
+                        .map(|_| 1));
 
-                self.consumer_reports.send(|r| consumer.write_report(r));
+                    self.consumer_reports.send(|r| consumer.write_report(r));
 
-                // Try to push USB mouse report
-                self.mouse.push_report(|r| {
-                    match mouse.write_report(r) {
-                        Ok(_) => true,
-                        Err(e) => match e {
-                            UsbHidError::WouldBlock | UsbHidError::UsbError(UsbError::WouldBlock) => false,
-                            UsbHidError::Duplicate => false,
-                            _ => panic!("Unexpected UsbHidError"),
-                        },
-                    }
+                    // Try to push USB mouse report
+                    self.mouse.push_report(|r| {
+                        match mouse.write_report(r) {
+                            Ok(_) => true,
+                            Err(e) => match e {
+                                UsbHidError::WouldBlock | UsbHidError::UsbError(UsbError::WouldBlock) => false,
+                                UsbHidError::Duplicate => false,
+                                _ => panic!("Unexpected UsbHidError"),
+                            },
+                        }
+                    });
                 });
-            } else if usb_state != UsbDeviceState::Configured {
+            } else {
                 self.keyboard_reports.clear();
                 self.consumer_reports.clear();
             }
@@ -318,7 +355,7 @@ impl<const L: usize> Keyboard<L> {
                     update.state.pressed_left.get_raw(),
                     update.state.pressed_right.get_raw(),
                 );
-                tx.push(update.clone().into());
+                tx.lock(|tx| tx.push(update.clone().into()));
                 self.prev_update = update.clone();
             }
 
@@ -329,34 +366,6 @@ impl<const L: usize> Keyboard<L> {
     /// Set new joystick reading values
     pub fn update_joystick(&mut self, xy: (i16, i16)) {
         self.mouse.update_joystick(xy);
-    }
-
-    fn handle_action(&mut self, action: &Action, pressed: bool, update: &mut LedsUpdate, usb: &mut Usb) {
-        match action {
-            Action::Led(led) => if !pressed {  // only on release
-                match led {
-                    LedAction::Cycle(inc) => update.config = Some((*inc).into()),
-                    LedAction::Brightness(inc) => update.brightness = Some((*inc).into()),
-                }
-            },
-            Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
-            Action::Consumer(key) => {
-                let mut report = hid::ConsumerReport::default();
-                if pressed {
-                    report.codes[0] = (*key).into()
-                }
-                self.consumer_reports.push(report);
-            },
-            Action::Firmware(fw) => if pressed {
-                let bus = usb.dev.bus();
-                let dfu_boot = usb.dfu.ops_mut();
-                match fw {
-                    actions::FirmwareAction::AllowBootloader => dfu_boot.set_allowed(true),
-                    actions::FirmwareAction::JumpToBootloader => dfu_boot.reboot(true, Some(bus)),
-                    actions::FirmwareAction::Reboot => dfu_boot.reboot(false, Some(bus)),
-                }
-            }
-        };
     }
 }
 
