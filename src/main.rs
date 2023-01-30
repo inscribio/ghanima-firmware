@@ -380,12 +380,8 @@ mod app {
         // Transmit any serial messages
         (tx, crc).lock(|tx, crc| tx.tick(crc));
 
-        // Update LED patterns if there is any meaningful change (as applying updates is expensive)
-        let any_change = cx.local.prev_leds_update.as_ref()
-            .map(|s| leds_update.any_change(s))
-            .unwrap_or(true);
-        *cx.local.prev_leds_update = Some(leds_update.clone());
-        if any_change && update_leds_state::spawn(t, leds_update).is_err() {
+        // Send LED patterns update for processing later
+        if update_leds_state::spawn(t, leds_update).is_err() {
             defmt::warn!("Spawn failed: update_leds_state");
         }
 

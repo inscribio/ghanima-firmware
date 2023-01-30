@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn verify_leds_update() {
         verify_serialization(Message::Leds(LedsUpdate {
-            state: KeyboardState {
+            state: Some(KeyboardState {
                 leds: KeyboardLeds(0b01010),
                 usb_on: true,
                 role: role::Role::Master,
@@ -114,12 +114,14 @@ mod tests {
                     left: PressedLedKeys::new_raw(0b0000_0000000000000000000000011001),
                     right: PressedLedKeys::new_raw(0b00001100000000000000000000000011),
                 },
-            },
+            }),
             config: None,
             brightness: Some(BrightnessUpdate::Down),
         }),
             // Message::Leds
             &[0x02,
+                // option Some
+                1,
                 // leds, usb_on, role, layer
                 0b01010, 1, 0, 2,
                 // pressed_left (varint(u32))

@@ -80,6 +80,29 @@ impl<'a, T> DoubleEndedIterator for CircularIter<'a, T> {
     }
 }
 
+/// Extension trait for [`Option`] for tracking if a value changes on updates
+pub trait OptionChanges {
+    type Item;
+
+    /// Update contained value, return the new one if the value changed (or option was `None`)
+    fn if_changed(&mut self, new: &Self::Item) -> Option<&Self::Item>;
+}
+
+impl<T> OptionChanges for Option<T>
+where
+    T: Clone + PartialEq
+{
+    type Item = T;
+
+    fn if_changed(&mut self, new: &Self::Item) -> Option<&Self::Item> {
+        if self.as_ref().map_or(true, |last| last != new) {
+            Some(self.insert(new.clone()))
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +126,17 @@ mod tests {
         assert_eq!(iter.current(), &3);
         assert_eq!(iter.next_back(), Some(&2));
         assert_eq!(iter.current(), &2);
+    }
+
+    #[test]
+    fn option_changes() {
+        let mut val: Option<u8> = None;
+        assert_eq!(val, None);
+        assert_eq!(val.if_changed(&10), Some(&10));
+        assert_eq!(val.if_changed(&20), Some(&20));
+        assert_eq!(val.if_changed(&20), None);
+        assert_eq!(val.if_changed(&30), Some(&30));
+        assert_eq!(val.if_changed(&30), None);
+        assert_eq!(val.if_changed(&30), None);
     }
 }

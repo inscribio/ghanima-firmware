@@ -30,6 +30,7 @@ use crate::bsp::sides::{BoardSide, PerSide};
 use crate::bsp::usb::Usb;
 use crate::bsp::{NCOLS, NROWS};
 use crate::ioqueue;
+use crate::utils::OptionChanges as _;
 use role::Role;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
@@ -50,7 +51,7 @@ pub struct Keyboard<const L: usize> {
     fsm: role::Fsm,
     layout: layout::Layout<{ 2 * NCOLS }, NROWS, L, Action>,
     mouse: mouse::Mouse,
-    prev_update: LedsUpdate,
+    state: Option<KeyboardState>,
     prev_usb_state: UsbDeviceState,
     pressed: PerSide<PressedLedKeys>,
     keyboard_reports: hid::HidReportQueue<hid::KeyboardReport, 8>,
@@ -74,7 +75,7 @@ pub struct KeyboardConfig<const L: usize> {
 /// Deferred update of LED controller state
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct LedsUpdate {
-    state: KeyboardState,
+    state: Option<KeyboardState>,
     config: Option<Inc>,
     brightness: Option<BrightnessUpdate>,
 }
@@ -112,11 +113,6 @@ impl<const L: usize> Keyboard<L> {
             layer: layout.current_layer() as u8,
             pressed: Default::default(),
         };
-        let prev_update = LedsUpdate {
-            state: prev_state,
-            config: None,
-            brightness: None,
-        };
         let pressed = Default::default();
         let keyboard_reports = hid::HidReportQueue::new();
         let consumer_reports = hid::HidReportQueue::new();
@@ -125,7 +121,7 @@ impl<const L: usize> Keyboard<L> {
             fsm,
             layout,
             mouse,
-            prev_update,
+            state: None,
             pressed,
             keyboard_reports,
             consumer_reports,
@@ -153,7 +149,7 @@ impl<const L: usize> Keyboard<L> {
         RX: ioqueue::ReceiveQueue<msg::Message>,
     {
         // Retrieve USB state
-        let usb_state = usb.lock(|usb| usb.dev.state());
+        let (usb_state, keyboard_leds) = usb.lock(|usb| (usb.dev.state(), usb.keyboard_leds()));
         let prev_usb_state = self.prev_usb_state;
         self.prev_usb_state = usb_state;
 
@@ -225,29 +221,34 @@ impl<const L: usize> Keyboard<L> {
         if self.fsm.role() == Role::Slave {
             // Slave just uses the LED update from master
 
-            // Update previous state
-            if let Some(update) = leds_update.as_ref() {
-                self.prev_update = update.clone();
-            }
+            // Update state if we received it
+            let state_update = leds_update.as_ref()
+                .and_then(|update| update.state.as_ref())
+                .and_then(|state| self.state.if_changed(state));
 
-            // Return the new update or use state from previous one
-            leds_update.unwrap_or(LedsUpdate {
-                state: self.prev_update.state.clone(),
-                config: None,
-                brightness: None,
-            })
+            // Send state if changed, others copied from received update
+            LedsUpdate {
+                state: state_update.cloned(),
+                config: leds_update.as_ref().and_then(|u| u.config),
+                brightness: leds_update.and_then(|u| u .brightness),
+            }
         } else {
             // Master keeps track of the actual keyboard state
 
+            let state = leds::KeyboardState {
+                leds: keyboard_leds,
+                usb_on: usb_state == UsbDeviceState::Configured,
+                role: self.fsm.role(),
+                layer: {
+                    debug_assert!(self.layout.current_layer() <= u8::MAX as usize);
+                    self.layout.current_layer() as u8
+                },
+                pressed: self.pressed.clone(),
+            };
+
             // Collect state
             let mut update = LedsUpdate {
-                state: leds::KeyboardState {
-                    leds: usb.lock(|usb| usb.keyboard_leds()),
-                    usb_on: usb_state == UsbDeviceState::Configured,
-                    role: self.fsm.role(),
-                    layer: self.layout.current_layer() as u8,
-                    pressed: self.pressed.clone(),
-                },
+                state: self.state.if_changed(&state).cloned(),
                 config: None,
                 brightness: None,
             };
@@ -346,13 +347,12 @@ impl<const L: usize> Keyboard<L> {
             // TODO: the other half still uses it's own configuration so this won't be correct if
             // each half has different firmware loaded
             // TODO: need to synchronize time between halves!
-            if update.any_change(&self.prev_update) {
-                defmt::info!("Send Leds(left={=u32}, right={=u32})",
-                    update.state.pressed.left.get_raw(),
-                    update.state.pressed.right.get_raw(),
-                );
+            if update.any_change() {
+                // defmt::info!("Send Leds(left={=u32}, right={=u32})",
+                //     update.state.clone().unwrap().pressed.left.get_raw(),
+                //     update.state.clone().unwrap().pressed.right.get_raw(),
+                // );
                 tx.lock(|tx| tx.push(update.clone().into()));
-                self.prev_update = update.clone();
             }
 
             update
@@ -383,12 +383,12 @@ impl LedsUpdate {
             };
             leds.set_brightness(new);
         }
-        leds.update_patterns(time, &self.state);
+        leds.update_patterns(time, self.state);
     }
 
     /// Determine this update is meaningful (there is any change)
-    pub fn any_change(&self, previous: &Self) -> bool {
-        self.config.is_some() || self.brightness.is_some() || self.state != previous.state
+    pub fn any_change(&self) -> bool {
+         self.state.is_some() || self.config.is_some() || self.brightness.is_some()
     }
 }
 
