@@ -29,6 +29,24 @@ impl ioqueue::Packet for Message {
     type Checksum = Crc;
 }
 
+impl From<role::Message> for Message {
+    fn from(msg: role::Message) -> Self {
+        Message::Role(msg)
+    }
+}
+
+impl From<Event> for Message {
+    fn from(event: Event) -> Self {
+        Message::Key(event)
+    }
+}
+
+impl From<LedsUpdate> for Message {
+    fn from(update: LedsUpdate) -> Self {
+        Message::Leds(update)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

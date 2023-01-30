@@ -150,7 +150,7 @@ impl<const L: usize> Keyboard<L> {
     {
         let maybe_tx = |tx: &mut TX, msg: Option<role::Message>| {
             if let Some(msg) = msg {
-                tx.push(msg::Message::Role(msg));
+                tx.push(msg.into());
             }
         };
 
@@ -207,7 +207,7 @@ impl<const L: usize> Keyboard<L> {
                 Role::Slave => {
                     let (i, j) = event.coord();
                     defmt::info!("Send Key({=u8}, {=u8})", i, j);
-                    tx.push(msg::Message::Key(event));
+                    tx.push(event.into());
                 },
             }
         }
@@ -318,7 +318,7 @@ impl<const L: usize> Keyboard<L> {
                     update.state.pressed_left.get_raw(),
                     update.state.pressed_right.get_raw(),
                 );
-                tx.push(msg::Message::Leds(update.clone()));
+                tx.push(update.clone().into());
                 self.prev_update = update.clone();
             }
 
