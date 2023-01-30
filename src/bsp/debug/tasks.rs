@@ -2,16 +2,21 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use hal::prelude::*;
 use cortex_m::interrupt;
 use crate::{hal, utils::InfallibleResult};
-use super::{types::*, get_tx, get_rx};
+use super::{types::*, get_tx, get_rx, get_serial_tx};
 
 #[cfg(all(feature = "idle-sleep", feature = "debug-tasks"))]
 compile_error!("debug-tasks will not work with idle-sleep enabled");
 
 /// Grant GPIOs to this module
-pub fn init((tx, rx): (Tx, Rx)) {
+pub fn init(uart: Uart, (tx, rx): (Tx, Rx), rcc: &mut hal::rcc::Rcc) {
     interrupt::free(|cs| {
-        tx.into_push_pull_output_hs(cs);
-        rx.into_push_pull_output_hs(cs);
+        if cfg!(feature = "debug-tasks-id") {
+            let tx = SerialTx::usart2tx(uart, tx, 921_600.bps(), rcc);
+            rx.into_push_pull_output_hs(cs);
+        } else {
+            tx.into_push_pull_output_hs(cs);
+            rx.into_push_pull_output_hs(cs);
+        }
         INIT.store(true, Ordering::SeqCst);
     })
 }
@@ -32,7 +37,7 @@ pub mod trace {
     /// Set trace GPIO pin as high
     #[inline(always)]
     pub fn start() {
-        if cfg!(feature = "debug-tasks") {
+        if cfg!(all(feature = "debug-tasks", not(feature = "debug-tasks-id"))) {
             ensure_init();
             trace_pin().set_low().infallible();
             trace_pin().set_high().infallible();
@@ -42,7 +47,7 @@ pub mod trace {
     /// Set trace GPIO pin as low
     #[inline(always)]
     pub fn end() {
-        if cfg!(feature = "debug-tasks") {
+        if cfg!(all(feature = "debug-tasks", not(feature = "debug-tasks-id"))) {
             ensure_init();
             trace_pin().set_high().infallible();
             trace_pin().set_low().infallible();
@@ -70,7 +75,7 @@ pub mod task {
 
     /// To be called on task enter
     #[inline(always)]
-    pub fn enter() {
+    pub fn enter(task_id: u8) {
         if cfg!(feature = "debug-tasks") {
             ensure_init();
             PENDING.store(true, Ordering::SeqCst);
@@ -78,6 +83,9 @@ pub mod task {
             // task preempts this one it will be visible as 111101111...
             task_pin().set_low().infallible();
             task_pin().set_high().infallible();
+            if cfg!(feature = "debug-tasks-id") {
+                nb::block!(task_id_serial_tx().write(task_id)).ok();
+            }
         }
     }
 
@@ -110,6 +118,11 @@ pub mod task {
 #[inline(always)]
 fn trace_pin() -> Pin {
     unsafe { get_tx().downgrade() }
+}
+
+#[inline(always)]
+fn task_id_serial_tx() -> SerialTx {
+    unsafe { get_serial_tx() }
 }
 
 #[inline(always)]

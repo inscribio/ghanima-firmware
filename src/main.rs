@@ -182,7 +182,7 @@ mod app {
             460_800.bps(),
             &mut rcc,
         ).split();
-        debug::tasks::init((debug_tx, debug_rx));
+        debug::tasks::init(dev.USART2, (debug_tx, debug_rx), &mut rcc);
 
         // ADC
         let joy_x = ifree(|cs| gpioa.pa0.into_analog(cs));
@@ -299,7 +299,7 @@ mod app {
 
     #[task(binds = TIM15, priority = 4, local = [timer, t: u32 = 0], shared = [tick_cnt])]
     fn tick(mut cx: tick::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b't');
         cx.shared.tick_cnt.lock(|cnt| cnt.inc());
 
         // Clears interrupt flag
@@ -342,7 +342,7 @@ mod app {
     /// This is always a response to USB host polling because host initializes all transactions.
     #[task(binds = USB, priority = 3, shared = [usb, usb_cnt])]
     fn usb_poll(mut cx: usb_poll::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'U');
         cx.shared.usb_cnt.lock(|cnt| cnt.inc());
 
         cx.shared.usb.lock(|usb| {
@@ -360,7 +360,7 @@ mod app {
         local = [prev_leds_update: Option<keyboard::LedsUpdate> = None],
     )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'k');
         let keyboard_tick::SharedResources {
             serial_tx: mut tx,
             serial_rx: rx,
@@ -394,7 +394,7 @@ mod app {
 
     #[task(priority = 1, shared = [keyboard, joystick_cnt], local = [joy, certainty: u8 = 0])]
     fn read_joystick(mut cx: read_joystick::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'j');
         cx.shared.joystick_cnt.lock(|cnt| cnt.inc());
 
         const MAX: u8 = 10;
@@ -427,7 +427,7 @@ mod app {
     /// the updates.
     #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
     fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedsUpdate) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b's');
         cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
 
         cx.shared.led_controller.lock(|ledctl| update.apply(t, ledctl));
@@ -438,7 +438,7 @@ mod app {
 
     #[task(priority = 1, shared = [spi_tx, led_controller, led_output, leds_tick_cnt])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'l');
         let leds_tick::SharedResources {
             mut spi_tx,
             led_controller,
@@ -495,7 +495,7 @@ mod app {
         local = [stats: Option<ioqueue::Stats> = None]
     )]
     fn debug_report(mut cx: debug_report::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'd');
 
         let old = cx.local.stats.get_or_insert_with(|| Default::default());
         let new = cx.shared.serial_rx.lock(|rx| {
@@ -534,7 +534,7 @@ mod app {
 
     #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx, dma_spi_cnt])]
     fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'A');
         cx.shared.dma_spi_cnt.lock(|cnt| cnt.inc());
 
         cx.shared.spi_tx.lock(|spi_tx| {
@@ -550,7 +550,7 @@ mod app {
 
     #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx, dma_uart_cnt])]
     fn dma_uart_callback(mut cx: dma_uart_callback::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'B');
         cx.shared.dma_uart_cnt.lock(|cnt| cnt.inc());
 
         let tx = cx.shared.serial_tx;
@@ -578,7 +578,7 @@ mod app {
 
     #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, uart_cnt])]
     fn uart_interrupt(mut cx: uart_interrupt::Context) {
-        debug::tasks::task::enter();
+        debug::tasks::task::enter(b'u');
         cx.shared.uart_cnt.lock(|cnt| cnt.inc());
 
         let rx = cx.shared.serial_rx;

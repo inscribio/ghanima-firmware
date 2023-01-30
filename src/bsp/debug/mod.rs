@@ -20,6 +20,7 @@ mod types {
     pub type Tx = gpio::gpioa::PA2<gpio::Alternate<gpio::AF1>>;
     pub type Rx = gpio::gpioa::PA3<gpio::Alternate<gpio::AF1>>;
     pub type Serial = hal::serial::Serial<Uart, Tx, Rx>;
+    pub type SerialTx = hal::serial::Serial<Uart, Tx, ()>;
 
     pub type TxPin = gpio::gpioa::PA2<gpio::Output<gpio::PushPull>>;
     pub type RxPin = gpio::gpioa::PA3<gpio::Output<gpio::PushPull>>;
@@ -33,6 +34,10 @@ unsafe fn get_tx() -> types::TxPin {
 }
 unsafe fn get_rx() -> types::RxPin {
     sa::const_assert_eq!(core::mem::size_of::<types::RxPin>(), 0);
+    MaybeUninit::uninit().assume_init()
+}
+unsafe fn get_serial_tx() -> types::SerialTx {
+    sa::const_assert_eq!(core::mem::size_of::<types::SerialTx>(), 0);
     MaybeUninit::uninit().assume_init()
 }
 
