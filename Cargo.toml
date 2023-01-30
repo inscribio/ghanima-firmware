@@ -10,6 +10,7 @@ idle-sleep = []
 crystal = []
 debug-tasks = []
 task-counters = []
+stack-usage = []
 json-config = []
 watchdog = []
 

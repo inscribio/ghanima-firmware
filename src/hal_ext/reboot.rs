@@ -32,8 +32,8 @@ pub unsafe fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
     SCB::sys_reset()
 }
 
-#[cortex_m_rt::pre_init]
-unsafe fn jump_bootloader() {
+/// Jump to bootloader if requested before last MCU reset (to be called in pre_init)
+pub unsafe fn maybe_jump_bootloader() {
     // Verify that this was a software reset
     let software_reset = (*pac::RCC::ptr()).csr.read().sftrstf().bit_is_set();
 

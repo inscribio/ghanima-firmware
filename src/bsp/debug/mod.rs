@@ -1,9 +1,9 @@
 /// Task execution counters
 pub mod counters;
-
+/// Utilities for examining memory usage
+pub mod mem;
 /// Safer interface that allows to use GPIOs or Serial
 pub mod pins;
-
 /// Raw interface better suited for tracing execution of RTIC tasks
 pub mod tasks;
 
@@ -34,19 +34,6 @@ unsafe fn get_tx() -> types::TxPin {
 unsafe fn get_rx() -> types::RxPin {
     sa::const_assert_eq!(core::mem::size_of::<types::RxPin>(), 0);
     MaybeUninit::uninit().assume_init()
-}
-
-/// Calculates current stack usage
-///
-/// # Note
-///
-/// This assumes that we use flip-link (which makes the stack
-/// start at RAM origin) and that RAM origin is at 0x2000_0000.
-#[inline(always)]
-pub fn stack_usage() -> u32 {
-    const RAM_ORIGIN: u32 = 0x2000_0000;
-    let msp = cortex_m::register::msp::read();
-    msp - RAM_ORIGIN
 }
 
 /// Helper macro for debugging a set of MCU registers

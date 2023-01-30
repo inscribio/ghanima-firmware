@@ -15,7 +15,7 @@ mod app {
 
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
-    use lib::hal_ext::{crc, spi, uart, watchdog, dma::{DmaSplit, DmaTx}};
+    use lib::hal_ext::{crc, spi, reboot, uart, watchdog, dma::{DmaSplit, DmaTx}};
     use lib::{keyboard, config, ioqueue};
 
     // MCU clock frequencies
@@ -73,6 +73,16 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type Mono = systick_monotonic::Systick<MONO_HZ>;
     pub const MONO_HZ: u32 = 1000;
+
+    // This runs before main, even before initialization of .bss and .data so be careful.
+    #[cortex_m_rt::pre_init]
+    unsafe fn pre_init() {
+        reboot::maybe_jump_bootloader();
+        if cfg!(feature = "stack-usage") {
+            // Use some margin as it seems we're actually corrupting some "theoretically free" stack
+            debug::mem::free_stack_fill(0x40);
+        }
+    }
 
     #[init(local = [
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
@@ -225,6 +235,10 @@ mod app {
         debug::tasks::trace::run(|| defmt::info!("Liftoff!"));
 
         watchdog.maybe_feed();
+
+        if cfg!(feature = "stack-usage") {
+            debug::mem::print_stack_info();
+        }
 
         let shared = Shared {
             usb,
@@ -478,6 +492,10 @@ mod app {
                         tick.pop(), usb.pop(), keyboard.pop(), joystick.pop(), leds_update.pop(), leds_tick.pop(), dma_spi.pop(), dma_uart.pop(), uart.pop(), idle.pop(),
                     );
                 });
+        }
+
+        if cfg!(feature = "stack-usage") {
+            debug::mem::print_stack_info();
         }
 
         debug::tasks::task::exit();
