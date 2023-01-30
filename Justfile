@@ -29,7 +29,7 @@ run *ARGS:
 gdb *ARGS:
     cargo build --release {{ARGS}}
     cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
-    cd remote && arm-none-eabi-gdb "../target/thumbv6m-none-eabi/debug/ghanima" -x ./gdbinit
+    cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit
 
 ### Tests ###
 
