@@ -1,11 +1,11 @@
 use serde::{Serialize, Deserialize};
 
 use crate::bsp::{NROWS, NCOLS};
-use crate::bsp::sides::BoardSide;
+use crate::bsp::sides::{BoardSide, PerSide};
 use crate::keyboard::hid::KeyboardLeds;
 use crate::keyboard::keys::PressedLedKeys;
 use crate::keyboard::role::Role;
-use super::{Keys, Condition, KeyboardLed, LedController};
+use super::{Keys, Condition, KeyboardLed};
 
 /// Collection of keyboard state variables that can be used as conditions
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -14,27 +14,7 @@ pub struct KeyboardState {
     pub usb_on: bool,
     pub role: Role,
     pub layer: u8,
-    pub pressed_left: PressedLedKeys,
-    pub pressed_right: PressedLedKeys,
-}
-
-/// Used to keep track of "event flags" for
-#[derive(Clone)]
-pub struct KeyboardStateEvents(KeyboardState);
-
-impl KeyboardState {
-    /// Apply LED controller state update
-    pub fn update(self, time: u32, controller: &mut LedController) {
-        controller.update_patterns(time, self);
-    }
-
-    /// Get pressed keys for given board side
-    pub fn pressed(&self, side: &BoardSide) -> PressedLedKeys {
-        match side {
-            BoardSide::Left => self.pressed_left,
-            BoardSide::Right => self.pressed_right,
-        }
-    }
+    pub pressed: PerSide<PressedLedKeys>,
 }
 
 impl Condition {
@@ -53,7 +33,7 @@ impl Condition {
             },
             Condition::UsbOn => state.usb_on,
             Condition::Role(role) => role == &state.role,
-            Condition::Pressed => state.pressed(side).is_pressed(led),
+            Condition::Pressed => state.pressed[*side].is_pressed(led),
             Condition::KeyPressed(row, col) => {
                 let checked_side = if side.has_coords((*row, *col)) {
                     *side
@@ -64,7 +44,7 @@ impl Condition {
                 BoardSide::led_number(local)
                     // FIXME: not possible to trigger on joystick press
                     // nor on keys from other side
-                    .map(|led| state.pressed(&checked_side).is_pressed(led))
+                    .map(|led| state.pressed[checked_side].is_pressed(led))
                     .unwrap_or(false)
             },
             Condition::Layer(layer) => state.layer == *layer,
@@ -205,8 +185,10 @@ mod tests {
             usb_on: true,
             role: Role::Master,
             layer: 0,
-            pressed_left: PressedLedKeys::from_raw(left),
-            pressed_right: PressedLedKeys::from_raw(right),
+            pressed: PerSide {
+                left: PressedLedKeys::from_raw(left),
+                right: PressedLedKeys::from_raw(right)
+            },
         }
     }
 

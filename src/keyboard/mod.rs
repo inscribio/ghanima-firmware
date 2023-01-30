@@ -26,7 +26,7 @@ use serde::{Serialize, Deserialize};
 use usb_device::UsbError;
 use usb_device::device::UsbDeviceState;
 use usbd_human_interface_device::UsbHidError;
-use crate::bsp::sides::BoardSide;
+use crate::bsp::sides::{BoardSide, PerSide};
 use crate::bsp::usb::Usb;
 use crate::bsp::{NCOLS, NROWS};
 use crate::ioqueue;
@@ -52,7 +52,7 @@ pub struct Keyboard<const L: usize> {
     mouse: mouse::Mouse,
     prev_update: LedsUpdate,
     prev_usb_state: UsbDeviceState,
-    pressed_other: PressedLedKeys,
+    pressed: PerSide<PressedLedKeys>,
     keyboard_reports: hid::HidReportQueue<hid::KeyboardReport, 8>,
     consumer_reports: hid::HidReportQueue<hid::ConsumerReport, 1>,
 }
@@ -110,15 +110,14 @@ impl<const L: usize> Keyboard<L> {
             usb_on: false,
             role: fsm.role(),
             layer: layout.current_layer() as u8,
-            pressed_left: Default::default(),
-            pressed_right: Default::default(),
+            pressed: Default::default(),
         };
         let prev_update = LedsUpdate {
             state: prev_state,
             config: None,
             brightness: None,
         };
-        let pressed_other = Default::default();
+        let pressed = Default::default();
         let keyboard_reports = hid::HidReportQueue::new();
         let consumer_reports = hid::HidReportQueue::new();
         Self {
@@ -127,7 +126,7 @@ impl<const L: usize> Keyboard<L> {
             layout,
             mouse,
             prev_update,
-            pressed_other,
+            pressed,
             keyboard_reports,
             consumer_reports,
             prev_usb_state: UsbDeviceState::Default,
@@ -183,7 +182,7 @@ impl<const L: usize> Keyboard<L> {
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
                     }
                     // Update pressed keys for the other half
-                    self.pressed_other.update(&event.transform(|i, j| {
+                    self.pressed[self.keys.side().other()].update(&event.transform(|i, j| {
                         BoardSide::coords_to_local((i, j))
                     }));
                     // Only master uses key events from the other half
@@ -217,6 +216,9 @@ impl<const L: usize> Keyboard<L> {
             }
         }
 
+        // Update pressed keys state after scan
+        self.pressed[*self.keys.side()] = self.keys.pressed();
+
         // Process USB wake up FIXME: assumes keyboard tick is 1 kHz
         usb.lock(|usb| usb.wake_up_update(was_key_event, 9));
 
@@ -237,11 +239,6 @@ impl<const L: usize> Keyboard<L> {
         } else {
             // Master keeps track of the actual keyboard state
 
-            // Get pressed keys state for each side
-            let (pressed_left, pressed_right) = match self.keys.side() {
-                BoardSide::Left => (self.keys.pressed(), self.pressed_other),
-                BoardSide::Right => (self.pressed_other, self.keys.pressed()),
-            };
             // Collect state
             let mut update = LedsUpdate {
                 state: leds::KeyboardState {
@@ -249,8 +246,7 @@ impl<const L: usize> Keyboard<L> {
                     usb_on: usb_state == UsbDeviceState::Configured,
                     role: self.fsm.role(),
                     layer: self.layout.current_layer() as u8,
-                    pressed_left,
-                    pressed_right,
+                    pressed: self.pressed.clone(),
                 },
                 config: None,
                 brightness: None,
@@ -352,8 +348,8 @@ impl<const L: usize> Keyboard<L> {
             // TODO: need to synchronize time between halves!
             if update.any_change(&self.prev_update) {
                 defmt::info!("Send Leds(left={=u32}, right={=u32})",
-                    update.state.pressed_left.get_raw(),
-                    update.state.pressed_right.get_raw(),
+                    update.state.pressed.left.get_raw(),
+                    update.state.pressed.right.get_raw(),
                 );
                 tx.lock(|tx| tx.push(update.clone().into()));
                 self.prev_update = update.clone();

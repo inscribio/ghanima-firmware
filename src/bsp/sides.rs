@@ -1,5 +1,6 @@
 use core::convert::Infallible;
 use embedded_hal::digital::v2::InputPin;
+use serde::{Serialize, Deserialize};
 
 use crate::utils::InfallibleResult;
 use super::{NCOLS, NCOLS_THUMB, NROWS};
@@ -10,6 +11,13 @@ use super::{NCOLS, NCOLS_THUMB, NROWS};
 pub enum BoardSide {
     Left,
     Right,
+}
+
+/// Storage of data for both sides of keyboard with [`BoardSide`] indexing
+#[derive(PartialEq, Clone, Default, Serialize, Deserialize)]
+pub struct PerSide<T> {
+    pub left: T,
+    pub right: T,
 }
 
 impl BoardSide {
@@ -23,7 +31,7 @@ impl BoardSide {
     }
 
     /// Get the other side
-    pub fn other(&self) -> BoardSide {
+    pub const fn other(&self) -> BoardSide {
         match self {
             BoardSide::Left => BoardSide::Right,
             BoardSide::Right => BoardSide::Left,
@@ -66,10 +74,19 @@ impl BoardSide {
         (row, col)
     }
 
-    pub fn has_coords(&self, (_row, col): (u8, u8)) -> bool {
+    pub const fn has_coords(&self, (_row, col): (u8, u8)) -> bool {
         match self {
             BoardSide::Left => col < NCOLS as u8,
             BoardSide::Right => col >= NCOLS as u8,
+        }
+    }
+
+    pub const fn from_coords((row, col): (u8, u8)) -> Self {
+        debug_assert!(BoardSide::Left.coordinates_valid(row, col) || BoardSide::Right.coordinates_valid(row, col));
+        if BoardSide::Left.has_coords((row, col)) {
+            BoardSide::Left
+        } else {
+            BoardSide::Right
         }
     }
 
@@ -186,6 +203,36 @@ impl BoardSide {
 
 }
 
+impl<T> PerSide<T> {
+    pub const fn as_array(&self) -> [&T; 2] {
+        [&self.left, &self.right]
+    }
+
+    pub fn as_array_mut(&mut self) -> [&mut T; 2] {
+        [&mut self.left, &mut self.right]
+    }
+}
+
+impl<T> core::ops::Index<BoardSide> for PerSide<T> {
+    type Output = T;
+
+    fn index(&self, index: BoardSide) -> &Self::Output {
+        match index {
+            BoardSide::Left => &self.left,
+            BoardSide::Right => &self.right,
+        }
+    }
+}
+
+impl<T> core::ops::IndexMut<BoardSide> for PerSide<T> {
+    fn index_mut(&mut self, index: BoardSide) -> &mut Self::Output {
+        match index {
+            BoardSide::Left => &mut self.left,
+            BoardSide::Right => &mut self.right,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +335,23 @@ mod tests {
         verify((4, 0), 27);
         // Special case: joystick key shares LED with key (4, 0)
         assert_eq!(BoardSide::led_number((4, 4)), None);
+    }
+
+    #[test]
+    fn side_from_coords() {
+        for row in 0..=3 {
+            for col in 0..=5 {
+                assert_eq!(BoardSide::from_coords((row, col)), BoardSide::Left);
+            }
+            for col in 6..=11 {
+                assert_eq!(BoardSide::from_coords((row, col)), BoardSide::Right);
+            }
+        }
+        for col in 0..=3 {
+            assert_eq!(BoardSide::from_coords((4, col)), BoardSide::Left);
+        }
+        for col in 8..=11 {
+            assert_eq!(BoardSide::from_coords((4, col)), BoardSide::Right);
+        }
     }
 }

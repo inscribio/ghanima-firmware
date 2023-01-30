@@ -50,6 +50,7 @@ impl From<LedsUpdate> for Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bsp::sides::PerSide;
     use crate::keyboard::BrightnessUpdate;
     use crate::keyboard::keys::PressedLedKeys;
     use crate::keyboard::leds::KeyboardState;
@@ -109,8 +110,10 @@ mod tests {
                 usb_on: true,
                 role: role::Role::Master,
                 layer: 2,
-                pressed_left: PressedLedKeys::new_raw(0b0000_0000000000000000000000011001),
-                pressed_right: PressedLedKeys::new_raw(0b00001100000000000000000000000011),
+                pressed: PerSide {
+                    left: PressedLedKeys::new_raw(0b0000_0000000000000000000000011001),
+                    right: PressedLedKeys::new_raw(0b00001100000000000000000000000011),
+                },
             },
             config: None,
             brightness: Some(BrightnessUpdate::Down),
