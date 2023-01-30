@@ -29,6 +29,9 @@ pub const NROWS: usize = 5;
 /// Number of LEDs on each half (this is also the number of keys)
 pub const NLEDS: usize = 28;
 
+/// List of colors for all LEDs on a single half
+pub type LedColors = [rgb::RGB8; NLEDS];
+
 /// Type of GPIOs connected to key matrix columns
 pub type ColPin = gpio::Pin<gpio::Input<gpio::PullUp>>;
 /// Type of GPIOs connected to key matrix rows

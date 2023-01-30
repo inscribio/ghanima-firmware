@@ -37,7 +37,7 @@ use keys::PressedLedKeys;
 use hid::KeyCodeIterExt as _;
 
 pub use keys::Keys;
-pub use leds::{LedController, KeyboardState};
+pub use leds::{LedController, LedOutput, KeyboardState};
 
 /// Transmitter of packets for communication between keyboard halves
 pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, N>;
@@ -383,7 +383,7 @@ impl LedsUpdate {
             };
             leds.set_brightness(new);
         }
-        leds.update_patterns(time, self.state);
+        leds.update_patterns(time, &self.state);
     }
 
     /// Determine this update is meaningful (there is any change)

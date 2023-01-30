@@ -42,9 +42,12 @@
 
 /// Logic related to rule conditions
 mod condition;
+/// Color storage and output overwrites
+mod output;
 /// Pattern iteration and color generation logic
 mod pattern;
 
+pub use output::LedOutput;
 pub use pattern::LedController;
 pub use condition::KeyboardState;
 

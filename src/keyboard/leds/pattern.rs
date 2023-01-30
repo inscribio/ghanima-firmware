@@ -1,22 +1,19 @@
 use rgb::{RGB8, ComponentMap};
 
-use crate::bsp::{NLEDS, ws2812b, sides::BoardSide};
+use crate::bsp::{NLEDS, sides::BoardSide};
 use crate::keyboard::actions::Inc;
 use crate::utils::CircularIter;
+use super::output::Leds;
 use super::{LedConfig, Pattern, Repeat, Transition, Interpolation, LedConfigurations};
 use super::condition::{KeyboardState, RuleKeys};
 
-pub type Leds = ws2812b::Leds<NLEDS>;
-
 /// Generates LED colors according to current [`LedConfig`]
 pub struct LedController<'a> {
-    leds: Leds,
     config: CircularIter<'a, LedConfig>,
     patterns: [ColorGenerator<'a>; NLEDS],
     pattern_candidates: [Option<&'a Pattern>; NLEDS],
     side: BoardSide,
     brightness: u8,
-    overwrite_counter: u16,
 }
 
 /// Generates the color for a single LED depending on current time
@@ -40,28 +37,16 @@ impl<'a> LedController<'a> {
 
     pub fn new(side: BoardSide, configurations: &'a LedConfigurations) -> Self {
         Self {
-            leds: Leds::new(),
             config: CircularIter::new(configurations),
             side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
             brightness: Self::INITIAL_BRIGHTNESS,
-            overwrite_counter: 0,
         }
     }
 
-    /// Configure pattern overwrite for given duration
-    ///
-    /// This returns [`Leds`] which should be manually configured
-    /// by setting required colors. Normal patterns will not be used
-    /// ([`Leds`] will not be modified) for the duration of `ticks`.
-    pub fn set_overwrite(&mut self, ticks: u16) -> &mut Leds {
-        self.overwrite_counter = ticks;
-        &mut self.leds
-    }
-
     /// Update currently applicable patterns based on keyboard state
-    pub fn update_patterns(&mut self, time: u32, state: KeyboardState) {
+    pub fn update_patterns(&mut self, time: u32, state: &KeyboardState) {
         // Reset led pattern candidates
         self.pattern_candidates.fill(None);
 
@@ -87,22 +72,16 @@ impl<'a> LedController<'a> {
     }
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
-    pub fn tick(&mut self, time: u32) -> &Leds {
-        debug_assert_eq!(self.patterns.len(), self.leds.colors.len());
+    pub fn tick(&mut self, time: u32, leds: &mut Leds) {
+        debug_assert_eq!(self.patterns.len(), leds.colors.len());
         let patterns = self.patterns.iter_mut();
-        let leds = self.leds.colors.iter_mut();
+        let leds = leds.colors.iter_mut();
 
-        if self.overwrite_counter > 0 {
-            self.overwrite_counter -= 1;
-        } else {
-            for (pattern, led) in patterns.zip(leds) {
-                *led = pattern.tick(time)
-                    .map(|channel| Self::dimmed(channel, self.brightness))
-                    .map(Leds::gamma_correction);
-            }
+        for (pattern, led) in patterns.zip(leds) {
+            *led = pattern.tick(time)
+                .map(|channel| Self::dimmed(channel, self.brightness))
+                .map(Leds::gamma_correction);
         }
-
-        &self.leds
     }
 
     fn dimmed(color: u8, brightness: u8) -> u8 {

@@ -53,6 +53,7 @@ mod app {
         serial_rx: SerialRx,
         crc: crc::Crc,
         led_controller: &'static mut keyboard::LedController<'static>,
+        led_output: keyboard::LedOutput,
         keyboard: &'static mut Keyboard,
         // Task counters
         tick_cnt: debug::TaskCounter,
@@ -212,6 +213,7 @@ mod app {
         };
 
         // LED controller
+        let mut led_output = keyboard::LedOutput::new();
         let led_controller = unsafe {
             cx.local.led_controller.as_mut_ptr().write(
                 keyboard::LedController::new(board_side, &config::CONFIG.leds)
@@ -232,15 +234,20 @@ mod app {
         if was_watchdog_reset {
             defmt::error!("Watchdog triggered system reset");
             let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
-            for (i, led) in led_controller.set_overwrite(ticks as u16).colors.iter_mut().enumerate() {
+            let leds = led_output.set_overwrite(ticks as u16);
+            for (i, led) in leds.colors.iter_mut().enumerate() {
                 led.r = if i % 4 == 0 { 255 } else { 0 };
                 led.g = 0;
                 led.b = 0;
             }
         }
+
         // Send a first transfer ASAP with all LEDs in initial state
-        spi_tx.push(|buf| led_controller.tick(0).serialize_to_slice(buf)).map_err(drop).unwrap();
-        spi_tx.start().map_err(drop).unwrap();
+        {
+            let colors = led_output.tick(0, led_controller);
+            spi_tx.push(|buf| colors.serialize_to_slice(buf)).map_err(drop).unwrap();
+            spi_tx.start().map_err(drop).unwrap();
+        }
 
         if !joy.detect() {
             defmt::warn!("Joystick not detected");
@@ -266,6 +273,7 @@ mod app {
             serial_rx,
             crc,
             led_controller,
+            led_output,
             keyboard,
             // Task counters
             tick_cnt: Default::default(),
@@ -417,30 +425,36 @@ mod app {
     ///
     /// This has the same priority as update_leds but we use a queue to eventually apply all
     /// the updates.
-    #[task(priority = 1, shared = [led_controller, leds_update_cnt], capacity = 4)]
+    #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
     fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedsUpdate) {
         debug::tasks::task::enter();
         cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
 
-        let mut leds = cx.shared.led_controller;
-        leds.lock(|leds| update.apply(t, leds));
+        cx.shared.led_controller.lock(|ledctl| update.apply(t, ledctl));
+        cx.shared.led_output.lock(|out| out.use_from_controller());
 
         debug::tasks::task::exit();
     }
 
-    #[task(priority = 1, shared = [spi_tx, led_controller, leds_tick_cnt])]
+    #[task(priority = 1, shared = [spi_tx, led_controller, led_output, leds_tick_cnt])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
         debug::tasks::task::enter();
         let leds_tick::SharedResources {
             mut spi_tx,
-            mut led_controller,
+            led_controller,
+            mut led_output,
             mut leds_tick_cnt,
         } = cx.shared;
         leds_tick_cnt.lock(|cnt| cnt.inc());
 
-        led_controller.lock(|leds| {
-            // Get new LED colors
-            let colors = debug::tasks::trace::run(|| leds.tick(t));
+        // Generate LED colors
+        (&mut led_output, led_controller).lock(|out, ctl| {
+            debug::tasks::trace::run(|| out.tick(t, ctl));
+        });
+
+        // Send in separate lock to decrease time when serial tx is locked
+        led_output.lock(|out| {
+            let colors = out.current();
 
             // Prepare data to be sent and start DMA transfer.
             // `leds` must be kept locked because we're serializing from reference.
