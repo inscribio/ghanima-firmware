@@ -46,6 +46,7 @@ mod hw {
 
         // CRC-16-IBM / CRC-16-ANSI
         // Warning: works only on STM32F07x/STM32F09x
+        // see: https://crccalc.com/ (CRC-16/MODBUS)
         fn set_variant(&mut self) {
             self.crc.cr.write(|w| {
                 w
