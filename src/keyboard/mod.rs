@@ -99,9 +99,8 @@ impl From<Inc> for BrightnessUpdate {
 impl<const L: usize> Keyboard<L> {
     /// Crate new keyboard with given layout and negotiation timeout specified in "ticks"
     /// (see [`Self::tick`])
-    pub fn new(keys: keys::Keys, config: &KeyboardConfig<L>) -> (Self, LedController) {
+    pub fn new(keys: keys::Keys, config: &KeyboardConfig<L>) -> Self {
         let side = *keys.side();
-        let leds = LedController::new(side, &config.leds);
         let fsm = role::Fsm::with(side, config.timeout);
         let layout = layout::Layout::new(config.layers);
         let mouse = mouse::Mouse::new(config.mouse);
@@ -121,7 +120,7 @@ impl<const L: usize> Keyboard<L> {
         let pressed_other = Default::default();
         let keyboard_reports = hid::HidReportQueue::new();
         let consumer_reports = hid::HidReportQueue::new();
-        let keyboard = Self {
+        Self {
             keys,
             fsm,
             layout,
@@ -131,8 +130,7 @@ impl<const L: usize> Keyboard<L> {
             keyboard_reports,
             consumer_reports,
             prev_usb_state: UsbDeviceState::Default,
-        };
-        (keyboard, leds)
+        }
     }
 
     /// Get current role

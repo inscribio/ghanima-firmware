@@ -8,6 +8,7 @@ use ghanima as lib;
 
 #[rtic::app(device = crate::hal::pac, dispatchers = [CEC_CAN, USART3_4])]
 mod app {
+    use core::mem::MaybeUninit;
     use cortex_m::interrupt::free as ifree;
     use super::hal;
     use hal::prelude::*;
@@ -40,16 +41,19 @@ mod app {
     type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
     type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
     type Leds = ws2812b::Leds<{ bsp::NLEDS }>;
+    type Keyboard = keyboard::Keyboard<{ config::N_LAYERS }>;
 
+    // Using &'static mut to avoid unnecessary stack allocations, see:
+    // https://github.com/rtic-rs/cortex-m-rtic/blob/master/examples/big-struct-opt.rs
     #[shared]
     struct Shared {
-        usb: Usb,
+        usb: &'static mut Usb,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
         serial_rx: SerialRx,
         crc: crc::Crc,
-        leds: keyboard::LedController<'static>,
-        keyboard: keyboard::Keyboard<{ config::N_LAYERS }>,
+        led_controller: &'static mut keyboard::LedController<'static>,
+        keyboard: &'static mut Keyboard,
         // Task counters
         tick_cnt: debug::TaskCounter,
         usb_cnt: debug::TaskCounter,
@@ -85,6 +89,9 @@ mod app {
     }
 
     #[init(local = [
+        usb: MaybeUninit<Usb> = MaybeUninit::uninit(),
+        led_controller: MaybeUninit<keyboard::LedController<'static>> = MaybeUninit::uninit(),
+        keyboard: MaybeUninit<keyboard::Keyboard<{ config::N_LAYERS }>> = MaybeUninit::uninit(),
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
         serial_tx_buf: [u8; 64] = [0; 64],
@@ -199,28 +206,40 @@ mod app {
         *cx.local.usb_bus = Some(hal::usb::UsbBus::new(usb));
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
-        let usb = Usb::new(usb_bus, &board_side, config::CONFIG.bootload_strict);
+        let usb = unsafe {
+            cx.local.usb.as_mut_ptr().write(Usb::new(usb_bus, &board_side, config::CONFIG.bootload_strict));
+            &mut *cx.local.usb.as_mut_ptr()
+        };
+
+        // LED controller
+        let led_controller = unsafe {
+            cx.local.led_controller.as_mut_ptr().write(
+                keyboard::LedController::new(board_side, &config::CONFIG.leds)
+            );
+            &mut *cx.local.led_controller.as_mut_ptr()
+        };
 
         // Keyboard
         let serial_tx = keyboard::Transmitter::new(serial_tx);
         let serial_rx = keyboard::Receiver::new(serial_rx);
-        let (keyboard, mut leds) = keyboard::Keyboard::new(
-            keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT),
-            &config::CONFIG,
-        );
+        let keys = keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT);
+        let keyboard = unsafe {
+            cx.local.keyboard.as_mut_ptr().write(keyboard::Keyboard::new(keys, &config::CONFIG));
+            &mut *cx.local.keyboard.as_mut_ptr()
+        };
 
         // If there was abnormal reset, signalize it using LEDs
         if was_watchdog_reset {
             defmt::error!("Watchdog triggered system reset");
             let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
-            for (i, led) in leds.set_overwrite(ticks as u16).colors.iter_mut().enumerate() {
+            for (i, led) in led_controller.set_overwrite(ticks as u16).colors.iter_mut().enumerate() {
                 led.r = if i % 4 == 0 { 255 } else { 0 };
                 led.g = 0;
                 led.b = 0;
             }
         }
         // Send a first transfer ASAP with all LEDs in initial state
-        spi_tx.push(|buf| leds.tick(0).serialize_to_slice(buf)).map_err(drop).unwrap();
+        spi_tx.push(|buf| led_controller.tick(0).serialize_to_slice(buf)).map_err(drop).unwrap();
         spi_tx.start().map_err(drop).unwrap();
 
         if !joy.detect() {
@@ -246,7 +265,7 @@ mod app {
             serial_tx,
             serial_rx,
             crc,
-            leds,
+            led_controller,
             keyboard,
             // Task counters
             tick_cnt: Default::default(),
@@ -400,28 +419,28 @@ mod app {
     ///
     /// This has the same priority as update_leds but we use a queue to eventually apply all
     /// the updates.
-    #[task(priority = 1, shared = [leds, leds_update_cnt], capacity = 4)]
+    #[task(priority = 1, shared = [led_controller, leds_update_cnt], capacity = 4)]
     fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedsUpdate) {
         debug::tasks::task::enter();
         cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
 
-        let mut leds = cx.shared.leds;
+        let mut leds = cx.shared.led_controller;
         leds.lock(|leds| update.apply(t, leds));
 
         debug::tasks::task::exit();
     }
 
-    #[task(priority = 1, shared = [spi_tx, leds, leds_tick_cnt])]
+    #[task(priority = 1, shared = [spi_tx, led_controller, leds_tick_cnt])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
         debug::tasks::task::enter();
         let leds_tick::SharedResources {
             mut spi_tx,
-            mut leds,
+            mut led_controller,
             mut leds_tick_cnt,
         } = cx.shared;
         leds_tick_cnt.lock(|cnt| cnt.inc());
 
-        leds.lock(|leds| {
+        led_controller.lock(|leds| {
             // Get new LED colors
             let colors = debug::tasks::trace::run(|| leds.tick(t));
 
