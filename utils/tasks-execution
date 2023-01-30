@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
+import os
 import argparse
 import pandas as pd
+import numpy as np
 
 
 def duration_stats(duration, n_bins):
@@ -11,13 +13,69 @@ def duration_stats(duration, n_bins):
     stats = df.groupby('range').aggregate(func=['count', 'mean', 'std', 'min', 'max'])
     return stats
 
+# def parse_vcd(filename):
+#     from vcdvcd import VCDVCD
+#     vcd = VCDVCD(filename)
+#     data = {}
+#     dt = float(vcd.timescale['timescale'])
+#     time = np.arange(vcd.begintime * dt, vcd.endtime * dt, dt)
+#     for name in vcd.signals:
+#         signal = vcd[name]
+#         if signal.size != 1:
+#             print(f'WARNING: ignoring VCD signal {name} due to size={signal.size}')
+#             continue
+#         if signal.var_type != 'wire':
+#             print(f'WARNING: ignoring VCD signal {name} due to var_type={signal.var_type}')
+#             continue
+#
+#         # Initialize data with the final value
+#         final_value = float(vcd[signal].tv[-1][1])
+#         values = np.ones_like(time) * final_value
+#
+#         # Iterate over changes and replace regions <previous, current)
+#         prev = 0
+#         for curr, value in vcd[signal].tv:
+#             values[prev:curr] = float(value)
+#
+#         data[name] = values
+
+def parse_vcd(filename):
+    from vcdvcd import VCDVCD
+    vcd = VCDVCD(filename)
+
+    signals = {}
+    for name in vcd.signals:
+        signal = vcd[name]
+        if int(signal.size) != 1:
+            print(f'WARNING: ignoring VCD signal {name} due to size={signal.size}')
+            continue
+        if signal.var_type != 'wire':
+            print(f'WARNING: ignoring VCD signal {name} due to var_type={signal.var_type}')
+            continue
+        signals[name] = signal
+
+    # VCD stores only value changes with the time, saleae logic also outputs something like this,
+    # but in CSV, so we just need to convert VCD to "merged" form with values (time, sig1, sig2)
+    assert 'start' not in signals.keys()
+    data = {name: [] for name in ['start', *signals.keys()]}
+
+    times = [np.array(sig.tv, dtype=np.uint)[:, 0] for sig in signals.values()]
+    times = np.unique(np.concatenate(tuple(times)))
+    times.sort()
+
+    for t in times:
+        data['start'].append(t)
+        for name, sig in signals.items():
+            data[name].append(sig[int(t)])  # VCDVCD can return values between time points
+
+    return pd.DataFrame(data)
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='''
         Analyze tasks execution based on data from logic analyzer.
         Assumes that the measurements file is in CSV format with a header row.
     ''')
-    parser.add_argument('measurements', help='Logic analyzer measurements in CSV format')
+    parser.add_argument('measurements', help='Logic analyzer measurements in CSV/VCD format')
     parser.add_argument('--time-col', type=int, default=0,
                         help='Index of data column containing time values in seconds')
     parser.add_argument('--task-col', type=int, default=1,
@@ -36,7 +94,13 @@ def main(args=None):
     cols = [args.time_col, args.task_col, args.trace_col]
     assert len(set(cols)) == len(cols), f'Duplicate columns: {cols}'
 
-    df = pd.read_csv(args.measurements)
+    ext = os.path.splitext(args.measurements)[1]
+    if ext == '.csv':
+        df = pd.read_csv(args.measurements)
+    elif ext == '.vcd':
+        df = parse_vcd(args.measurements)
+    else:
+        raise ValueError(f'Unsupported measurements file type, extension={ext}')
     df.rename(columns={
         df.columns[args.time_col]: 'start',
         df.columns[args.task_col]: 'tasks',
