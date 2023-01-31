@@ -233,7 +233,7 @@ mod app {
         // If there was abnormal reset, signalize it using LEDs
         if was_watchdog_reset {
             defmt::error!("Watchdog triggered system reset");
-            let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / LEDS_PRESCALER;
+            let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / KEYBOARD_PRESCALER;
             let leds = led_output.set_overwrite(ticks as u16);
             for (i, led) in leds.colors.iter_mut().enumerate() {
                 led.r = if i % 4 == 0 { 255 } else { 0 };

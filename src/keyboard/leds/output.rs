@@ -8,14 +8,14 @@ pub type Leds = ws2812b::Leds<NLEDS>;
 pub struct LedOutput {
     leds: Leds,
     mode: OutputMode,
+    time: u32,
+    overwrite_until: Option<u32>,
 }
 
 /// How we actually generate output colors
 enum OutputMode {
     /// Generate colors from LED pattern controller ticks
     Controller,
-    /// Overwriting colors for some duration, e.g. to signalize error
-    Overwrite { ticks: u16 },
     /// Using colors received from other half over UART
     FromOther,
 }
@@ -25,6 +25,8 @@ impl LedOutput {
         Self {
             leds: Leds::new(),
             mode: OutputMode::Controller,
+            time: 0,
+            overwrite_until: None,
         }
     }
 
@@ -34,7 +36,7 @@ impl LedOutput {
     /// by setting required colors. Normal patterns will not be used
     /// ([`Leds`] will not be modified) for the duration of `ticks`.
     pub fn set_overwrite(&mut self, ticks: u16) -> &mut Leds {
-        self.mode = OutputMode::Overwrite { ticks };
+        self.overwrite_until = Some(self.time.saturating_add(ticks as u32));
         &mut self.leds
     }
 
@@ -52,17 +54,18 @@ impl LedOutput {
     ///
     /// This must be called periodically to correctly track overwrites time.
     pub fn tick(&mut self, time: u32, controller: &mut LedController) -> &Leds {
-        if let OutputMode::Overwrite { ticks } = self.mode {
-            if ticks == 0 {
-                self.mode = OutputMode::Controller;
-            } else {
-                self.mode = OutputMode::Overwrite { ticks: ticks - 1 };
+        if let Some(until) = self.overwrite_until {
+            // FIXME: if time hits u32 limit (unlikely, ~50 days) then we might skip the overwrite
+            if time > until || until == u32::MAX  {
+                self.overwrite_until = None;
             }
         }
 
-        if let OutputMode::Controller = self.mode {
-            // TODO: todo!("Track if colors changed to avoid re-sending data when not needed");
-            controller.tick(time, &mut self.leds);
+        if self.overwrite_until.is_none() {
+            if let OutputMode::Controller = self.mode {
+                // TODO: todo!("Track if colors changed to avoid re-sending data when not needed");
+                controller.tick(time, &mut self.leds);
+            }
         }
 
         &self.leds
