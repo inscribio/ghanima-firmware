@@ -58,6 +58,21 @@ impl Keys {
 }
 
 impl PressedLedKeys {
+    pub const ALL: PressedLedKeys = PressedLedKeys((1 << NLEDS) - 1);
+    pub const NONE: PressedLedKeys = PressedLedKeys(0);
+
+    pub fn with_all(pressed: bool) -> Self {
+        if pressed { PressedLedKeys::ALL } else { PressedLedKeys::NONE }
+    }
+
+    pub fn is_all(&self) -> bool {
+        self == &Self::ALL
+    }
+
+    pub fn is_none(&self) -> bool {
+        self == &Self::NONE
+    }
+
     #[allow(dead_code)]
     pub(crate) fn from_raw(val: u32) -> Self {
         Self(val)
@@ -93,5 +108,29 @@ impl PressedLedKeys {
     #[cfg(test)]
     pub fn new_raw(keys: u32) -> Self {
         Self(keys)
+    }
+}
+
+impl core::ops::Not for PressedLedKeys {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self(!self.0 & Self::ALL.0) // mask to valid leds
+    }
+}
+
+impl core::ops::BitAnd for PressedLedKeys {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl core::ops::BitOr for PressedLedKeys {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
     }
 }

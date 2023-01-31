@@ -55,18 +55,22 @@ impl<'a> LedController<'a> {
 
             // Scan the rules that we might consider, rules on end of list overwrite previous ones.
             for rule in self.config.current().iter() {
-                rule.keys.for_each(|row, col| {
-                    // Only consider rules from this side
-                    if self.side.has_coords((row, col)) {
-                        let local = BoardSide::coords_to_local((row, col));
-                        // Keys iterator iterates only over non-joystick coordinates
-                        let led_num = BoardSide::led_number(local)
-                            .unwrap();
-                        if rule.condition.applies(&state, &self.side, led_num) {
+                let leds = rule.condition.applies_to(&state, &self.side);
+                // Optimization: avoid iteration over keys when not needed
+                if leds.is_none() {
+                    // Not applicable to any led - skip
+                    continue;
+                } else if leds.is_all() && rule.keys.is_none() {
+                    // Applicable to all leds and to all keys, so just fill whole array
+                    self.pattern_candidates.fill(Some(&rule.pattern));
+                } else {
+                    // More complicated situation - scan all leds
+                    rule.keys.for_each_led(|led_num| {
+                        if leds.is_pressed(led_num) {
                             self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
                         }
-                    }
-                });
+                    });
+                }
             }
         }
 

@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use crate::bsp::{NROWS, NCOLS};
+use crate::bsp::{NROWS, NCOLS, NLEDS};
 use crate::bsp::sides::{BoardSide, PerSide};
 use crate::keyboard::hid::KeyboardLeds;
 use crate::keyboard::keys::PressedLedKeys;
@@ -18,22 +18,25 @@ pub struct KeyboardState {
 }
 
 impl Condition {
-    /// Determine if condition applies
+    /// Determine leds mask to which the condition applies
     ///
-    /// The key is represented by `led` number as returned by [`BoardSide::led_number`].
-    pub fn applies(&self, state: &KeyboardState, side: &BoardSide, led: u8) -> bool {
+    /// Most conditions apply independently of [`super::Keys`], i.e. they apply to all or to none
+    /// based on keyboard state, but [`Condition::Pressed`] actually filters the keys. Instead of
+    /// calling `applies(self, state, side, led)` in a loop it is much faster to call this method
+    /// once returning keys (leds) mask and then to use the mask while iterating over keys (leds).
+    pub fn applies_to(&self, state: &KeyboardState, side: &BoardSide) -> PressedLedKeys {
         match self {
-            Condition::Always => true,
-            Condition::Led(led) => match led {
+            Condition::Always => PressedLedKeys::with_all(true),
+            Condition::Led(led) => PressedLedKeys::with_all(match led {
                 KeyboardLed::NumLock => state.leds.num_lock(),
                 KeyboardLed::CapsLock => state.leds.caps_lock(),
                 KeyboardLed::ScrollLock => state.leds.scroll_lock(),
                 KeyboardLed::Compose => state.leds.compose(),
                 KeyboardLed::Kana => state.leds.kana(),
-            },
-            Condition::UsbOn => state.usb_on,
-            Condition::Role(role) => role == &state.role,
-            Condition::Pressed => state.pressed[*side].is_pressed(led),
+            }),
+            Condition::UsbOn => PressedLedKeys::with_all(state.usb_on),
+            Condition::Role(role) => PressedLedKeys::with_all(role == &state.role),
+            Condition::Pressed => state.pressed[*side],
             Condition::KeyPressed(row, col) => {
                 let checked_side = if side.has_coords((*row, *col)) {
                     *side
@@ -41,16 +44,20 @@ impl Condition {
                     side.other()
                 };
                 let local = BoardSide::coords_to_local((*row, *col));
+                let is_pressed =
                 BoardSide::led_number(local)
                     // FIXME: not possible to trigger on joystick press
                     // nor on keys from other side
                     .map(|led| state.pressed[checked_side].is_pressed(led))
-                    .unwrap_or(false)
+                    .unwrap_or(false);
+                PressedLedKeys::with_all(is_pressed)
             },
-            Condition::Layer(layer) => state.layer == *layer,
-            Condition::Not(c) => !c.applies(state, side, led),
-            Condition::And(conds) => conds.iter().all(|c| c.applies(state, side, led)),
-            Condition::Or(conds) => conds.iter().any(|c| c.applies(state, side, led)),
+            Condition::Layer(layer) => PressedLedKeys::with_all(state.layer == *layer),
+            Condition::Not(c) => !c.applies_to(state, side),
+            Condition::And(conds) => conds.iter()
+                .fold(PressedLedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side)),
+            Condition::Or(conds) => conds.iter()
+                .fold(PressedLedKeys::with_all(false), |acc, c| acc | c.applies_to(state, side)),
         }
     }
 }
@@ -58,6 +65,9 @@ impl Condition {
 pub trait RuleKeys {
     /// Internal iterator over key coordinates
     fn for_each<F: FnMut(u8, u8)>(&self, f: F);
+
+    /// Internal iterator over led coordinates
+    fn for_each_led<F: FnMut(u8)>(&self, f: F);
 }
 
 fn cols_for_row(row: u8) -> impl Iterator<Item = u8> {
@@ -71,7 +81,33 @@ fn col_in_row(col: u8, row: u8) -> bool {
     col < row_cols || (col >= (n_all_cols - row_cols) && col < n_all_cols)
 }
 
+const ROW_LEDS_LOOKUP: [&'static [u8]; NROWS] = [
+    &[ 0,  1,  2,  3,  4,  5],
+    &[ 6,  7,  8,  9, 10, 11],
+    &[12, 13, 14, 15, 16, 17],
+    &[18, 19, 20, 21, 22, 23],
+    &[24, 25, 26, 27],
+];
+
+const COL_LEDS_LOOKUP: [&'static [u8]; NCOLS * 2] = [
+    // left (0 - 5)
+    &[5,  6, 17, 18, 27],
+    &[4,  7, 16, 19, 26],
+    &[3,  8, 15, 20, 25],
+    &[2,  9, 14, 21, 24],
+    &[1, 10, 13, 22],
+    &[0, 11, 12, 23],
+    // right (6 - 11)
+    &[0, 11, 12, 23],
+    &[1, 10, 13, 22],
+    &[2,  9, 14, 21, 24],
+    &[3,  8, 15, 20, 25],
+    &[4,  7, 16, 19, 26],
+    &[5,  6, 17, 18, 27],
+];
+
 impl<'a> RuleKeys for Option<&'a Keys> {
+    /// Iterate over all key positions (global)
     fn for_each<F: FnMut(u8, u8)>(&self, mut f: F) {
         // FIXME: any better implementation?
         match self {
@@ -99,6 +135,41 @@ impl<'a> RuleKeys for Option<&'a Keys> {
             Some(Keys::Keys(keys)) => {
                 for (row, col) in keys.iter().copied() {
                     f(row, col)
+                }
+            }
+        }
+    }
+
+    /// Iterate over all led positions (so always local)
+    fn for_each_led<F: FnMut(u8)>(&self, mut f: F) {
+        match self {
+            None => for led in 0..(NLEDS as u8) {
+                f(led);
+            },
+            Some(Keys::Rows(rows)) => {
+                for row in rows.into_iter().copied() {
+                    if let Some(leds) = ROW_LEDS_LOOKUP.get(row as usize) {
+                        for led in leds.into_iter().copied() {
+                            f(led);
+                        }
+                    }
+                }
+            },
+            Some(Keys::Cols(cols)) => {
+                for col in cols.into_iter().copied() {
+                    if let Some(leds) = COL_LEDS_LOOKUP.get(col as usize) {
+                        for led in leds.into_iter().copied() {
+                            f(led);
+                        }
+                    }
+                }
+            },
+            Some(Keys::Keys(keys)) => {
+                for (row, col) in keys.into_iter() {
+                    let (row, col) = BoardSide::coords_to_local((*row, *col));
+                    if let Some(led) = BoardSide::led_number((row, col)) {
+                        f(led);
+                    }
                 }
             }
         }
@@ -138,6 +209,14 @@ mod tests {
         for coords in not_contains {
             assert!(!set.contains(&coords), "Key found: {:?}", coords);
         }
+
+        // Also verify for_each_led, here the coordinates are always local so we just check if any
+        // side is in the set.
+        keys.for_each_led(|led| {
+            let coords = BoardSide::led_coords(led);
+            let other = BoardSide::Right.coords_to_global(coords);
+            assert!(set.contains(&coords) || set.contains(&other), "{coords:?}/{other:?} not in set {set:?}");
+        });
     }
 
     #[test]
@@ -196,18 +275,22 @@ mod tests {
     fn condition_pressed() {
         let cond = Condition::Pressed;
         let state = simple_keyboard_state(0b0000_0010, 0);
-        assert!(!cond.applies(&state, &BoardSide::Left, 0));
-        assert!(cond.applies(&state, &BoardSide::Left, 1));
-        assert!(!cond.applies(&state, &BoardSide::Left, 2));
+        let leds = cond.applies_to(&state, &BoardSide::Left);
+        assert!(!leds.is_pressed(0));
+        assert!(leds.is_pressed(1));
+        assert!(!leds.is_pressed(2));
+        assert_eq!(leds.get_raw(), 0b10);
     }
 
     #[test]
     fn condition_not() {
         let cond = Condition::Not(&Condition::Pressed);
         let state = simple_keyboard_state(0b0000_0010, 0);
-        assert!(cond.applies(&state, &BoardSide::Left, 0));
-        assert!(!cond.applies(&state, &BoardSide::Left, 1));
-        assert!(cond.applies(&state, &BoardSide::Left, 2));
+        let leds = cond.applies_to(&state, &BoardSide::Left);
+        assert!(leds.is_pressed(0));
+        assert!(!leds.is_pressed(1));
+        assert!(leds.is_pressed(2));
+        assert_eq!(leds.get_raw(), 0b1111_11111111_11111111_11111101);
     }
 
     #[test]
@@ -216,10 +299,19 @@ mod tests {
             Condition::KeyPressed(0, 0), // led = (6 - 1) - 0 = 5
             Condition::KeyPressed(0, 3) // led = (6 - 1) - 3 = 2
         ]);
-        assert!(cond.applies(&simple_keyboard_state(0b0010_0100, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0000_0100, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0010_0000, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0000_0000, 0), &BoardSide::Left, 20));
+        let expected = [
+            (0b0010_0100, true),
+            (0b0000_0100, false),
+            (0b0010_0000, false),
+            (0b0000_0000, false),
+        ];
+        // Same for all leds (so leds is ALL or NONE)
+        for led in 0..28 {
+            for (pressed, expect) in expected {
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
+            }
+        }
     }
 
     #[test]
@@ -228,10 +320,18 @@ mod tests {
             Condition::KeyPressed(0, 0), // led = (6 - 1) - 0 = 5
             Condition::KeyPressed(0, 3) // led = (6 - 1) - 3 = 2
         ]);
-        assert!(cond.applies(&simple_keyboard_state(0b0010_0100, 0), &BoardSide::Left, 20));
-        assert!(cond.applies(&simple_keyboard_state(0b0000_0100, 0), &BoardSide::Left, 20));
-        assert!(cond.applies(&simple_keyboard_state(0b0010_0000, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0000_0000, 0), &BoardSide::Left, 20));
+        let expected = [
+            (0b0010_0100, true),
+            (0b0000_0100, true),
+            (0b0010_0000, true),
+            (0b0000_0000, false),
+        ];
+        for led in 0..28 {
+            for (pressed, expect) in expected {
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
+            }
+        }
     }
 
     #[test]
@@ -240,9 +340,17 @@ mod tests {
             Condition::Not(&Condition::KeyPressed(0, 0)), // led = (6 - 1) - 0 = 5
             Condition::KeyPressed(0, 3) // led = (6 - 1) - 3 = 2
         ]);
-        assert!(!cond.applies(&simple_keyboard_state(0b0010_0100, 0), &BoardSide::Left, 20));
-        assert!(cond.applies(&simple_keyboard_state(0b0000_0100, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0010_0000, 0), &BoardSide::Left, 20));
-        assert!(!cond.applies(&simple_keyboard_state(0b0000_0000, 0), &BoardSide::Left, 20));
+        let expected = [
+            (0b0010_0100, false),
+            (0b0000_0100, true),
+            (0b0010_0000, false),
+            (0b0000_0000, false),
+        ];
+        for led in 0..28 {
+            for (pressed, expect) in expected {
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
+            }
+        }
     }
 }
