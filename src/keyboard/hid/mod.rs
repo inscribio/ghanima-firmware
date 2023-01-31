@@ -19,7 +19,7 @@ pub use keyboard::{KeyboardLeds, KeyCodeIterExt};
 pub type HidClass<'a, B> = hid_class::UsbHidClass<B,
     HList!(KeyboardInterface<'a, B>, ConsumerInterface<'a, B>, MouseInterface<'a, B>)>;
 
-pub fn new_hid_class<'a, B: UsbBus>(bus: &'a UsbBusAllocator<B>) -> HidClass<'a, B> {
+pub fn new_hid_class<B: UsbBus>(bus: &UsbBusAllocator<B>) -> HidClass<B> {
     hid_class::UsbHidClassBuilder::new() // reverse order
         .add_interface(MouseInterface::default_config())
         .add_interface(ConsumerInterface::default_config())
@@ -85,7 +85,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
     ///
     /// When `write_report` returns `Err` other than `UsbError::WouldBlock`, which means
     /// there is a bug in class implementation.
-    pub fn send<'a, F>(&mut self, write_report: F)
+    pub fn send<F>(&mut self, write_report: F)
         where F: FnOnce(&R) -> Result<usize, UsbError>
     {
         if let Some(report) = self.queue.peek() {
@@ -109,5 +109,11 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
     /// Emtpy the report queue, to be called on USB disconnect/suspend
     pub fn clear(&mut self) {
         self.queue.clear();
+    }
+}
+
+impl<R: PartialEq, const N: usize> Default for HidReportQueue<R, N> {
+    fn default() -> Self {
+        Self::new()
     }
 }

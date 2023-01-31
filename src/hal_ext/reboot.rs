@@ -17,9 +17,12 @@ static mut MAGIC: MaybeUninit<u32> = MaybeUninit::uninit();
 /// MCU bootloader. Some USB hosts may have problems with enumerating the bootloader
 /// after a reset. If `usb_bus` is passed, then USB reenumeration will be triggered
 /// before system reset, which may prevent the issue.
-pub unsafe fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
+pub fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
     if bootloader {
-        MAGIC.as_mut_ptr().write(MAGIC_JUMP_BOOTLOADER);
+        // SAFETY: we're writing to memory that is reserved for that purpose
+        unsafe {
+            MAGIC.as_mut_ptr().write(MAGIC_JUMP_BOOTLOADER);
+        }
     }
     if let Some(bus) = usb_bus {
         // Sometimes host fails to reenumerate our device when jumping to bootloader,
@@ -33,6 +36,12 @@ pub unsafe fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
 }
 
 /// Jump to bootloader if requested before last MCU reset (to be called in pre_init)
+///
+/// # Safety
+///
+/// We are using uninitialized memory to check if the contained value is the same as
+/// before MCU. We're also jumping to embedded bootloader, so we assume it is there
+/// in memory at the expected address.
 pub unsafe fn maybe_jump_bootloader() {
     // Verify that this was a software reset
     let software_reset = (*pac::RCC::ptr()).csr.read().sftrstf().bit_is_set();
@@ -60,7 +69,7 @@ impl DfuBootloader {
     }
 
     pub fn reboot(&mut self, bootloader: bool, usb_bus: Option<&usb::UsbBusType>) {
-        unsafe { reboot(bootloader, usb_bus) }
+        reboot(bootloader, usb_bus)
     }
 }
 
@@ -68,7 +77,7 @@ impl DfuRuntimeOps for DfuBootloader {
     fn detach(&mut self) {
         // I suspect this works without force_reenumeration because we actually reset
         // the system twice: once on sys_reset, then in jump_bootloader, but not sure.
-        unsafe { reboot(true, None); }
+        reboot(true, None);
     }
 
     fn allow(&mut self, timeout: u16) -> Option<u16> {

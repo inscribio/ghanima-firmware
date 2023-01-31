@@ -81,7 +81,7 @@ fn col_in_row(col: u8, row: u8) -> bool {
     col < row_cols || (col >= (n_all_cols - row_cols) && col < n_all_cols)
 }
 
-const ROW_LEDS_LOOKUP: [&'static [u8]; NROWS] = [
+const ROW_LEDS_LOOKUP: [&[u8]; NROWS] = [
     &[ 0,  1,  2,  3,  4,  5],
     &[ 6,  7,  8,  9, 10, 11],
     &[12, 13, 14, 15, 16, 17],
@@ -89,7 +89,7 @@ const ROW_LEDS_LOOKUP: [&'static [u8]; NROWS] = [
     &[24, 25, 26, 27],
 ];
 
-const COL_LEDS_LOOKUP: [&'static [u8]; NCOLS * 2] = [
+const COL_LEDS_LOOKUP: [&[u8]; NCOLS * 2] = [
     // left (0 - 5)
     &[5,  6, 17, 18, 27],
     &[4,  7, 16, 19, 26],
@@ -147,25 +147,25 @@ impl<'a> RuleKeys for Option<&'a Keys> {
                 f(led);
             },
             Some(Keys::Rows(rows)) => {
-                for row in rows.into_iter().copied() {
+                for row in rows.iter().copied() {
                     if let Some(leds) = ROW_LEDS_LOOKUP.get(row as usize) {
-                        for led in leds.into_iter().copied() {
+                        for led in leds.iter().copied() {
                             f(led);
                         }
                     }
                 }
             },
             Some(Keys::Cols(cols)) => {
-                for col in cols.into_iter().copied() {
+                for col in cols.iter().copied() {
                     if let Some(leds) = COL_LEDS_LOOKUP.get(col as usize) {
-                        for led in leds.into_iter().copied() {
+                        for led in leds.iter().copied() {
                             f(led);
                         }
                     }
                 }
             },
             Some(Keys::Keys(keys)) => {
-                for (row, col) in keys.into_iter() {
+                for (row, col) in keys.iter() {
                     let (row, col) = BoardSide::coords_to_local((*row, *col));
                     if let Some(led) = BoardSide::led_number((row, col)) {
                         f(led);

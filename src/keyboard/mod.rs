@@ -106,13 +106,6 @@ impl<const L: usize> Keyboard<L> {
         let fsm = role::Fsm::with(side, config.timeout);
         let layout = layout::Layout::new(config.layers);
         let mouse = mouse::Mouse::new(config.mouse);
-        let prev_state = KeyboardState {
-            leds: hid::KeyboardLeds(0),
-            usb_on: false,
-            role: fsm.role(),
-            layer: layout.current_layer() as u8,
-            pressed: Default::default(),
-        };
         let pressed = Default::default();
         let keyboard_reports = hid::HidReportQueue::new();
         let consumer_reports = hid::HidReportQueue::new();
@@ -261,15 +254,15 @@ impl<const L: usize> Keyboard<L> {
                 match action {
                     Action::Led(led) => if !pressed {  // only on release
                         match led {
-                            LedAction::Cycle(inc) => update.config = Some((*inc).into()),
+                            LedAction::Cycle(inc) => update.config = Some(*inc),
                             LedAction::Brightness(inc) => update.brightness = Some((*inc).into()),
                         }
                     },
-                    Action::Mouse(mouse) => self.mouse.handle_action(&mouse, pressed),
+                    Action::Mouse(mouse) => self.mouse.handle_action(mouse, pressed),
                     Action::Consumer(key) => {
                         let mut report = hid::ConsumerReport::default();
                         if pressed {
-                            report.codes[0] = (*key).into()
+                            report.codes[0] = *key;
                         }
                         self.consumer_reports.push(report);
                     },
@@ -298,7 +291,7 @@ impl<const L: usize> Keyboard<L> {
             });
 
             // Push next report
-            self.keyboard_reports.push(hid::KeyboardReport::new(self.layout.keycodes().as_page()));
+            self.keyboard_reports.push(hid::KeyboardReport::new(self.layout.keycodes().into_page()));
 
             // Push USB reports
             if usb_state == UsbDeviceState::Configured {

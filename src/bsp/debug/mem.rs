@@ -37,6 +37,11 @@ pub fn stack_as_slice() -> &'static [u8] {
 }
 
 /// Get free stack memory as mutable slice (when using flip-link)
+///
+/// # Safety
+///
+/// Any code after calling this inline-function may allocate more data on the stack
+/// so writing to the returned slice may overwrite the stack which is totally unsafe.
 #[inline(always)]
 pub unsafe fn free_stack_as_slice() -> &'static mut [u8] {
     let start = RAM_START as *mut u32 as *mut u8;
@@ -47,6 +52,11 @@ pub unsafe fn free_stack_as_slice() -> &'static mut [u8] {
 const SENTINEL: u8 = 0xcd;
 
 /// Fill the free stack space with a known value
+///
+/// # Safety
+///
+/// In theory it fills unoccupied stack space, but if memory layout is different than
+/// assumed one (e.g. not using flip-link) then this might just overwrite arbitrary memory.
 #[inline(always)]
 pub unsafe fn free_stack_fill(margin: u32) {
     let free_stack = free_stack_as_slice();

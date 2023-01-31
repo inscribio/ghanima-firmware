@@ -11,7 +11,7 @@ compile_error!("debug-tasks will not work with idle-sleep enabled");
 pub fn init(uart: Uart, (tx, rx): (Tx, Rx), rcc: &mut hal::rcc::Rcc) {
     interrupt::free(|cs| {
         if cfg!(feature = "debug-tasks-id") {
-            let tx = SerialTx::usart2tx(uart, tx, 921_600.bps(), rcc);
+            SerialTx::usart2tx(uart, tx, 921_600.bps(), rcc); // drop, later use unsafely
             rx.into_push_pull_output_hs(cs);
         } else {
             tx.into_push_pull_output_hs(cs);

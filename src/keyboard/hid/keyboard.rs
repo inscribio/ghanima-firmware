@@ -38,13 +38,13 @@ impl<I> Iterator for KeyboardIter<I>
 
 /// Extension trait for adapting keyberon key code iterator to usbd_human_interface_device
 pub trait KeyCodeIterExt: Sized {
-    fn as_page(self) -> KeyboardIter<Self>;
+    fn into_page(self) -> KeyboardIter<Self>;
 }
 
 impl<I> KeyCodeIterExt for I
     where I: Iterator<Item = KeyCode>
 {
-    fn as_page(self) -> KeyboardIter<Self> {
+    fn into_page(self) -> KeyboardIter<Self> {
         KeyboardIter(self)
     }
 }
