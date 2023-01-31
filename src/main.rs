@@ -304,21 +304,10 @@ mod app {
 
         // Clears interrupt flag
         if cx.local.timer.wait().is_ok() {
+            // Spawn periodic tasks. Ignore error if we're too slow. Don't always compare
+            // to 0 to avoid situations that all tasks are being run at the same tick.
             let t = cx.local.t;
             *t += 1;
-
-            if *t % LEDS_PRESCALER == 0 {
-                // ignore error if we're too slow
-                if leds_tick::spawn(*t).is_err() {
-                    defmt::warn!("Spawn failed: leds_tick");
-                };
-            }
-
-            if *t % JOY_PRESCALER == 0 {
-                if read_joystick::spawn().is_err() {
-                    defmt::warn!("Spawn failed: read_joystick");
-                };
-            }
 
             if *t % KEYBOARD_PRESCALER == 0 {
                 if keyboard_tick::spawn(*t).is_err() {
@@ -326,7 +315,19 @@ mod app {
                 }
             }
 
-            if *t % DEBUG_PRESCALER == 0 {
+            if *t % LEDS_PRESCALER == 1 {
+                if leds_tick::spawn(*t).is_err() {
+                    defmt::warn!("Spawn failed: leds_tick");
+                };
+            }
+
+            if *t % JOY_PRESCALER == 2 {
+                if read_joystick::spawn().is_err() {
+                    defmt::warn!("Spawn failed: read_joystick");
+                };
+            }
+
+            if *t % DEBUG_PRESCALER == 3 {
                 if debug_report::spawn().is_err() {
                     defmt::warn!("Spawn failed: debug_report");
                 }
@@ -455,17 +456,20 @@ mod app {
             // Prepare data to be sent and start DMA transfer.
             // `leds` must be kept locked because we're serializing from reference.
             spi_tx.lock(|spi_tx| {
-                debug::tasks::trace::run(|| {
+                // Fails on first call because we start an immediate transfer in init()
+                let ok = debug::tasks::trace::run(|| {
                     // TODO: try to use .serialize()
-                    spi_tx.push(|buf| colors.serialize_to_slice(buf))
-                        .map_err(drop)
-                        .expect("Trying to serialize new data but DMA transfer is not finished");
+                    spi_tx.push(|buf| colors.serialize_to_slice(buf)).is_ok()
                 });
 
-                spi_tx.start()
-                    .map_err(drop)
-                    .expect("If we were able to serialize we must be able to start!");
-                debug::tasks::trace::start();
+                if !ok {
+                    defmt::warn!("Trying to serialize new data but DMA transfer is not finished");
+                } else {
+                    spi_tx.start()
+                        .map_err(drop)
+                        .expect("If we were able to serialize we must be able to start!");
+                    debug::tasks::trace::start();
+                }
             });
         });
 
