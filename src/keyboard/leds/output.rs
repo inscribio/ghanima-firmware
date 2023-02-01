@@ -6,7 +6,8 @@ pub type Leds = ws2812b::Leds<NLEDS>;
 
 /// Storage for LED colors with option to overwrite output for given time
 pub struct LedOutput {
-    leds: Leds,
+    this: PerSide<Leds>,
+    other: Leds,
     mode: OutputMode,
     time: u32,
     overwrite_until: Option<u32>,
@@ -23,7 +24,8 @@ enum OutputMode {
 impl LedOutput {
     pub const fn new() -> Self {
         Self {
-            leds: Leds::new(),
+            this: PerSide { left: Leds::new(), right: Leds::new() },
+            other: Leds::new(),
             mode: OutputMode::Controller,
             time: 0,
             overwrite_until: None,
@@ -35,43 +37,53 @@ impl LedOutput {
     /// This returns [`Leds`] which should be manually configured
     /// by setting required colors. Normal patterns will not be used
     /// ([`Leds`] will not be modified) for the duration of `ticks`.
-    pub fn set_overwrite(&mut self, ticks: u16) -> &mut Leds {
+    pub fn set_overwrite(&mut self, ticks: u16) -> &mut PerSide<Leds> {
         self.overwrite_until = Some(self.time.saturating_add(ticks as u32));
-        &mut self.leds
+        &mut self.this
     }
 
-    // // TODO: better name - setting values received from other keyboard half
-    // pub fn use_from_other(&mut self, side: BoardSide, colors: &LedColors) {
-    //     self.leds[side].colors = colors.clone();
-    //     self.mode = OutputMode::FromOther;
-    // }
+    // TODO: better name - setting values received from other keyboard half
+    ///
+    pub fn use_from_other_half(&mut self, colors: &LedColors) {
+        self.other.colors = colors.clone();
+        self.mode = OutputMode::FromOther;
+    }
+
+    pub fn using_from_controller(&self) -> bool {
+        matches!(self.mode, OutputMode::Controller)
+    }
 
     pub fn use_from_controller(&mut self) {
         self.mode = OutputMode::Controller;
     }
 
-    /// Generate colors for current time returning [`Leds`] ready for serialization
-    ///
-    /// This must be called periodically to correctly track overwrites time.
-    pub fn tick(&mut self, time: u32, controller: &mut LedController) -> &Leds {
-        if let Some(until) = self.overwrite_until {
-            // FIXME: if time hits u32 limit (unlikely, ~50 days) then we might skip the overwrite
-            if time > until || until == u32::MAX  {
-                self.overwrite_until = None;
-            }
-        }
+    /// Generate colors for current time
+    pub fn tick(&mut self, time: u32, controller: &mut LedController) {
+        // use crate::bsp::debug::tasks::trace::run;
+        //
+        // run(|| {
 
-        if self.overwrite_until.is_none() {
-            if let OutputMode::Controller = self.mode {
-                // TODO: todo!("Track if colors changed to avoid re-sending data when not needed");
-                controller.tick(time, &mut self.leds);
+            if let Some(until) = self.overwrite_until {
+                // FIXME: if time hits u32 limit (unlikely, ~50 days) then we might skip the overwrite
+                if time > until || until == u32::MAX  {
+                    self.overwrite_until = None;
+                }
             }
-        }
 
-        &self.leds
+            if self.overwrite_until.is_none() {
+                if let OutputMode::Controller = self.mode {
+                    // TODO: todo!("Track if colors changed to avoid re-sending data when not needed");
+                    controller.tick(time, &mut self.this);
+                }
+            }
+
+        // })
     }
 
-    pub fn current(&self) -> &Leds {
-        &self.leds
+    pub fn current(&self, side: BoardSide) -> &Leds {
+        match self.mode {
+            OutputMode::Controller => &self.this[side],
+            OutputMode::FromOther => &self.other,
+        }
     }
 }

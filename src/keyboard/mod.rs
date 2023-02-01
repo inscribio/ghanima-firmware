@@ -19,6 +19,7 @@ mod msg;
 /// Role negotiation between keyboard halves
 mod role;
 
+use ringbuf::{StaticRb, StaticConsumer, StaticProducer};
 use rtic::Mutex;
 use keyberon::layout::{self, Event};
 use serde::{Serialize, Deserialize};
@@ -28,8 +29,8 @@ use usb_device::device::UsbDeviceState;
 use usbd_human_interface_device::UsbHidError;
 use crate::bsp::sides::{BoardSide, PerSide};
 use crate::bsp::usb::Usb;
-use crate::bsp::{NCOLS, NROWS};
-use crate::ioqueue;
+use crate::bsp::{NCOLS, NROWS, LedColors};
+use crate::ioqueue::{self, ProducerExt as _};
 use crate::utils::OptionChanges as _;
 use role::Role;
 use actions::{Action, LedAction, Inc};
@@ -40,10 +41,12 @@ use hid::KeyCodeIterExt as _;
 pub use keys::Keys;
 pub use leds::{LedController, LedOutput, KeyboardState};
 
+/// I/O ringbuffer for packet tx/rx between keyboard halves
+pub type IoRb<const N: usize> = StaticRb<msg::Message, N>;
 /// Transmitter of packets for communication between keyboard halves
-pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, N>;
+pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, &'static IoRb<N>>;
 /// Receiver of packets for communication between keyboard halves
-pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::Message, RX, N, B>;
+pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::Message, RX,  &'static IoRb<N>, B>;
 
 /// Split keyboard logic
 pub struct Keyboard<const L: usize> {
@@ -73,11 +76,15 @@ pub struct KeyboardConfig<const L: usize> {
 }
 
 /// Deferred update of LED controller state
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
-pub struct LedsUpdate {
+pub struct LedControllerUpdate {
     state: Option<KeyboardState>,
     config: Option<Inc>,
     brightness: Option<BrightnessUpdate>,
+}
+
+pub enum LedsUpdate {
+    Controller(LedControllerUpdate),
+    FromOther(Option<LedColors>),
 }
 
 /// Deferred update of LED controller state
@@ -132,14 +139,12 @@ impl<const L: usize> Keyboard<L> {
     /// This should be called in a fixed period to update internal state, handle communication
     /// between keyboard halves and resolve key events depending on keyboard layout. Returns
     /// [`KeyboardState`] to be passed to the LED controller - possibly a lower priority task.
-    pub fn tick<TX, RX>(
+    pub fn tick<const TXN: usize, const RXN: usize>(
         &mut self,
-        (mut tx, mut rx): (impl Mutex<T=TX>, impl Mutex<T=RX>),
-        mut usb: impl Mutex<T=&'static mut Usb>,
+        mut tx: impl Mutex<T = StaticProducer<'static, msg::Message, TXN>>,
+        mut rx: impl Mutex<T = StaticConsumer<'static, msg::Message, RXN>>,
+        mut usb: impl Mutex<T = &'static mut Usb>,
     ) -> LedsUpdate
-    where
-        TX: ioqueue::TransmitQueue<msg::Message>,
-        RX: ioqueue::ReceiveQueue<msg::Message>,
     {
         // Retrieve USB state
         let (usb_state, keyboard_leds) = usb.lock(|usb| (usb.dev.state(), usb.keyboard_leds()));
@@ -148,20 +153,20 @@ impl<const L: usize> Keyboard<L> {
 
         // First update USB state in FSM
         if let Some(msg) = self.fsm.usb_state(usb_state == UsbDeviceState::Configured) {
-            tx.lock(|tx| tx.push(msg.into()));
+            tx.lock(|tx| tx.try_push(msg));
         }
 
-        // Store LEDs updates from master
-        let mut leds_update = None;
+        // Store forced LED colors update from master
+        let mut led_colors = None;
 
         // Process RX data
         let mut was_key_event = false;  // check events as any key should trigger usb wakeup from suspend
-        while let Some(msg) = rx.lock(|rx| rx.get()) {
+        while let Some(msg) = rx.lock(|rx| rx.pop()) {
             match msg {
                 msg::Message::Role(msg) => {
                     defmt::info!("Got role::Message: {}", msg);
                     if let Some(msg) =  self.fsm.on_rx(msg) {
-                        tx.lock(|tx| tx.push(msg.into()));
+                        tx.lock(|tx| tx.try_push(msg));
                     }
                 },
                 msg::Message::Key(event) => {
@@ -179,15 +184,15 @@ impl<const L: usize> Keyboard<L> {
                         self.layout.event(event);
                     }
                 },
-                msg::Message::Leds(leds) => if self.fsm.role() == Role::Slave {
-                    leds_update = Some(leds);
+                msg::Message::Leds(colors) => {
+                    led_colors = Some(colors);
                 },
             }
         }
 
         // Advance FSM time, process timeouts
         if let Some(msg) = self.fsm.tick() {
-            tx.lock(|tx| tx.push(msg.into()));
+            tx.lock(|tx| tx.try_push(msg));
         }
 
         // Scan keys and push all events
@@ -200,7 +205,7 @@ impl<const L: usize> Keyboard<L> {
                 Role::Slave => {
                     let (i, j) = event.coord();
                     defmt::info!("Send Key({=u8}, {=u8})", i, j);
-                    tx.lock(|tx| tx.push(event.into()));
+                    tx.lock(|tx| tx.try_push(event));
                 },
             }
         }
@@ -213,18 +218,7 @@ impl<const L: usize> Keyboard<L> {
 
         if self.fsm.role() == Role::Slave {
             // Slave just uses the LED update from master
-
-            // Update state if we received it
-            let state_update = leds_update.as_ref()
-                .and_then(|update| update.state.as_ref())
-                .and_then(|state| self.state.if_changed(state));
-
-            // Send state if changed, others copied from received update
-            LedsUpdate {
-                state: state_update.cloned(),
-                config: leds_update.as_ref().and_then(|u| u.config),
-                brightness: leds_update.and_then(|u| u .brightness),
-            }
+            LedsUpdate::FromOther(led_colors)
         } else {
             // Master keeps track of the actual keyboard state
 
@@ -240,7 +234,7 @@ impl<const L: usize> Keyboard<L> {
             };
 
             // Collect state
-            let mut update = LedsUpdate {
+            let mut update = LedControllerUpdate {
                 state: self.state.if_changed(&state).cloned(),
                 config: None,
                 brightness: None,
@@ -336,19 +330,7 @@ impl<const L: usize> Keyboard<L> {
                 _ => {},
             }
 
-            // Transfer LED updates
-            // TODO: the other half still uses it's own configuration so this won't be correct if
-            // each half has different firmware loaded
-            // TODO: need to synchronize time between halves!
-            if update.any_change() {
-                // defmt::info!("Send Leds(left={=u32}, right={=u32})",
-                //     update.state.clone().unwrap().pressed.left.get_raw(),
-                //     update.state.clone().unwrap().pressed.right.get_raw(),
-                // );
-                tx.lock(|tx| tx.push(update.clone().into()));
-            }
-
-            update
+            LedsUpdate::Controller(update)
         }
     }
 
@@ -358,7 +340,7 @@ impl<const L: usize> Keyboard<L> {
     }
 }
 
-impl LedsUpdate {
+impl LedControllerUpdate {
     const BRIGHTNESS_LEVELS: u8 = 8;
     const BRIGHTNESS_INC: u8 = u8::MAX / Self::BRIGHTNESS_LEVELS;
 

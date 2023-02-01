@@ -1,7 +1,8 @@
+use ringbuf::ring_buffer::{RbRef, RbRead, RbWrite};
 use serde::Serialize;
-use ringbuffer::{ConstGenericRingBuffer, RingBuffer, RingBufferExt, RingBufferRead, RingBufferWrite};
+use ringbuf::{Consumer, Producer};
 
-use super::{PacketId, TransmitQueue};
+use super::{PacketId, Queue};
 use super::packet::{Packet, PacketSer};
 use crate::hal_ext::dma::{self, DmaTx};
 
@@ -18,56 +19,46 @@ impl<'a, P: Packet> Packet for MarkedPacket<'a, P> {
 }
 
 /// Packet transmission queue
-pub struct Transmitter<P, TX, const N: usize>
+pub struct Transmitter<P, TX, RB>
 where
     P: PacketSer,
     TX: DmaTx,
+    RB: RbRef,
+    RB::Rb: RbRead<P>,
 {
-    queue: ConstGenericRingBuffer<P, N>,
+    queue: Consumer<P, RB>,
     tx: TX,
     id_counter: PacketId,
     // TODO: implement retransmission? it is probably unnecessary as we have good data integrity
     _retransmissions: u8,
 }
 
-impl<P, TX, const N: usize> TransmitQueue<P> for Transmitter<P, TX, N>
+impl<P, TX, RB> Queue for Transmitter<P, TX, RB>
 where
     P: PacketSer,
     TX: DmaTx,
+    RB: RbRef,
+    RB::Rb: RbRead<P> + RbWrite<P> + Sized,
 {
-    fn push(&mut self, packet: P) {
-        self.push(packet)
-    }
+    type Buffer = RB::Rb;
+    type Endpoint = Producer<P, RB>;
 }
 
-impl<P, TX, const N: usize> Transmitter<P, TX, N>
+impl<P, TX, RB> Transmitter<P, TX, RB>
 where
     P: PacketSer,
     TX: DmaTx,
+    RB: RbRef,
+    RB::Rb: RbRead<P>,
 {
     /// Create new transmitter
-    pub fn new(tx: TX) -> Self {
+    pub fn new(tx: TX, queue: Consumer<P, RB>) -> Self {
         Self {
-            queue: ConstGenericRingBuffer::new(),
+            queue,
             tx,
             id_counter: 0,
             _retransmissions: 0,
         }
-    }
-
-    /// Push a packet if there is enough space in queue
-    pub fn try_push(&mut self, packet: P) -> Result<(), ()> {
-        if self.queue.is_full() {
-            Err(())
-        } else {
-            self.push(packet);
-            Ok(())
-        }
-    }
-
-    /// Push a packet, overwrite oldest if queue is full
-    pub fn push(&mut self, packet: P) {
-        self.queue.push(packet);
     }
 
     /// Check DMA TX state and send packets from queue if possible.
@@ -83,7 +74,7 @@ where
             let n = buf.len();
             let mut window = buf;
 
-            while let Some(packet) = self.queue.peek() {
+            while let Some(packet) = self.queue.iter().last() { // FIXME: implement .peek() in extension trait
                 let packet = MarkedPacket {
                     id: self.id_counter,
                     packet,
@@ -101,7 +92,7 @@ where
                 };
 
                 // Consume this packet and update the window to point to remaining buffer space
-                self.queue.skip();
+                self.queue.skip(1);
                 window = &mut window[len..]
             }
 
@@ -122,7 +113,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ringbuf::StaticRb;
+
     use super::*;
+    use core::mem::MaybeUninit;
     use std::vec::Vec;
     use std::cell::Cell;
     use crate::hal_ext::dma::mock::DmaTxMock;
@@ -132,22 +126,26 @@ mod tests {
     // Explicit type because using just [] yields "multiple `impl`s of PartialEq" because of the crate `fixed`
     const EMPTY: [u8; 0] = [];
 
-    #[derive(Serialize)]
+    #[derive(Serialize, Debug)]
     struct Message(u16, u8);
 
     impl Packet for Message {
         type Checksum = Crc32;
     }
 
+    type Tx<TX, const N: usize> = Transmitter<Message, TX, [MaybeUninit<Message>; N]>;
+
     #[test]
     fn send_single() {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(true, |data| sent.set(data));
-        let mut tx = Transmitter::<Message, _, 4>::new(dma);
+        let mut rb = StaticRb::<Message, 4>::default();
+        let (mut prod, cons) = rb.split_ref();
+        let mut tx = Transmitter::new(dma, cons);
 
         assert_eq!(sent.take(), EMPTY);
-        tx.push(Message(0xaabb, 0xcc));
+        prod.push(Message(0xaabb, 0xcc)).unwrap();
         assert_eq!(sent.take(), EMPTY);
 
         // Message                     encoded (varints, checksum)
@@ -165,10 +163,12 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 40>::new(true, |data| sent.set(data));
-        let mut tx = Transmitter::<Message, _, 4>::new(dma);
+        let mut rb = StaticRb::<Message, 4>::default();
+        let (mut prod, cons) = rb.split_ref();
+        let mut tx = Transmitter::new(dma, cons);
 
         for _ in 0..3 {
-            tx.push(Message(0xaabb, 0xcc));
+            prod.push(Message(0xaabb, 0xcc)).unwrap();
             assert_eq!(sent.take(), EMPTY);
         }
         let cobs = bytes(r"
@@ -188,10 +188,12 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(true, |data| sent.set(data));
-        let mut tx = Transmitter::<Message, _, 4>::new(dma);
+        let mut rb = StaticRb::<Message, 4>::default();
+        let (mut prod, cons) = rb.split_ref();
+        let mut tx = Transmitter::new(dma, cons);
 
         for _ in 0..3 {
-            tx.push(Message(0xaabb, 0xcc));
+            prod.push(Message(0xaabb, 0xcc)).unwrap();
             assert_eq!(sent.take(), EMPTY);
         }
         let cobs = bytes(r"
@@ -216,9 +218,11 @@ mod tests {
         let mut crc = Crc32::new();
         let sent = Cell::new(Vec::new());
         let dma = DmaTxMock::<_, 30>::new(false, |data| sent.set(data));
-        let mut tx = Transmitter::<Message, _, 4>::new(dma);
+        let mut rb = StaticRb::<Message, 4>::default();
+        let (mut prod, cons) = rb.split_ref();
+        let mut tx = Transmitter::new(dma, cons);
 
-        tx.push(Message(0xaabb, 0xcc));
+        prod.push(Message(0xaabb, 0xcc)).unwrap();
         let cobs = bytes("d1  d9  1_0111011 1_1010101 000000_10  xcc  xee xe6 xaf x2c  d0");
 
         tx.tick(&mut crc);

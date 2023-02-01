@@ -47,7 +47,7 @@ mod output;
 /// Pattern iteration and color generation logic
 mod pattern;
 
-pub use output::LedOutput;
+pub use output::{LedOutput, Leds};
 pub use pattern::LedController;
 pub use condition::KeyboardState;
 

@@ -20,7 +20,11 @@ pub struct PerSide<T> {
     pub right: T,
 }
 
+pub struct PerSideIter(u8);
+
 impl BoardSide {
+    pub const EACH: [Self; 2] = [Self::Left, Self::Right];
+
     /// Board side can be determined via pull-up/down on a pin
     pub fn get(pin: impl InputPin<Error = Infallible>) -> Self {
         if pin.is_high().infallible() {
@@ -204,12 +208,9 @@ impl BoardSide {
 }
 
 impl<T> PerSide<T> {
-    pub const fn as_array(&self) -> [&T; 2] {
-        [&self.left, &self.right]
-    }
-
-    pub fn as_array_mut(&mut self) -> [&mut T; 2] {
-        [&mut self.left, &mut self.right]
+    pub fn for_each<F: FnMut(&mut T)>(&mut self, mut f: F) {
+        f(&mut self.left);
+        f(&mut self.right);
     }
 }
 

@@ -1,9 +1,11 @@
 use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 use keyberon::layout::Event;
 
-use crate::hal_ext::crc::Crc;
+use crate::{hal_ext::crc::Crc, bsp::LedColors};
 use crate::ioqueue;
-use super::{role, LedsUpdate};
+use super::role;
+use super::leds::Leds;
 
 /// Messages used in communication between keyboard halves
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -13,8 +15,9 @@ pub enum Message {
     /// Raw key event transmitted to the half that is connected to USB from the other one
     #[serde(with = "EventDef")]
     Key(Event),
-    /// Update LEDs state
-    Leds(LedsUpdate),
+    /// Send LED colors from half connected to USB to the other on
+    #[serde(with = "BigArray")]
+    Leds(LedColors),
 }
 
 // Work around Event not implementing Serialize: https://serde.rs/remote-derive.html
@@ -41,14 +44,22 @@ impl From<Event> for Message {
     }
 }
 
-impl From<LedsUpdate> for Message {
-    fn from(update: LedsUpdate) -> Self {
-        Message::Leds(update)
+impl From<LedColors> for Message {
+    fn from(colors: LedColors) -> Self {
+        Message::Leds(colors)
+    }
+}
+
+impl From<&Leds> for Message {
+    fn from(leds: &Leds) -> Self {
+        Message::Leds(leds.colors.clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rgb::RGB8;
+
     use super::*;
     use crate::bsp::sides::PerSide;
     use crate::keyboard::BrightnessUpdate;
@@ -58,7 +69,7 @@ mod tests {
     use crate::ioqueue::packet::PacketSer;
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
-        let mut buf = [0; 32];
+        let mut buf = [0; 89];
         let mut checksum = Crc::new_mock();
         let mut buf = msg.to_slice(&mut checksum, &mut buf[..]).unwrap();
         let len = cobs::decode_in_place(&mut buf).unwrap();
@@ -103,38 +114,46 @@ mod tests {
     }
 
     #[test]
-    fn verify_leds_update() {
-        verify_serialization(Message::Leds(LedsUpdate {
-            state: Some(KeyboardState {
-                leds: KeyboardLeds(0b01010),
-                usb_on: true,
-                role: role::Role::Master,
-                layer: 2,
-                pressed: PerSide {
-                    left: PressedLedKeys::new_raw(0b0000_0000000000000000000000011001),
-                    right: PressedLedKeys::new_raw(0b00001100000000000000000000000011),
-                },
-            }),
-            config: None,
-            brightness: Some(BrightnessUpdate::Down),
-        }),
-            // Message::Leds
-            &[0x02,
-                // option Some
-                1,
-                // leds, usb_on, role, layer
-                0b01010, 1, 0, 2,
-                // pressed_left (varint(u32))
-                0b00011001,
-                // pressed_right (varint(u32))
-                0b1_0000011, 0b1_0000000, 0b1_0000000, 0b01100000,
-                // config
-                0x00,
-                // brightness
-                0x01, 0x01,
-                // crc16_L, crc16_H
-                0xb2, 0xcd,
-            ]
-        );
+    fn message_leds_update() {
+        let msg = Message::Leds([
+            RGB8::new( 0,  1,  2),
+            RGB8::new( 3,  4,  5),
+            RGB8::new( 6,  7,  8),
+            RGB8::new( 9, 10, 11),
+            RGB8::new(12, 13, 14),
+            RGB8::new(15, 16, 17),
+            RGB8::new(18, 19, 20),
+            RGB8::new(21, 22, 23),
+            RGB8::new(24, 25, 26),
+            RGB8::new(27, 28, 29),
+            RGB8::new(30, 31, 32),
+            RGB8::new(33, 34, 35),
+            RGB8::new(36, 37, 38),
+            RGB8::new(39, 40, 41),
+            RGB8::new(42, 43, 44),
+            RGB8::new(45, 46, 47),
+            RGB8::new(48, 49, 50),
+            RGB8::new(51, 52, 53),
+            RGB8::new(54, 55, 56),
+            RGB8::new(57, 58, 59),
+            RGB8::new(60, 61, 62),
+            RGB8::new(63, 64, 65),
+            RGB8::new(66, 67, 68),
+            RGB8::new(69, 70, 71),
+            RGB8::new(72, 73, 74),
+            RGB8::new(75, 76, 77),
+            RGB8::new(78, 79, 80),
+            RGB8::new(81, 82, 83),
+        ]);
+        verify_serialization(msg, &[
+            0x02,
+            // LED colors: r0, g0, b0, r1, g1, b1, ...
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+            23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
+            44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+            65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,
+            // crc16_L, crc16_H
+            0xda, 0x88,
+        ]);
     }
 }

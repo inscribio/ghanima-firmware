@@ -1,9 +1,10 @@
 use defmt::Format;
-use ringbuffer::{ConstGenericRingBuffer, RingBufferRead, RingBufferWrite, RingBuffer};
+use ringbuf::{Consumer, Producer};
+use ringbuf::ring_buffer::{RbRef, RbRead, RbWrite};
 use serde::Deserialize;
 
 use crate::hal_ext::dma::{self, DmaRx};
-use super::{PacketId, ReceiveQueue};
+use super::{PacketId, Queue};
 use super::packet::{Packet, PacketDeser, Accumulator, DeserError};
 
 #[derive(Deserialize)]
@@ -17,19 +18,36 @@ impl<P: Packet> Packet for MarkedPacket<P> {
 }
 
 /// Packet reception queue
-pub struct Receiver<P, RX, const N: usize, const B: usize>
+pub struct Receiver<P, RX, RB, const B: usize>
 where
     P: PacketDeser,
     RX: DmaRx,
+    RB: RbRef,
+    RB::Rb: RbWrite<P>,
 {
     rx: RX,
     // Other fields in separate struct to satisfy borrow checker in `on_interrupt`
-    state: RxState<P, N, B>,
+    state: RxState<P, RB, B>,
+}
+
+impl<P, RX, RB, const B: usize> Queue for Receiver<P, RX, RB, B>
+where
+    P: PacketDeser,
+    RX: DmaRx,
+    RB: RbRef,
+    RB::Rb: RbRead<P> + RbWrite<P> + Sized,
+{
+    type Buffer = RB::Rb;
+    type Endpoint = Consumer<P, RB>;
 }
 
 /// Packet receiver logic
-struct RxState<P, const N: usize, const B: usize> {
-    queue: ConstGenericRingBuffer<P, N>,
+struct RxState<P, RB, const B: usize>
+where
+    RB: RbRef,
+    <RB as RbRef>::Rb: RbWrite<P>,
+{
+    queue: Producer<P, RB>,
     accumulator: Accumulator<B>,
     id_counter: Option<PacketId>,
     stats: Stats,
@@ -45,27 +63,18 @@ pub struct Stats {
     pub ignored_retransmissions: u32,
 }
 
-impl<P, RX, const N: usize, const B: usize> ReceiveQueue<P> for Receiver<P, RX, N, B>
+impl<P, RX, RB, const B: usize> Receiver<P, RX, RB, B>
 where
     P: PacketDeser,
     RX: DmaRx,
-{
-    // TODO: is there a way to just expose &mut impl RingBufferRead<P>? Seems impossible via trait
-    fn get(&mut self) -> Option<P> {
-        self.queue().dequeue()
-    }
-}
-
-impl<P, RX, const N: usize, const B: usize> Receiver<P, RX, N, B>
-where
-    P: PacketDeser,
-    RX: DmaRx,
+    RB: RbRef,
+    <RB as RbRef>::Rb: RbWrite<P>,
 {
     /// Create new receiver
-    pub fn new(rx: RX) -> Self {
+    pub fn new(rx: RX, queue: Producer<P, RB>) -> Self {
         Self {
             rx,
-            state: RxState::new(),
+            state: RxState::new(queue),
         }
     }
 
@@ -76,24 +85,20 @@ where
         self.rx.on_interrupt(|r| self.state.push(r, checksum))
     }
 
-    // TODO: or should we use callbacks?
-    /// Read data from the underlying queue
-    pub fn queue(&mut self) -> &mut impl RingBufferRead<P> {
-        &mut self.state.queue
-    }
-
     pub fn stats(&self) -> &Stats {
         &self.state.stats
     }
 }
 
-impl<P, const N: usize, const B: usize> RxState<P, N, B>
+impl<P, RB, const B: usize> RxState<P, RB, B>
 where
     P: PacketDeser,
+    RB: RbRef,
+    <RB as RbRef>::Rb: RbWrite<P>,
 {
-    pub fn new() -> Self {
+    pub fn new(queue: Producer<P, RB>) -> Self {
         Self {
-            queue: ConstGenericRingBuffer::new(),
+            queue,
             accumulator: Accumulator::new(),
             id_counter: None,
             stats: Default::default(),
@@ -124,10 +129,9 @@ where
 
                 if !ignore {
                     self.id_counter = Some(p.id);
-                    if self.queue.is_full() {
+                    if self.queue.push(p.packet).is_err() {
                         inc(&mut self.stats.queue_overflows);
-                    }
-                    self.queue.push(p.packet);
+                    };
                 } else {
                     inc(&mut self.stats.ignored_retransmissions);
                 }

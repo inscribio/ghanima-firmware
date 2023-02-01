@@ -7,6 +7,8 @@
 //! * Optional Joystick support that can act as USB HID mouse or be used as an
 //!   encoder to control analog quantities, like e.g. system volume
 
+#![deny(unused_must_use)]
+
 #![no_std]
 
 // Use std when running tests, see: https://stackoverflow.com/a/28186509

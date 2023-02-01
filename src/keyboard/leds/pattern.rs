@@ -1,5 +1,6 @@
 use rgb::{RGB8, ComponentMap};
 
+use crate::bsp::sides::PerSide;
 use crate::bsp::{NLEDS, sides::BoardSide};
 use crate::keyboard::actions::Inc;
 use crate::utils::CircularIter;
@@ -10,9 +11,8 @@ use super::condition::{KeyboardState, RuleKeys};
 /// Generates LED colors according to current [`LedConfig`]
 pub struct LedController<'a> {
     config: CircularIter<'a, LedConfig>,
-    patterns: [ColorGenerator<'a>; NLEDS],
-    pattern_candidates: [Option<&'a Pattern>; NLEDS],
-    side: BoardSide,
+    patterns: PerSide<[ColorGenerator<'a>; NLEDS]>,
+    pattern_candidates: PerSide<[Option<&'a Pattern>; NLEDS]>,
     brightness: u8,
 }
 
@@ -27,7 +27,7 @@ struct ColorGenerator<'a> {
 /// Abstracts the logic of iterating over subsequent pattern transitions
 struct PatternIter<'a> {
     pattern: &'a Pattern,
-    index: usize,
+    index: usize, // TODO: replace with u8
     rev: bool,
     prev: Option<&'a Transition>,
 }
@@ -35,10 +35,9 @@ struct PatternIter<'a> {
 impl<'a> LedController<'a> {
     pub const INITIAL_BRIGHTNESS: u8 = (u8::MAX as u16 * 2 / 3) as u8;
 
-    pub fn new(side: BoardSide, configurations: &'a LedConfigurations) -> Self {
+    pub fn new(configurations: &'a LedConfigurations) -> Self {
         Self {
             config: CircularIter::new(configurations),
-            side,
             patterns: Default::default(),
             pattern_candidates: Default::default(),
             brightness: Self::INITIAL_BRIGHTNESS,
@@ -51,45 +50,54 @@ impl<'a> LedController<'a> {
         // to update them when keyboard state changed.
         if let Some(state) = state_change {
             // Reset pattern candidates
-            self.pattern_candidates.fill(None);
+            self.pattern_candidates.for_each(|side| side.fill(None));
 
             // Scan the rules that we might consider, rules on end of list overwrite previous ones.
             for rule in self.config.current().iter() {
-                let leds = rule.condition.applies_to(&state, &self.side);
-                // Optimization: avoid iteration over keys when not needed
-                if leds.is_none() {
-                    // Not applicable to any led - skip
-                    continue;
-                } else if leds.is_all() && rule.keys.is_none() {
-                    // Applicable to all leds and to all keys, so just fill whole array
-                    self.pattern_candidates.fill(Some(&rule.pattern));
-                } else {
-                    // More complicated situation - scan all leds
-                    rule.keys.for_each_led(|led_num| {
-                        if leds.is_pressed(led_num) {
-                            self.pattern_candidates[led_num as usize] = Some(&rule.pattern);
-                        }
-                    });
+                for side in BoardSide::EACH {
+                    let leds = rule.condition.applies_to(&state, &side);
+                    // Optimization: avoid iteration over keys when not needed
+                    if leds.is_none() {
+                        // Not applicable to any led - skip
+                    } else if leds.is_all() && rule.keys.is_none() {
+                        // Applicable to all leds and to all keys, so just fill whole array
+                        self.pattern_candidates[side].fill(Some(&rule.pattern));
+                    } else {
+                        // More complicated situation - scan all leds
+                        rule.keys.for_each_led(|led_num| {
+                            if leds.is_pressed(led_num) {
+                                self.pattern_candidates[side][led_num as usize] = Some(&rule.pattern);
+                            }
+                        });
+                    }
                 }
             }
         }
 
-        for led in 0..NLEDS {
-            self.patterns[led].update(time, self.pattern_candidates[led]);
+        for side in BoardSide::EACH {
+            for led in 0..NLEDS {
+                self.patterns[side][led].update(time, self.pattern_candidates[side][led]);
+            }
         }
     }
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
-    pub fn tick(&mut self, time: u32, leds: &mut Leds) {
-        debug_assert_eq!(self.patterns.len(), leds.colors.len());
-        let patterns = self.patterns.iter_mut();
-        let leds = leds.colors.iter_mut();
+    pub fn tick(&mut self, time: u32, leds: &mut PerSide<Leds>) {
+        // use crate::bsp::debug::tasks::trace::run;
+        //
+        // run(|| {
+            for side in BoardSide::EACH {
+                debug_assert_eq!(self.patterns[side].len(), leds[side].colors.len());
+                let patterns = self.patterns[side].iter_mut();
+                let leds = leds[side].colors.iter_mut();
 
-        for (pattern, led) in patterns.zip(leds) {
-            *led = pattern.tick(time)
-                .map(|channel| Self::dimmed(channel, self.brightness))
-                .map(Leds::gamma_correction);
-        }
+                for (pattern, led) in patterns.zip(leds) {
+                    *led = pattern.tick(time)
+                        .map(|channel| Self::dimmed(channel, self.brightness))
+                        .map(Leds::gamma_correction);
+                }
+            }
+        // });
     }
 
     fn dimmed(color: u8, brightness: u8) -> u8 {

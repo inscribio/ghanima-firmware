@@ -18,17 +18,33 @@ pub use packet::Packet;
 pub use receiver::{Receiver, Stats};
 pub use transmitter::Transmitter;
 
+use ringbuf::{Producer, ring_buffer::{RbRef, RbWrite}};
+
 type PacketId = u16;
 
-/// Access to transmitter's queue
-pub trait TransmitQueue<P: Packet> {
-    /// Push packet overwriting oldest one if the queue is full
-    // TODO: return bool/enum to indicate if packet was overwritten
-    fn push(&mut self, packet: P);
+/// Helper trait to simplify specifying ring buffer types for [`Transmitter`]/[`Receiver`]
+pub trait Queue {
+    /// Type of backing buffer
+    type Buffer;
+    /// Type of user endpoint (opposite to the internal endpoint inside [`Transmitter`]/[`Receiver`])
+    type Endpoint;
 }
 
-/// Access to receiver's queue
-pub trait ReceiveQueue<P: Packet> {
-    /// Read oldest packet from the queue
-    fn get(&mut self) -> Option<P>;
+/// Extension trait for [`ringbuf::Producer`]
+pub trait ProducerExt {
+    type Elem;
+
+    /// Push element if there is space available
+    fn try_push(&mut self, msg: impl Into<Self::Elem>) -> bool;
+}
+
+impl<T, R: RbRef> ProducerExt for Producer<T, R>
+where
+    R::Rb: RbWrite<T>,
+{
+    type Elem = T;
+
+    fn try_push(&mut self, msg: impl Into<Self::Elem>) -> bool {
+        self.push(msg.into()).is_ok()
+    }
 }

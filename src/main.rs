@@ -1,3 +1,5 @@
+#![deny(unused_must_use)]
+
 #![no_main]
 #![no_std]
 
@@ -38,8 +40,27 @@ mod app {
     const WATCHDOG_WINDOW_START_MS: u32 = 30;
     const WATCHDOG_WINDOW_END_MS: u32 = 60;
 
+    #[repr(u8)]
+    enum Tasks {
+        Timer = b't',
+        UsbPoll = b'U',
+        Keyboard = b'k',
+        Joystick = b'j',
+        LedsStateUpdate = b's',
+        LedColorsForce = b'f',
+        LedSpiOutput = b'l',
+        DebugReport = b'd',
+        DmaSpiInterrupt = b'A',
+        DmaUartInterrupt = b'B',
+        UartInterrupt = b'u',
+    }
+
     type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
     type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
+    type SerialTxQueue = <SerialTx as ioqueue::Queue>::Endpoint;
+    type SerialRxQueue = <SerialRx as ioqueue::Queue>::Endpoint;
+    type SerialTxBuf = <SerialTx as ioqueue::Queue>::Buffer;
+    type SerialRxBuf = <SerialRx as ioqueue::Queue>::Buffer;
     type Leds = ws2812b::Leds<{ bsp::NLEDS }>;
     type Keyboard = keyboard::Keyboard<{ config::N_LAYERS }>;
 
@@ -47,10 +68,13 @@ mod app {
     // https://github.com/rtic-rs/cortex-m-rtic/blob/master/examples/big-struct-opt.rs
     #[shared]
     struct Shared {
+        board_side: BoardSide,
         usb: &'static mut Usb,
         spi_tx: spi::SpiTx,
         serial_tx: SerialTx,
+        serial_tx_queue: SerialTxQueue,
         serial_rx: SerialRx,
+        serial_rx_queue: SerialRxQueue,
         crc: crc::Crc,
         led_controller: &'static mut keyboard::LedController<'static>,
         led_output: keyboard::LedOutput,
@@ -97,6 +121,8 @@ mod app {
         led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
         serial_tx_buf: [u8; 64] = [0; 64],
         serial_rx_buf: [u8; 128] = [0; 128],
+        serial_tx_queue: MaybeUninit<SerialTxBuf> = MaybeUninit::uninit(),
+        serial_rx_queue: MaybeUninit<SerialRxBuf> = MaybeUninit::uninit(),
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -146,7 +172,7 @@ mod app {
         let dma = dev.DMA1.split(&mut rcc);
 
         // CRC
-        let crc = crc::Crc::new(dev.CRC, &mut rcc);
+        let mut crc = crc::Crc::new(dev.CRC, &mut rcc);
 
         // Determine board side
         let board_side = ifree(|cs| gpiob.pb13.into_floating_input(cs));
@@ -216,14 +242,26 @@ mod app {
         let mut led_output = keyboard::LedOutput::new();
         let led_controller = unsafe {
             cx.local.led_controller.as_mut_ptr().write(
-                keyboard::LedController::new(board_side, &config::CONFIG.leds)
+                keyboard::LedController::new(&config::CONFIG.leds)
             );
             &mut *cx.local.led_controller.as_mut_ptr()
         };
 
+        // I/O queue (need to use this trick anyway because the constructors new/default are non-const).
+        let serial_tx_queue = unsafe {
+            cx.local.serial_tx_queue.as_mut_ptr().write(Default::default());
+            &mut *cx.local.serial_tx_queue.as_mut_ptr()
+        };
+        let serial_rx_queue = unsafe {
+            cx.local.serial_rx_queue.as_mut_ptr().write(Default::default());
+            &mut *cx.local.serial_rx_queue.as_mut_ptr()
+        };
+        let (mut serial_tx_queue, tx_cons) = serial_tx_queue.split_ref();
+        let (rx_prod, serial_rx_queue) = serial_rx_queue.split_ref();
+        let mut serial_tx = keyboard::Transmitter::new(serial_tx, tx_cons);
+        let serial_rx = keyboard::Receiver::new(serial_rx, rx_prod);
+
         // Keyboard
-        let serial_tx = keyboard::Transmitter::new(serial_tx);
-        let serial_rx = keyboard::Receiver::new(serial_rx);
         let keys = keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT);
         let keyboard = unsafe {
             cx.local.keyboard.as_mut_ptr().write(keyboard::Keyboard::new(keys, &config::CONFIG));
@@ -234,19 +272,28 @@ mod app {
         if was_watchdog_reset {
             defmt::error!("Watchdog triggered system reset");
             let ticks = ERROR_LED_DURATION_MS * 1000 / TICK_FREQUENCY_HZ / KEYBOARD_PRESCALER;
-            let leds = led_output.set_overwrite(ticks as u16);
-            for (i, led) in leds.colors.iter_mut().enumerate() {
-                led.r = if i % 4 == 0 { 255 } else { 0 };
-                led.g = 0;
-                led.b = 0;
-            }
+            led_output.set_overwrite(ticks as u16)
+                .for_each(|side| {
+                    for (i, led) in side.colors.iter_mut().enumerate() {
+                        led.r = if i % 4 == 0 { 255 } else { 0 };
+                        led.g = 0;
+                        led.b = 0;
+                    }
+                });
         }
 
         // Send a first transfer ASAP with all LEDs in initial state
         {
-            let colors = led_output.tick(0, led_controller);
-            spi_tx.push(|buf| colors.serialize_to_slice(buf)).map_err(drop).unwrap();
+            led_output.tick(0, led_controller);
+            // Send colors for this side over SPI
+            spi_tx.push(|buf| led_output.current(board_side).serialize_to_slice(buf))
+                .map_err(drop).unwrap();
             spi_tx.start().map_err(drop).unwrap();
+            // Send colors for other side
+            // FIXME: will it work if USB is not ready yet?
+            serial_tx_queue.push(led_output.current(board_side.other()).colors.into())
+                .map_err(drop).unwrap();
+            serial_tx.tick(&mut crc);
         }
 
         if !joy.detect() {
@@ -267,10 +314,13 @@ mod app {
         }
 
         let shared = Shared {
+            board_side,
             usb,
             spi_tx,
             serial_tx,
             serial_rx,
+            serial_tx_queue,
+            serial_rx_queue,
             crc,
             led_controller,
             led_output,
@@ -298,15 +348,17 @@ mod app {
     }
 
     #[task(binds = TIM15, priority = 4, local = [timer, t: u32 = 0], shared = [tick_cnt])]
-    fn tick(mut cx: tick::Context) {
-        debug::tasks::task::enter(b't');
-        cx.shared.tick_cnt.lock(|cnt| cnt.inc());
+    fn tick(cx: tick::Context) {
+        let tick::LocalResources { timer, t } = cx.local;
+        let tick::SharedResources { mut tick_cnt } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::Timer as u8);
+        tick_cnt.lock(|cnt| cnt.inc());
 
         // Clears interrupt flag
-        if cx.local.timer.wait().is_ok() {
+        if timer.wait().is_ok() {
             // Spawn periodic tasks. Ignore error if we're too slow. Don't always compare
             // to 0 to avoid situations that all tasks are being run at the same tick.
-            let t = cx.local.t;
             *t += 1;
 
             if *t % KEYBOARD_PRESCALER == 0 {
@@ -342,11 +394,13 @@ mod app {
     /// On an USB interrput we need to handle all classes and receive/send proper data.
     /// This is always a response to USB host polling because host initializes all transactions.
     #[task(binds = USB, priority = 3, shared = [usb, usb_cnt])]
-    fn usb_poll(mut cx: usb_poll::Context) {
-        debug::tasks::task::enter(b'U');
-        cx.shared.usb_cnt.lock(|cnt| cnt.inc());
+    fn usb_poll(cx: usb_poll::Context) {
+        let usb_poll::SharedResources { mut usb, mut usb_cnt } = cx.shared;
 
-        cx.shared.usb.lock(|usb| {
+        debug::tasks::task::enter(Tasks::UsbPoll as u8);
+        usb_cnt.lock(|cnt| cnt.inc());
+
+        usb.lock(|usb| {
             // UsbDevice.poll()->UsbBus.poll() inspects and clears USB interrupt flags.
             // If there was data packet to any class this will return true.
             let _was_packet = usb.poll();
@@ -357,59 +411,72 @@ mod app {
 
     #[task(
         priority = 2, capacity = 1,
-        shared = [serial_tx, serial_rx, crc, usb, keyboard, keyboard_cnt],
-        local = [prev_leds_update: Option<keyboard::LedsUpdate> = None],
+        shared = [serial_tx, serial_tx_queue, serial_rx_queue, crc, usb, keyboard, keyboard_cnt, led_controller, led_output],
+        local = [prev_leds_update: Option<keyboard::LedControllerUpdate> = None],
     )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
-        debug::tasks::task::enter(b'k');
         let keyboard_tick::SharedResources {
-            serial_tx: mut tx,
-            serial_rx: rx,
+            serial_tx,
+            serial_tx_queue,
+            serial_rx_queue,
             crc,
             mut usb,
             mut keyboard,
             mut keyboard_cnt,
+            mut led_controller,
+            mut led_output,
         } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::Keyboard as u8);
         keyboard_cnt.lock(|cnt| cnt.inc());
 
         // Bootloader reboot may happen here
         usb.lock(|usb| usb.dfu.tick(KEYBOARD_PRESCALER.try_into().unwrap()));
 
         // Run main keyboard logic
-        let leds_update = keyboard.lock(|keyboard| keyboard.tick((&mut tx, rx), usb));
+        let leds_update = keyboard.lock(|keyboard| keyboard.tick(serial_tx_queue, serial_rx_queue, usb));
 
         // Transmit any serial messages
-        (tx, crc).lock(|tx, crc| tx.tick(crc));
+        (serial_tx, crc).lock(|tx, crc| tx.tick(crc));
 
         // Send LED patterns update for processing later
-        if update_leds_state::spawn(t, leds_update).is_err() {
-            defmt::warn!("Spawn failed: update_leds_state");
+        match leds_update {
+            keyboard::LedsUpdate::Controller(update) => {
+                led_controller.lock(|ledctl| update.apply(t, ledctl));
+                led_output.lock(|out| out.use_from_controller());
+            },
+            keyboard::LedsUpdate::FromOther(colors) => {
+                if let Some(colors) = colors {
+                    led_output.lock(|out| out.use_from_other_half(&colors));
+                }
+            },
         }
 
         debug::tasks::task::exit();
     }
 
     #[task(priority = 1, shared = [keyboard, joystick_cnt], local = [joy, certainty: u8 = 0])]
-    fn read_joystick(mut cx: read_joystick::Context) {
-        debug::tasks::task::enter(b'j');
-        cx.shared.joystick_cnt.lock(|cnt| cnt.inc());
+    fn read_joystick(cx: read_joystick::Context) {
+        let read_joystick::LocalResources { joy, certainty } = cx.local;
+        let read_joystick::SharedResources { mut keyboard, mut joystick_cnt } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::Joystick as u8);
+        joystick_cnt.lock(|cnt| cnt.inc());
 
         const MAX: u8 = 10;
         const MARGIN: u8 = 2;
 
-        let certainty = cx.local.certainty;
-
         // When we are not certain that joystick exists use zeroes
         let xy = if *certainty >= MAX - MARGIN {
-            cx.local.joy.read_xy()
+            joy.read_xy()
         } else {
             (0, 0)
         };
-        cx.shared.keyboard.lock(|kb| kb.update_joystick(xy));
+        keyboard.lock(|kb| kb.update_joystick(xy));
 
         // Update joystick detection knowledge, do this _after_ ADC reading to avoid
         // messing up the readings.
-        if cx.local.joy.detect() {
+        if joy.detect() {
             *certainty = (*certainty + 1).min(MAX);
         } else {
             *certainty = certainty.saturating_sub(1);
@@ -418,40 +485,61 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    /// Apply state updates from keyboard_tick
-    ///
-    /// This has the same priority as update_leds but we use a queue to eventually apply all
-    /// the updates.
-    #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
-    fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedsUpdate) {
-        debug::tasks::task::enter(b's');
-        cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
+    // /// Apply state updates from keyboard_tick
+    // ///
+    // /// This has the same priority as update_leds but we use a queue to eventually apply all
+    // /// the updates.
+    // #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
+    // fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedControllerUpdate) {
+    //     debug::tasks::task::enter(Tasks::LedsStateUpdate as u8);
+    //     cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
+    //
+    //     cx.shared.led_controller.lock(|ledctl| update.apply(t, ledctl));
+    //     cx.shared.led_output.lock(|out| out.use_from_controller());
+    //
+    //     debug::tasks::task::exit();
+    // }
+    //
+    // #[task(priority = 1, shared = [led_output])]
+    // fn force_led_colors(mut cx: force_led_colors::Context, colors: LedColors) {
+    //     debug::tasks::task::enter(Tasks::LedColorsForce as u8);
+    //     // TODO: todo!("cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());");
+    //
+    //     cx.shared.led_output.lock(|out| out.use_from_other_half(&colors));
+    //
+    //     debug::tasks::task::exit();
+    // }
 
-        cx.shared.led_controller.lock(|ledctl| update.apply(t, ledctl));
-        cx.shared.led_output.lock(|out| out.use_from_controller());
-
-        debug::tasks::task::exit();
-    }
-
-    #[task(priority = 1, shared = [spi_tx, led_controller, led_output, leds_tick_cnt])]
+    #[task(priority = 1, shared = [&board_side, spi_tx, serial_tx_queue, led_controller, led_output, leds_tick_cnt])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
-        debug::tasks::task::enter(b'l');
         let leds_tick::SharedResources {
+            board_side,
             mut spi_tx,
+            serial_tx_queue,
             led_controller,
             mut led_output,
             mut leds_tick_cnt,
         } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::LedSpiOutput as u8);
         leds_tick_cnt.lock(|cnt| cnt.inc());
 
         // Generate LED colors
         (&mut led_output, led_controller).lock(|out, ctl| {
             debug::tasks::trace::run(|| out.tick(t, ctl));
+            // out.tick(t, ctl);
+        });
+
+        // Send colors for other side over UART, drop message if queue is full
+        (&mut led_output, serial_tx_queue).lock(|out, tx| {
+            if out.using_from_controller() {
+                tx.try_push(out.current(board_side.other()));
+            }
         });
 
         // Send in separate lock to decrease time when serial tx is locked
         led_output.lock(|out| {
-            let colors = out.current();
+            let colors = out.current(*board_side);
 
             // Prepare data to be sent and start DMA transfer.
             // `leds` must be kept locked because we're serializing from reference.
@@ -468,7 +556,7 @@ mod app {
                     spi_tx.start()
                         .map_err(drop)
                         .expect("If we were able to serialize we must be able to start!");
-                    debug::tasks::trace::start();
+                    // debug::tasks::trace::start();
                 }
             });
         });
@@ -494,11 +582,26 @@ mod app {
         ],
         local = [stats: Option<ioqueue::Stats> = None]
     )]
-    fn debug_report(mut cx: debug_report::Context) {
-        debug::tasks::task::enter(b'd');
+    fn debug_report(cx: debug_report::Context) {
+        let debug_report::LocalResources { stats } = cx.local;
+        let debug_report::SharedResources {
+            mut serial_rx,
+            tick_cnt,
+            usb_cnt,
+            keyboard_cnt,
+            joystick_cnt,
+            leds_update_cnt,
+            leds_tick_cnt,
+            dma_spi_cnt,
+            dma_uart_cnt,
+            uart_cnt,
+            idle_cnt
+        } = cx.shared;
 
-        let old = cx.local.stats.get_or_insert_with(|| Default::default());
-        let new = cx.shared.serial_rx.lock(|rx| {
+        debug::tasks::task::enter(Tasks::DebugReport as u8);
+
+        let old = stats.get_or_insert_with(|| Default::default());
+        let new = serial_rx.lock(|rx| {
             rx.stats().clone()
         });
         if &new != old {
@@ -507,18 +610,8 @@ mod app {
         }
 
         if cfg!(feature = "task-counters") {
-            (
-                cx.shared.tick_cnt,
-                cx.shared.usb_cnt,
-                cx.shared.keyboard_cnt,
-                cx.shared.joystick_cnt,
-                cx.shared.leds_update_cnt,
-                cx.shared.leds_tick_cnt,
-                cx.shared.dma_spi_cnt,
-                cx.shared.dma_uart_cnt,
-                cx.shared.uart_cnt,
-                cx.shared.idle_cnt,
-            ).lock(|tick, usb, keyboard, joystick, leds_update, leds_tick, dma_spi, dma_uart, uart, idle| {
+            (tick_cnt, usb_cnt, keyboard_cnt, joystick_cnt, leds_update_cnt, leds_tick_cnt, dma_spi_cnt, dma_uart_cnt, uart_cnt, idle_cnt)
+                .lock(|tick, usb, keyboard, joystick, leds_update, leds_tick, dma_spi, dma_uart, uart, idle| {
                     defmt::info!("tick={=u16} usb={=u16} kbd={=u16} joy={=u16} ledsU={=u16} ledsT={=u16} dma_spi={=u16} dma_uart={=u16} uart={=u16} idle={=u16}",
                         tick.pop(), usb.pop(), keyboard.pop(), joystick.pop(), leds_update.pop(), leds_tick.pop(), dma_spi.pop(), dma_uart.pop(), uart.pop(), idle.pop(),
                     );
@@ -533,29 +626,33 @@ mod app {
     }
 
     #[task(binds = DMA1_CH4_5_6_7, priority = 4, shared = [spi_tx, dma_spi_cnt])]
-    fn dma_spi_callback(mut cx: dma_spi_callback::Context) {
-        debug::tasks::task::enter(b'A');
-        cx.shared.dma_spi_cnt.lock(|cnt| cnt.inc());
+    fn dma_spi_callback(cx: dma_spi_callback::Context) {
+        let dma_spi_callback::SharedResources { mut spi_tx, mut dma_spi_cnt } = cx.shared;
 
-        cx.shared.spi_tx.lock(|spi_tx| {
+        debug::tasks::task::enter(Tasks::DmaSpiInterrupt as u8);
+        dma_spi_cnt.lock(|cnt| cnt.inc());
+
+        spi_tx.lock(|spi_tx|
             spi_tx.on_interrupt()
                 .as_option()
                 .transpose()
-                .expect("Unexpected interrupt");
-        });
+                .expect("Unexpected interrupt")
+        );
 
-        debug::tasks::trace::end();
+        // debug::tasks::trace::end();
         debug::tasks::task::exit();
     }
 
     #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx, dma_uart_cnt])]
-    fn dma_uart_callback(mut cx: dma_uart_callback::Context) {
-        debug::tasks::task::enter(b'B');
-        cx.shared.dma_uart_cnt.lock(|cnt| cnt.inc());
+    fn dma_uart_callback(cx: dma_uart_callback::Context) {
+        let dma_uart_callback::SharedResources { crc, serial_tx, serial_rx, mut dma_uart_cnt } = cx.shared;
 
-        let tx = cx.shared.serial_tx;
-        let rx = cx.shared.serial_rx;
-        let crc = cx.shared.crc;
+        debug::tasks::task::enter(Tasks::DmaUartInterrupt as u8);
+        dma_uart_cnt.lock(|cnt| cnt.inc());
+
+        let tx = serial_tx;
+        let rx = serial_rx;
+        let crc = crc;
         (tx, rx, crc).lock(|tx, rx, mut crc| {
             let rx_done = rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
@@ -577,12 +674,14 @@ mod app {
     }
 
     #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, uart_cnt])]
-    fn uart_interrupt(mut cx: uart_interrupt::Context) {
-        debug::tasks::task::enter(b'u');
-        cx.shared.uart_cnt.lock(|cnt| cnt.inc());
+    fn uart_interrupt(cx: uart_interrupt::Context) {
+        let uart_interrupt::SharedResources { crc, serial_rx, mut uart_cnt } = cx.shared;
 
-        let rx = cx.shared.serial_rx;
-        let crc = cx.shared.crc;
+        debug::tasks::task::enter(Tasks::UartInterrupt as u8);
+        uart_cnt.lock(|cnt| cnt.inc());
+
+        let rx = serial_rx;
+        let crc = crc;
         (rx, crc).lock(|rx, mut crc| {
             rx.on_interrupt(&mut crc)
                 .as_option().transpose().expect("Unexpected interrupt");
@@ -592,10 +691,13 @@ mod app {
     }
 
     #[idle(local = [watchdog], shared = [idle_cnt])]
-    fn idle(mut cx: idle::Context) -> ! {
+    fn idle(cx: idle::Context) -> ! {
+        let idle::LocalResources { watchdog } = cx.local;
+        let idle::SharedResources { mut idle_cnt } = cx.shared;
+
         loop {
-            cx.shared.idle_cnt.lock(|cnt| cnt.inc());
-            cx.local.watchdog.maybe_feed();
+            idle_cnt.lock(|cnt| cnt.inc());
+            watchdog.maybe_feed();
 
             if cfg!(feature = "debug-tasks") {
                 debug::tasks::task::idle();

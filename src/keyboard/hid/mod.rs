@@ -1,7 +1,9 @@
 mod keyboard;
 
+use core::mem::MaybeUninit;
+
 use frunk::HList;
-use ringbuffer::{ConstGenericRingBuffer, RingBufferWrite, RingBufferExt, RingBufferRead, RingBuffer};
+use ringbuf::{Rb, ring_buffer::RbBase, LocalRb};
 use usb_device::{UsbError, class_prelude::*};
 use usbd_human_interface_device::hid_class;
 
@@ -34,16 +36,25 @@ pub fn new_hid_class<B: UsbBus>(bus: &UsbBusAllocator<B>) -> HidClass<B> {
 /// in spikes, so adding a small FIFO queue in between allows to minimize
 /// number of missed reports.
 pub struct HidReportQueue<R, const N: usize> {
-    queue: ConstGenericRingBuffer<R, N>,
+    queue: LocalRb<R, [MaybeUninit<R>; N]>,
     missed: bool,
 }
 
 impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
     pub fn new() -> Self {
         Self {
-            queue: ConstGenericRingBuffer::new(),
+            queue: Default::default(),
             missed: false,
         }
+    }
+
+    fn back(&self) -> Option<&R> {
+        self.queue.iter().next()
+    }
+
+    pub fn peek(&self) -> Option<&R> {
+        // FIXME: this iterates over all elements, we should be able to just index the last one directly!
+        self.queue.iter().last()
     }
 
     /// Push a report to queue if it changed
@@ -59,7 +70,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
         // Define trait Report that would optionally provide merge(other).
 
         // Add new report only if it is different than the previous one or queue is empty.
-        let add = self.queue.back()
+        let add = self.back()
             .map(|prev| &report != prev)
             .unwrap_or(true);
 
@@ -71,7 +82,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
             // report, we should be fine if we ensure to at least 1 report with non-full
             // queue (this means that reports are not changing now).
             self.missed = self.queue.is_full();
-            self.queue.push(report);
+            self.queue.push_overwrite(report);
         }
     }
 
@@ -88,7 +99,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
     pub fn send<F>(&mut self, write_report: F)
         where F: FnOnce(&R) -> Result<usize, UsbError>
     {
-        if let Some(report) = self.queue.peek() {
+        if let Some(report) = self.peek() {
             // Call to .write() will return Ok(0) if the previous report hasn't been sent yet,
             // else number of data written. Any other Err should never happen - would be
             // BufferOverflow or error from UsbBus implementation (like e.g. InvalidEndpoint).
@@ -101,7 +112,7 @@ impl<R: PartialEq, const N: usize> HidReportQueue<R, N> {
                 .expect("Bug in class implementation") > 0;
             if ok {
                 // Consume the report on success
-                self.queue.skip();
+                self.queue.skip(1);
             }
         }
     }
