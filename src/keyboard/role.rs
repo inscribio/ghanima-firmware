@@ -1,5 +1,6 @@
 use smlang::statemachine;
 use serde::{Serialize, Deserialize};
+use postcard::experimental::max_size::MaxSize;
 use defmt::Format;
 
 use crate::bsp::sides::BoardSide;
@@ -7,7 +8,7 @@ use crate::bsp::sides::BoardSide;
 pub type Fsm = StateMachine<Context>;
 
 /// Role negotiation messages
-#[derive(Serialize, Deserialize, Format, PartialEq)]
+#[derive(Serialize, Deserialize, MaxSize, Format, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 pub enum Message {
     /// Used to request establishing master role when USB is on

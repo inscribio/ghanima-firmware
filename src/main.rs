@@ -19,7 +19,7 @@ mod app {
     use super::lib;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
     use lib::hal_ext::{crc, spi, reboot, uart, watchdog, dma::{DmaSplit, DmaTx}};
-    use lib::{keyboard, config, ioqueue};
+    use lib::{keyboard, config, ioqueue::{self, ProducerExt as _}};
 
     // MCU clock frequencies
     const SYSCLK_MHZ: u32 = 48;
@@ -119,8 +119,8 @@ mod app {
         keyboard: MaybeUninit<keyboard::Keyboard<{ config::N_LAYERS }>> = MaybeUninit::uninit(),
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
-        serial_tx_buf: [u8; 64] = [0; 64],
-        serial_rx_buf: [u8; 128] = [0; 128],
+        serial_tx_buf: [u8; SerialTx::MAX_PACKET_SIZE] = [0; SerialTx::MAX_PACKET_SIZE],
+        serial_rx_buf: [u8; SerialRx::MAX_PACKET_SIZE * 2] = [0; SerialRx::MAX_PACKET_SIZE * 2], // more for rx accumulation
         serial_tx_queue: MaybeUninit<SerialTxBuf> = MaybeUninit::uninit(),
         serial_rx_queue: MaybeUninit<SerialRxBuf> = MaybeUninit::uninit(),
     ])]

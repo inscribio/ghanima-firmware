@@ -4,6 +4,11 @@ use core::convert::Infallible;
 
 use serde::{Serialize, Deserialize};
 
+/// Const-evaluation of max(a,b): https://stackoverflow.com/a/53646925
+pub const fn max(a: usize, b: usize) -> usize {
+    [a, b][(a < b) as usize]
+}
+
 /// Helper trait to resolve [`Result`]s with unreachable [`Err`] variant
 pub trait InfallibleResult<T> {
     /// Take the Ok value of an infallible [`Result`]

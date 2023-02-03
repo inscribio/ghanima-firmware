@@ -1,14 +1,15 @@
+use postcard::experimental::max_size::MaxSize;
 use ringbuf::ring_buffer::{RbRef, RbRead, RbWrite};
 use serde::Serialize;
 use ringbuf::{Consumer, Producer};
 
 use super::{PacketId, Queue};
-use super::packet::{Packet, PacketSer};
+use super::packet::{Packet, PacketSer, PacketMaxSize};
 use crate::hal_ext::dma::{self, DmaTx};
 
 /// Packet with an ID that allows to detect retransmissions
-#[derive(Serialize)]
-struct MarkedPacket<'a, P: Packet> {
+#[derive(Serialize, MaxSize)]
+struct MarkedPacket<'a, P: Packet + 'a> {
     id: PacketId,
     #[serde(borrow)]
     packet: &'a P,
@@ -42,6 +43,16 @@ where
 {
     type Buffer = RB::Rb;
     type Endpoint = Producer<P, RB>;
+}
+
+impl<'a, P, TX, RB> Transmitter<P, TX, RB>
+where
+    P: PacketSer + MaxSize + 'a,
+    TX: DmaTx,
+    RB: RbRef,
+    RB::Rb: RbRead<P>,
+{
+    pub const MAX_PACKET_SIZE: usize = MarkedPacket::<'a, P>::PACKET_MAX_SIZE;
 }
 
 impl<P, TX, RB> Transmitter<P, TX, RB>
@@ -116,7 +127,6 @@ mod tests {
     use ringbuf::StaticRb;
 
     use super::*;
-    use core::mem::MaybeUninit;
     use std::vec::Vec;
     use std::cell::Cell;
     use crate::hal_ext::dma::mock::DmaTxMock;
@@ -132,8 +142,6 @@ mod tests {
     impl Packet for Message {
         type Checksum = Crc32;
     }
-
-    type Tx<TX, const N: usize> = Transmitter<Message, TX, [MaybeUninit<Message>; N]>;
 
     #[test]
     fn send_single() {

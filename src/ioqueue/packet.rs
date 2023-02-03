@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use serde::{Serialize, Deserialize};
-use postcard::ser_flavors::{Cobs, Slice};
+use postcard::{ser_flavors::{Cobs, Slice}, experimental::max_size::MaxSize};
 
 use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 
@@ -15,10 +15,27 @@ pub trait Packet {
     type Checksum: ChecksumGen;
 }
 
+/// Imitates [`MaxSize`] as we cannot implement it with generics because it is foreign trait
+pub trait PacketMaxSize {
+    /// Maximum encoded size
+    const PACKET_MAX_SIZE: usize;
+}
+
 // Automatically implement all the sub-traits of Packet
 impl<P: Packet + Serialize> PacketSer for P {}
 impl<P: Packet + for<'de> Deserialize<'de>> PacketDeser for P {}
 impl<'de, P: Packet + Deserialize<'de>> PacketDeserRef<'de> for P {}
+
+const fn cobs_max_encoding_length(source_len: usize) -> usize {
+    source_len + (source_len / 254) + if source_len % 254 > 0 { 1 } else { 0 }
+}
+
+impl<P: Packet + MaxSize> PacketMaxSize for P {
+    const PACKET_MAX_SIZE: usize = cobs_max_encoding_length(
+        P::POSTCARD_MAX_SIZE + // packet data encoded with postcard
+        core::mem::size_of::<<<P as Packet>::Checksum as ChecksumGen>::Output>() // appended checksum
+    ) + 1; // final 0x00 byte used as COBS delimiter
+}
 
 /// Serializable packet
 pub trait PacketSer: Packet + Serialize {
@@ -268,7 +285,7 @@ pub mod tests {
         }).collect()
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, MaxSize)]
     struct Message {
         a: u32,
         b: u16,
@@ -277,6 +294,16 @@ pub mod tests {
 
     impl Packet for Message {
         type Checksum = Crc32;
+    }
+
+    #[test]
+    fn max_encoded_size() {
+        let mut crc = Crc32::new();
+        let mut buf = [0u8; 16];
+        // Postcard uses varints so max size is for largest values: https://postcard.jamesmunns.com/wire-format.html
+        let msg = Message { a: 0xffffffff, b: 0xffff, c: 0xff };
+        let data = msg.to_slice(&mut crc, &mut buf).unwrap();
+        assert!(data.len() <= Message::PACKET_MAX_SIZE);
     }
 
     #[test]

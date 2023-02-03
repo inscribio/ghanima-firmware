@@ -1,7 +1,9 @@
 use serde::{Serialize, Deserialize};
 use serde_big_array::BigArray;
+use postcard::experimental::max_size::MaxSize;
 use keyberon::layout::Event;
 
+use crate::utils::max;
 use crate::{hal_ext::crc::Crc, bsp::LedColors};
 use crate::ioqueue;
 use super::role;
@@ -21,11 +23,20 @@ pub enum Message {
 }
 
 // Work around Event not implementing Serialize: https://serde.rs/remote-derive.html
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, MaxSize)]
 #[serde(remote = "Event")]
 enum EventDef {
     Press(u8, u8),
     Release(u8, u8),
+}
+
+// Manual implementation on the whole enum because we have foreign types in variants
+// that don't implement MaxSize so we cannot even implement it for them.
+impl MaxSize for Message {
+    const POSTCARD_MAX_SIZE: usize = 1 + max(
+        max(role::Message::POSTCARD_MAX_SIZE, EventDef::POSTCARD_MAX_SIZE),
+        3 * 28,
+    );
 }
 
 impl ioqueue::Packet for Message {
@@ -61,12 +72,25 @@ mod tests {
     use rgb::RGB8;
 
     use super::*;
-    use crate::bsp::sides::PerSide;
-    use crate::keyboard::BrightnessUpdate;
-    use crate::keyboard::keys::PressedLedKeys;
-    use crate::keyboard::leds::KeyboardState;
-    use crate::keyboard::hid::KeyboardLeds;
     use crate::ioqueue::packet::PacketSer;
+
+    #[test]
+    fn message_max_size() {
+        let msgs = [
+            Message::Role(role::Message::EstablishMaster),
+            Message::Role(role::Message::ReleaseMaster),
+            Message::Role(role::Message::Ack),
+            Message::Key(Event::Press(10, 11)),
+            Message::Key(Event::Release(10, 11)),
+            Message::Leds(LedColors::default()),
+        ];
+        let mut buf = [0; 256];
+
+        for msg in msgs {
+            let len = postcard::to_slice(&msg, &mut buf).unwrap().len();
+            assert!(len <= Message::POSTCARD_MAX_SIZE);
+        }
+    }
 
     fn verify_serialization(msg: Message, expected: &[u8]) {
         let mut buf = [0; 89];

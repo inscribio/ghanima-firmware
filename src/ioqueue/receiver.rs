@@ -1,13 +1,14 @@
 use defmt::Format;
+use postcard::experimental::max_size::MaxSize;
 use ringbuf::{Consumer, Producer};
 use ringbuf::ring_buffer::{RbRef, RbRead, RbWrite};
 use serde::Deserialize;
 
 use crate::hal_ext::dma::{self, DmaRx};
 use super::{PacketId, Queue};
-use super::packet::{Packet, PacketDeser, Accumulator, DeserError};
+use super::packet::{Packet, PacketDeser, Accumulator, DeserError, PacketMaxSize};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, MaxSize)]
 struct MarkedPacket<P: Packet> {
     id: PacketId,
     packet: P,
@@ -61,6 +62,16 @@ pub struct Stats {
     pub checksum_errors: u32,
     pub deser_errors: u32,
     pub ignored_retransmissions: u32,
+}
+
+impl<P, RX, RB, const B: usize> Receiver<P, RX, RB, B>
+where
+    P: PacketDeser + MaxSize,
+    RX: DmaRx,
+    RB: RbRef,
+    <RB as RbRef>::Rb: RbWrite<P>,
+{
+    pub const MAX_PACKET_SIZE: usize = MarkedPacket::<P>::PACKET_MAX_SIZE;
 }
 
 impl<P, RX, RB, const B: usize> Receiver<P, RX, RB, B>
