@@ -1,15 +1,25 @@
 # Build dir
 /target/
+# Python virtual env
+/venv/
 # Temporary dev files
 /tmp/
+# Temporary third-party repos
+/keyberon/
+/stm32-usbd/
+/type-sizes/
+/usbd-dfu-rt/
+/usbd-hid/
+/usbd-human-interface-device/
 
-# Local config
+# Local config files, tmp files
 .envrc
 .ignore
-
-# Map files
-/*.map
-
 # Misc
 /.nvim/
 /schema.json
+
+# Unwanted files - mapfiles, binary, etc.
+/*.map
+*.bin
+/renode/*.svd
