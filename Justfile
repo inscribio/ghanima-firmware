@@ -31,6 +31,9 @@ gdb *ARGS:
     cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
     cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit
 
+gdb-postmortem *ARGS:
+    cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit-postmortem
+
 ### Tests ###
 
 # Run firmware tests
@@ -48,3 +51,8 @@ watch-test *ARGS:
 # Continuously run firmware-config tests
 watch-test-config *ARGS:
     cd config && {{config-test-env}} cargo watch -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
+
+# Run tests in GDB to debug panics, use `just test` to find TEST_BIN path (target/...)
+test-gdb TEST_BIN TEST_NAME:
+    DEFMT_LOG=off gdb -ex "break rust_panic" -ex "run" --args {{TEST_BIN}} {{TEST_NAME}} --nocapture
+

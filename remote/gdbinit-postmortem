@@ -1,0 +1,18 @@
+# vim: set ft=gdb:
+
+# target extended-remote :3333
+target extended-remote | openocd -f openocd.cfg -f openocd_gdb_pipe.cfg
+
+# pass executable - required by VSCode cppdbg
+file ../target/thumbv6m-none-eabi/release/ghanima
+
+# print demangled symbols
+set print asm-demangle on
+
+# set backtrace limit to not have infinite backtrace loops
+set backtrace limit 32
+
+# detect unhandled exceptions, hard faults and panics
+tbreak DefaultHandler
+tbreak HardFault
+tbreak rust_begin_unwind
