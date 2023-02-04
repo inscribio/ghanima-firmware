@@ -56,7 +56,7 @@ mod app {
     }
 
     type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
-    type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 32>;
+    type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 128>;
     type SerialTxQueue = <SerialTx as ioqueue::Queue>::Endpoint;
     type SerialRxQueue = <SerialRx as ioqueue::Queue>::Endpoint;
     type SerialTxBuf = <SerialTx as ioqueue::Queue>::Buffer;
