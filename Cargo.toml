@@ -102,6 +102,7 @@ usbd-human-interface-device = { git = "https://github.com/jedrzejboczar/usbd-hum
 assert_float_eq = "1.1"
 crc = "3.0"
 gnuplot = "0.0.37"
+rand = "0.8"
 
 [build-dependencies]
 ghanima-config = { path = "./config" }

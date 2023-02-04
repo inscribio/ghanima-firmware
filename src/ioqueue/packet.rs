@@ -189,8 +189,8 @@ impl<const N: usize> Accumulator<N> {
             // Include sentinel in the taken part
             let (take, release) = data.split_at(n + 1);
 
-            // Just drop any data if it doesn't fit
-            if (self.head + n) > N {
+            // Just drop all data if it doesn't fit
+            if (self.head + n) >= N {
                 self.head = 0;
                 return FeedResult::OverFull(release);
             }
@@ -365,6 +365,39 @@ pub mod tests {
             r => panic!("Unexpected result: {:02x?}", r),
         };
         assert!(matches!(acc.feed::<Message>(&mut crc, buf), FeedResult::Consumed));
+    }
+
+    #[ignore]
+    #[test]
+    fn accumulator_stress() {
+        use rand::prelude::*;
+
+        let mut crc = Crc32::new();
+        let mut acc = Accumulator::<31>::new();
+        let mut data = Vec::<u8>::new();
+        let mut rng = thread_rng();
+        for _ in 0..100 {
+            data.clear();
+            for _ in 0..10000 {
+                data.push(rng.gen());
+            }
+
+            let mut buf = data.as_slice();
+            while !buf.is_empty()  {
+                buf = match acc.feed::<Message>(&mut crc, buf) {
+                    FeedResult::Success { msg, remaining } => {
+                        println!("Found message: {:?}", msg);
+                        remaining
+                    },
+                    FeedResult::Consumed => &[],
+                    FeedResult::OverFull(r) => { println!("OverFull"); r },
+                    FeedResult::CobsDecodingError(r) => { println!("CobsDecodingError"); r },
+                    FeedResult::ChecksumError(r) => { println!("ChecksumError"); r },
+                    FeedResult::DeserError(r) => { println!("DeserError"); r },
+                };
+                println!("Remaining: {}", buf.len());
+            }
+        }
     }
 
     #[test]
