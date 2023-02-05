@@ -14,13 +14,14 @@ pub struct LedController<'a> {
     patterns: PerSide<[ColorGenerator<'a>; NLEDS]>,
     pattern_candidates: PerSide<[Option<&'a Pattern>; NLEDS]>,
     brightness: u8,
+    last_time: Option<u32>, // for calculating time delta from last tick
 }
 
 /// Generates the color for a single LED depending on current time
 #[derive(Default)]
 struct ColorGenerator<'a> {
     pattern: Option<PatternIter<'a>>,
-    start_time: u32,
+    remaining_time: u16,  // down-counter from transition.duration
     once_should_reset: bool,
 }
 
@@ -41,10 +42,21 @@ impl<'a> LedController<'a> {
             patterns: Default::default(),
             pattern_candidates: Default::default(),
             brightness: Self::INITIAL_BRIGHTNESS,
+            last_time: None,
         }
     }
 
-    /// Update currently applicable patterns based on current time and keyboard state changes
+    fn next_time_delta(&mut self, time: u32) -> u16 {
+        let time_delta = self.last_time
+            .map(|last| time.wrapping_sub(last)) // handle integer wrapping
+            .unwrap_or(0) // assume delta 0 on first run
+            .try_into() // handle case when >u16 even though it is very unlikely
+            .unwrap_or(u16::MAX);
+        self.last_time = Some(time);
+        time_delta
+    }
+
+    /// Update currently applicable patterns based on keyboard state changes
     pub fn update_patterns(&mut self, time: u32, state_change: Option<KeyboardState>) {
         // Updating currently used patterns is costly (>500 us), but we only need
         // to update them when keyboard state changed.
@@ -74,30 +86,28 @@ impl<'a> LedController<'a> {
             }
         }
 
+        let time_delta = self.next_time_delta(time);
         for side in BoardSide::EACH {
             for led in 0..NLEDS {
-                self.patterns[side][led].update(time, self.pattern_candidates[side][led]);
+                self.patterns[side][led].update(time_delta, self.pattern_candidates[side][led]);
             }
         }
     }
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
     pub fn tick(&mut self, time: u32, leds: &mut PerSide<Leds>) {
-        // use crate::bsp::debug::tasks::trace::run;
-        //
-        // run(|| {
-            for side in BoardSide::EACH {
-                debug_assert_eq!(self.patterns[side].len(), leds[side].colors.len());
-                let patterns = self.patterns[side].iter_mut();
-                let leds = leds[side].colors.iter_mut();
+        let time_delta = self.next_time_delta(time);
+        for side in BoardSide::EACH {
+            debug_assert_eq!(self.patterns[side].len(), leds[side].colors.len());
+            let patterns = self.patterns[side].iter_mut();
+            let leds = leds[side].colors.iter_mut();
 
-                for (pattern, led) in patterns.zip(leds) {
-                    *led = pattern.tick(time)
-                        .map(|channel| Self::dimmed(channel, self.brightness))
-                        .map(Leds::gamma_correction);
-                }
+            for (pattern, led) in patterns.zip(leds) {
+                *led = pattern.tick(time_delta)
+                    .map(|channel| Self::dimmed(channel, self.brightness))
+                    .map(Leds::gamma_correction);
             }
-        // });
+        }
     }
 
     fn dimmed(color: u8, brightness: u8) -> u8 {
@@ -125,15 +135,22 @@ impl<'a> LedController<'a> {
 
 impl<'a> ColorGenerator<'a> {
     /// Set new pattern and reset its start time
-    fn reset(&mut self, time: u32, pattern: Option<&'a Pattern>) {
+    fn reset(&mut self, pattern: Option<&'a Pattern>) {
         self.pattern = pattern.map(PatternIter::new);
-        self.start_time = time;
         self.once_should_reset = false;
+        self.remaining_time = Self::initial_remaining_time(self.pattern.as_ref());
+    }
+
+    fn initial_remaining_time(pattern_iter: Option<&PatternIter<'a>>) -> u16 {
+        pattern_iter
+            .and_then(|piter| piter.curr())
+            .map(|t| t.duration)
+            .unwrap_or(0)
     }
 
     /// Update pattern if it is different than the current one
     // TODO: remove time param, use Option<start_time>, set Some in tick(), optimize LedController update
-    pub fn update(&mut self, time: u32, pattern: Option<&'a Pattern>) {
+    pub fn update(&mut self, time_delta: u16, pattern: Option<&'a Pattern>) {
         let keep = match (self.pattern.as_ref(), pattern) {
             (Some(this), Some(other)) => {
                 // Compare patterns by pointer address to determine if they are different.
@@ -167,22 +184,29 @@ impl<'a> ColorGenerator<'a> {
             (None, Some(_)) => false,
         };
         if !keep {
-            self.reset(time, pattern);
+            self.reset(pattern);
+        } else if let Some(pattern) = self.pattern.as_mut() {
+            Self::advance_pattern(&mut self.remaining_time, time_delta, pattern);
         }
     }
 
     /// Advance transitions until the one that should be running now
-    fn advance_pattern(start_time: &mut u32, curr_time: u32, pattern: &mut PatternIter<'a>) {
+    fn advance_pattern(remaining_time: &mut u16, mut time_delta: u16, pattern: &mut PatternIter<'a>) {
         while let Some(transition) = pattern.curr() {
             // Duration 0 means that this is endless transition
             if transition.duration == 0 {
                 return;
             }
-            if curr_time < *start_time + transition.duration as u32 {
+            if time_delta < *remaining_time {
+                // don't change to next transition, just decrease remaining time for this one
+                *remaining_time = *remaining_time - time_delta;
                 break;
+            } else {
+                // next transition, subtract remaining time for this transition from time delta
+                time_delta -= *remaining_time;
+                pattern.advance();
+                *remaining_time = Self::initial_remaining_time(Some(pattern));
             }
-            *start_time += transition.duration as u32;
-            pattern.advance();
         }
     }
 
@@ -208,7 +232,7 @@ impl<'a> ColorGenerator<'a> {
     }
 
     /// Calculate color at current time
-    fn get_color(start_time: u32, curr_time: u32, pattern: &PatternIter<'a>) -> Option<RGB8> {
+    fn get_color(remaining_time: u16, pattern: &PatternIter<'a>) -> Option<RGB8> {
         let transition = pattern.curr()?;
 
         // Non-transition, just use static color.
@@ -216,7 +240,7 @@ impl<'a> ColorGenerator<'a> {
             return Some(transition.color);
         }
 
-        debug_assert!(curr_time >= start_time && curr_time < start_time + transition.duration as u32);
+        debug_assert!(remaining_time <= transition.duration);
         let curr = transition.color;
 
         let color = match transition.interpolation {
@@ -225,9 +249,9 @@ impl<'a> ColorGenerator<'a> {
                 let prev = pattern.prev().map(|t| t.color)
                     .unwrap_or_else(|| RGB8::new(0, 0, 0));
                 let (prev, curr, time) = if pattern.is_rev() {
-                    (curr, prev, (start_time + transition.duration as u32) - curr_time)
+                    (curr, prev, remaining_time)
                 } else {
-                    (prev, curr, curr_time - start_time)
+                    (prev, curr, transition.duration - remaining_time)
                 };
                 Self::interpolate(time as u16, transition.duration, prev, curr)
             },
@@ -236,13 +260,13 @@ impl<'a> ColorGenerator<'a> {
         Some(color)
     }
 
-    /// Generate color for the current time instant
-    pub fn tick(&mut self, time: u32) -> RGB8 {
+    /// Generate color for the current time by advancing pattern time by given time delta
+    pub fn tick(&mut self, time_delta: u16) -> RGB8 {
         self.pattern.as_mut()
             .and_then(|pattern| {
                 // Make sure transition is up-to-date, then calculate current color
-                Self::advance_pattern(&mut self.start_time, time, pattern);
-                Self::get_color(self.start_time, time, pattern)
+                Self::advance_pattern(&mut self.remaining_time, time_delta, pattern);
+                Self::get_color(self.remaining_time, pattern)
             })
             // Fall back to "no color", a.k.a. RGB black
             .unwrap_or_else(|| RGB8::new(0, 0, 0))
@@ -330,14 +354,15 @@ mod tests {
     use super::*;
 
     // Verify tuples (prev_index, curr_index, is_rev), .advance() in between.
-    fn test_pattern_iter(transitions: Option<&'static [Transition]>, repeat: Repeat, expect: &[(Option<usize>, Option<usize>, bool)]) {
+    fn test_pattern_iter(transitions_count: usize, repeat: Repeat, expect: &[(Option<usize>, Option<usize>, bool)]) {
         static TRANSITIONS: &[Transition] = &[
             Transition { color: RGB8::new(1, 1, 1), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(2, 2, 2), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(3, 3, 3), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(4, 4, 4), duration: 1000, interpolation: Interpolation::Linear },
         ];
-        let transitions = transitions.unwrap_or(TRANSITIONS);
+        assert!(transitions_count <= TRANSITIONS.len());
+        let transitions = &TRANSITIONS[..transitions_count];
 
         let pattern = Pattern {
             repeat,
@@ -361,7 +386,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_once() {
-        test_pattern_iter(None, Repeat::Once, &[
+        test_pattern_iter(4, Repeat::Once, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -372,7 +397,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_wrap() {
-        test_pattern_iter(None, Repeat::Wrap, &[
+        test_pattern_iter(4, Repeat::Wrap, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -387,7 +412,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_reflect() {
-        test_pattern_iter(None, Repeat::Reflect, &[
+        test_pattern_iter(4, Repeat::Reflect, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -403,13 +428,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_reflect_small_count() {
-        static TRANSITIONS: &[Transition] = &[
-            Transition { color: RGB8::new(1, 1, 1), duration: 1000, interpolation: Interpolation::Linear },
-            Transition { color: RGB8::new(2, 2, 2), duration: 1000, interpolation: Interpolation::Linear },
-            Transition { color: RGB8::new(3, 3, 3), duration: 1000, interpolation: Interpolation::Linear },
-            Transition { color: RGB8::new(4, 4, 4), duration: 1000, interpolation: Interpolation::Linear },
-        ];
-        test_pattern_iter(Some(&TRANSITIONS[..3]), Repeat::Reflect, &[
+        test_pattern_iter(3, Repeat::Reflect, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -418,21 +437,21 @@ mod tests {
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
         ]);
-        test_pattern_iter(Some(&TRANSITIONS[..2]), Repeat::Reflect, &[
+        test_pattern_iter(2, Repeat::Reflect, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(0), true),
             (Some(0), Some(1), false),
             (Some(1), Some(0), true),
         ]);
-        test_pattern_iter(Some(&TRANSITIONS[..1]), Repeat::Reflect, &[
+        test_pattern_iter(1, Repeat::Reflect, &[
             (None, Some(0), false),
             (Some(0), Some(0), true),
             (Some(0), Some(0), false),
             (Some(0), Some(0), true),
             (Some(0), Some(0), false),
         ]);
-        test_pattern_iter(Some(&[]), Repeat::Reflect, &[
+        test_pattern_iter(0, Repeat::Reflect, &[
             (None, None, false),
             (None, None, false),
             (None, None, false),
@@ -470,21 +489,31 @@ mod tests {
     ];
 
     enum UpdateStep {
-        Tick(u32),
-        Update(u32, Option<usize>),
-        Expect(u32, Option<usize>),
+        Tick(u32), // absolute time
+        Update(u32, Option<usize>), // absolute time, pattern num
+        Expect(u16, Option<usize>), // remaining time, pattern num
+    }
+
+    fn next_time_delta(t: u32, last_time: &mut u32) -> u16 {
+        assert!(t >= *last_time, "Tick is absolute time");
+        let dt = (t - *last_time).try_into().unwrap();
+        println!("last={last_time:} t={t:} dt={dt:}");
+        *last_time = t;
+        dt
     }
 
     fn test_pattern_update(seq: &[UpdateStep]) {
         let mut exec = ColorGenerator::default();
         assert!(exec.pattern.is_none());
-        assert_eq!(exec.start_time, 0);
+        assert_eq!(exec.remaining_time, 0);
+
+        let mut last_time = 0;
 
         for (i, step) in seq.iter().enumerate() {
             match step {
-                UpdateStep::Tick(t) => { exec.tick(*t); },
-                UpdateStep::Update(t, pattern) => exec.update(*t, pattern.map(|pi| &PATTERNS[pi])),
-                UpdateStep::Expect(t, pattern) => {
+                UpdateStep::Tick(t) => { exec.tick(next_time_delta(*t, &mut last_time)); },
+                UpdateStep::Update(t, pattern) => exec.update(next_time_delta(*t, &mut last_time), pattern.map(|pi| &PATTERNS[pi])),
+                UpdateStep::Expect(remaining, pattern) => {
                     match pattern {
                         None => assert!(exec.pattern.is_none(), "step {}", i),
                         Some(pi) => {
@@ -493,22 +522,22 @@ mod tests {
                             assert_eq!(found, Some(*pi), "step {}", i)
                         },
                     }
-                    assert_eq!(exec.start_time, *t, "step {}", i);
+                    assert_eq!(exec.remaining_time, *remaining, "step {}", i);
                 },
             }
         }
     }
 
     #[test]
-    fn pattern_executor_update_start_time_on_new_pattern() {
+    fn pattern_executor_update_remaining_time_on_new_pattern() {
         // Start time should change only after a new pattern has been set.
         use UpdateStep::*;
         test_pattern_update(&[
-            Update(10, None),    Tick(11), Expect( 0, None),
-            Update(20, Some(1)), Tick(21), Expect(20, Some(1)),
-            Update(30, Some(1)), Tick(31), Expect(20, Some(1)),
-            Update(40, Some(1)), Tick(41), Expect(20, Some(1)),
-            Update(50, Some(2)), Tick(51), Expect(50, Some(2)),
+            Update(10, None),    Expect(   0, None),    Tick(11), Expect(  0, None),
+            Update(20, Some(1)), Expect(1000, Some(1)), Tick(21), Expect(999, Some(1)),
+            Update(30, Some(1)), Expect( 990, Some(1)), Tick(31), Expect(989, Some(1)),
+            Update(40, Some(1)), Expect( 980, Some(1)), Tick(41), Expect(979, Some(1)),
+            Update(50, Some(2)), Expect(1000, Some(2)), Tick(51), Expect(999, Some(2)),
         ]);
     }
 
@@ -518,96 +547,118 @@ mod tests {
         assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
         use UpdateStep::*;
         test_pattern_update(&[
-            Update(   0, Some(0)), Tick(   1), Expect(   0, Some(0)),
-            Update( 100, Some(1)), Tick( 101), Expect(   0, Some(0)),
-            Update(1100, Some(1)), Tick(1101), Expect(1000, Some(0)),
-            Update(2100, Some(1)), Tick(2101), Expect(2000, Some(0)),
-            Update(3100, Some(1)), Tick(3101), Expect(3000, Some(0)),
+            Update(   0, Some(0)), Tick(   1), Expect( 999, Some(0)), // trans 0
+            Update( 100, Some(1)), Tick( 200), Expect( 800, Some(0)), // trans 0
+            Update(1100, Some(1)), Tick(1200), Expect( 800, Some(0)), // trans 1
+            Update(2100, Some(1)), Tick(2200), Expect( 800, Some(0)), // trans 2
+            Update(3100, Some(1)), Tick(3101), Expect(   0, Some(0)),
             // Now the new pattern will be set as pattern 0 has finished.
-            Update(3200, Some(1)), Expect(3200, Some(1)),
+            Update(3200, Some(1)), Expect(1000, Some(1)),
         ]);
     }
 
     #[test]
-    fn pattern_update_restart_interrupted() {
+    fn pattern_executor_restart_interrupted() {
         // Repeat::Once pattern should be restarted if there was a change during its execution.
         assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
         use UpdateStep::*;
         test_pattern_update(&[
-            Update(   0, Some(0)), Tick(   1), Expect(   0, Some(0)),
-            Update( 100, Some(0)), Tick( 101), Expect(   0, Some(0)),
+            Update(   0, Some(0)), Tick(   1), Expect( 999, Some(0)),
+            Update( 100, Some(0)), Tick( 101), Expect( 899, Some(0)),
             // New pattern for a moment but pattern 0 is kept.
-            Update(1100, Some(1)), Tick(1101), Expect(1000, Some(0)),
+            Update(1100, Some(1)), Tick(1101), Expect( 899, Some(0)),
             // Now back to pattern 0 - it will be restarted to start_time from Update.
-            Update(2100, Some(0)), Tick(2101), Expect(2100, Some(0)),
-            Update(3100, Some(0)), Tick(3101), Expect(3100, Some(0)),
+            Update(2100, Some(0)), Tick(2101), Expect( 999, Some(0)),
+            Update(3100, Some(0)), Tick(3101), Expect( 999, Some(0)),
         ]);
     }
 
-    fn test_pattern_executor_advance(pattern: &Pattern, seq: &[(u32, (u32, Option<usize>))]) {
+    fn test_pattern_executor_advance(pattern: &Pattern, seq: &[(u32, (u16, Option<usize>))]) {
         let mut iter = PatternIter::new(&pattern);
-        let mut start_time = 0;
+        let mut remaining_time = iter.curr().unwrap().duration;
+        let mut last_time = 0;
 
-        for (t_curr, (t_start, transition)) in seq {
-            ColorGenerator::advance_pattern(&mut start_time, *t_curr, &mut iter);
+        for (t_curr, (t_remaining, transition)) in seq {
+            let dt = next_time_delta(*t_curr, &mut last_time);
+            ColorGenerator::advance_pattern(&mut remaining_time, dt, &mut iter);
             let curr = iter.curr();
             match transition {
                 None => assert!(curr.is_none(), "t = {}", *t_curr),
-                Some(i) => assert!(core::ptr::eq(curr.unwrap(), &iter.pattern().transitions[*i]), "t = {}", *t_curr),
+                Some(i) => assert!(
+                    core::ptr::eq(curr.unwrap(), &iter.pattern().transitions[*i]),
+                    "t = {}, current transition = {}", *t_curr,
+                    unsafe {
+                        (curr.unwrap() as *const Transition).offset_from(&iter.pattern().transitions[0] as *const Transition)
+                    }
+                ),
             }
-            assert_eq!(start_time, *t_start);
+            assert_eq!(remaining_time, *t_remaining);
         }
     }
 
     #[test]
     fn pattern_executor_advance_pattern_by_1() {
         test_pattern_executor_advance(&PATTERNS[0], &[
-            (0, (0, Some(0))),
-            (500, (0, Some(0))),
+            (   0, (1000, Some(0))),
+            ( 500, ( 500, Some(0))),
             (1000, (1000, Some(1))),
-            (1800, (1000, Some(1))),
-            (2100, (2000, Some(2))),
-            (3100, (3000, None)),
+            (1800, ( 200, Some(1))),
+            (2100, ( 900, Some(2))),
+            (3100, (   0, None)),
         ]);
     }
 
     #[test]
     fn pattern_executor_advance_pattern_by_many() {
         test_pattern_executor_advance(&PATTERNS[0], &[
-            (500, (0, Some(0))),
-            (3100, (3000, None)),
+            ( 500, (500, Some(0))),
+            (2100, (900, Some(2))),
+        ]);
+    }
+
+    #[test]
+    fn pattern_executor_advance_pattern_by_all() {
+        test_pattern_executor_advance(&PATTERNS[0], &[
+            ( 500, (500, Some(0))),
+            (3100, (  0, None)),
         ]);
     }
 
     #[test]
     fn pattern_executor_advance_pattern_wrap() {
         test_pattern_executor_advance(&PATTERNS[1], &[
-            (0, (0, Some(0))),
+            (   0, (1000, Some(0))),
             (1000, (1000, Some(1))),
-            (2100, (2000, Some(2))),
-            (3100, (3000, Some(0))),
-            (6100, (6000, Some(0))),
+            (2100, ( 900, Some(2))),
+            (3100, ( 900, Some(0))),
+            (4100, ( 900, Some(1))),
+            (5100, ( 900, Some(2))),
+            (6100, ( 900, Some(0))),
         ]);
     }
 
     #[test]
     fn pattern_executor_advance_pattern_reflect() {
         test_pattern_executor_advance(&PATTERNS[2], &[
-            (0, (0, Some(0))),
+            (   0, (1000, Some(0))),
             (1000, (1000, Some(1))),
-            (2100, (2000, Some(2))),
-            (3100, (3000, Some(1))),
-            (4100, (4000, Some(0))),
-            (5100, (5000, Some(1))),
+            (2100, ( 900, Some(2))),
+            (3100, ( 900, Some(1))),
+            (4100, ( 900, Some(0))),
+            (5100, ( 900, Some(1))),
+            (6100, ( 900, Some(2))),
+            (7100, ( 900, Some(1))),
         ]);
     }
 
     fn test_pattern_executor_colors(pattern: &Pattern, seq: &[(u32, Option<RGB8>)]) {
         let mut iter = PatternIter::new(pattern);
-        let mut start_time = 0;
+        let mut remaining_time = iter.curr().unwrap().duration;
+        let mut last_time = 0;
         for (time, color) in seq {
-            ColorGenerator::advance_pattern(&mut start_time, *time, &mut iter);
-            assert_eq!(&ColorGenerator::get_color(start_time, *time, &iter), color, "t = {}", *time);
+            let dt = next_time_delta(*time, &mut last_time);
+            ColorGenerator::advance_pattern(&mut remaining_time, dt, &mut iter);
+            assert_eq!(&ColorGenerator::get_color(remaining_time, &iter), color, "t = {}", *time);
         }
     }
 
@@ -618,19 +669,19 @@ mod tests {
             repeat: Repeat::Reflect,
             phase: Phase { x: 0.0, y: 0.0 },
             transitions: &[
-                Transition { color: RGB8::new(1, 1, 1), duration: 1000, interpolation: Interpolation::Piecewise },
-                Transition { color: RGB8::new(2, 2, 2), duration: 1000, interpolation: Interpolation::Piecewise },
-                Transition { color: RGB8::new(3, 3, 3), duration: 1000, interpolation: Interpolation::Piecewise },
+                Transition { color: RGB8::new(10, 10, 10), duration: 1000, interpolation: Interpolation::Piecewise },
+                Transition { color: RGB8::new(20, 20, 20), duration: 1000, interpolation: Interpolation::Piecewise },
+                Transition { color: RGB8::new(30, 30, 30), duration: 1000, interpolation: Interpolation::Piecewise },
             ],
         };
         test_pattern_executor_colors(&PATTERN, &[
-            (0, Some(RGB8::new(1, 1, 1))),
-            (500, Some(RGB8::new(1, 1, 1))),
-            (1300, Some(RGB8::new(2, 2, 2))),
-            (2300, Some(RGB8::new(3, 3, 3))),
-            (3300, Some(RGB8::new(2, 2, 2))),
-            (4300, Some(RGB8::new(1, 1, 1))),
-            (5300, Some(RGB8::new(2, 2, 2))),
+            (   0, Some(RGB8::new(10, 10, 10))),
+            ( 500, Some(RGB8::new(10, 10, 10))),
+            (1300, Some(RGB8::new(20, 20, 20))),
+            (2300, Some(RGB8::new(30, 30, 30))),
+            (3300, Some(RGB8::new(20, 20, 20))),
+            (4300, Some(RGB8::new(10, 10, 10))),
+            (5300, Some(RGB8::new(20, 20, 20))),
         ]);
     }
 
