@@ -1,0 +1,8 @@
+pandas
+matplotlib
+ipython
+numpy
+
+# type-sizes
+toml
+jinja2

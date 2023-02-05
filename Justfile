@@ -11,6 +11,9 @@ build *ARGS:
 watch-check *ARGS:
     cargo watch -c -- cargo check --release {{ARGS}}
 
+type-sizes *ARGS:
+    type-sizes --bin ghanima --release --exclude-std {{ARGS}}
+
 ### Remote ###
 
 # Flash firmware using helper script (with auto detach)
@@ -55,4 +58,3 @@ watch-test-config *ARGS:
 # Run tests in GDB to debug panics, use `just test` to find TEST_BIN path (target/...)
 test-gdb TEST_BIN TEST_NAME:
     DEFMT_LOG=off gdb -ex "break rust_panic" -ex "run" --args {{TEST_BIN}} {{TEST_NAME}} --nocapture
-
