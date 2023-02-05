@@ -27,9 +27,9 @@ struct ColorGenerator<'a> {
 /// Abstracts the logic of iterating over subsequent pattern transitions
 struct PatternIter<'a> {
     pattern: &'a Pattern,
-    index: usize, // TODO: replace with u8
+    index: u8,
     rev: bool,
-    prev: Option<&'a Transition>,
+    prev: Option<u8>,
 }
 
 impl<'a> LedController<'a> {
@@ -260,6 +260,12 @@ impl<'a> PatternIter<'a> {
         }
     }
 
+    // At most 255 transitions to save memory space, unlikely that anyone needs more...
+    fn transitions_count(&self) -> u8 {
+        self.pattern.transitions.len()
+            .min((u8::MAX - 1) as usize) as u8
+    }
+
     pub fn is_rev(&self) -> bool {
         self.rev
     }
@@ -269,11 +275,11 @@ impl<'a> PatternIter<'a> {
     }
 
     pub fn prev(&self) -> Option<&'a Transition> {
-        self.prev
+        self.prev.and_then(|i| self.pattern.transitions.get(i as usize))
     }
 
     pub fn curr(&self) -> Option<&'a Transition> {
-        self.pattern.transitions.get(self.index)
+        self.pattern.transitions.get(self.index as usize)
     }
 
     pub fn finished(&self) -> bool {
@@ -285,17 +291,17 @@ impl<'a> PatternIter<'a> {
             return
         }
 
-        self.prev = self.curr();
+        self.prev = Some(self.index);
 
         // Repetition logic
         match self.pattern.repeat {
             Repeat::Once => {
-                if self.index < self.pattern.transitions.len() {
-                    self.index += 1;
+                if self.index < self.transitions_count() {
+                    self.index = self.index.saturating_add(1);
                 }
             },
             Repeat::Wrap => {
-                self.index = (self.index + 1) % self.pattern.transitions.len();
+                self.index = self.index.saturating_add(1) % self.transitions_count();
             },
             Repeat::Reflect => {
                 if self.rev {
@@ -303,12 +309,12 @@ impl<'a> PatternIter<'a> {
                         self.index -= 1;
                     } else {
                         self.rev = false;
-                        self.index = 1;
+                        self.index = 1 % self.transitions_count();
                     }
                 } else {
-                    self.index += 1;
-                    if self.index == self.pattern.transitions.len() {
-                        self.index -= 2;
+                    self.index = self.index.saturating_add(1);
+                    if self.index >= self.transitions_count() {
+                        self.index = self.index.saturating_sub(2);
                         self.rev = true;
                     }
                 }
@@ -324,23 +330,25 @@ mod tests {
     use super::*;
 
     // Verify tuples (prev_index, curr_index, is_rev), .advance() in between.
-    fn test_pattern_iter(repeat: Repeat, expect: &[(Option<usize>, Option<usize>, bool)]) {
+    fn test_pattern_iter(transitions: Option<&'static [Transition]>, repeat: Repeat, expect: &[(Option<usize>, Option<usize>, bool)]) {
         static TRANSITIONS: &[Transition] = &[
             Transition { color: RGB8::new(1, 1, 1), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(2, 2, 2), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(3, 3, 3), duration: 1000, interpolation: Interpolation::Linear },
             Transition { color: RGB8::new(4, 4, 4), duration: 1000, interpolation: Interpolation::Linear },
         ];
+        let transitions = transitions.unwrap_or(TRANSITIONS);
+
         let pattern = Pattern {
             repeat,
-            transitions: TRANSITIONS,
+            transitions: transitions,
             phase: Phase { x: 0.0, y: 0.0 }
         };
 
         let mut iter = PatternIter::new(&pattern);
         let verify = |step: usize, iter: &PatternIter, (prev, curr, rev): &(Option<usize>, Option<usize>, bool)| {
-            assert_eq!(iter.prev(), prev.map(|i| &TRANSITIONS[i]), "Step {}: prev", step);
-            assert_eq!(iter.curr(), curr.map(|i| &TRANSITIONS[i]), "Step {}: curr", step);
+            assert_eq!(iter.prev(), prev.map(|i| &transitions[i]), "Step {}: prev", step);
+            assert_eq!(iter.curr(), curr.map(|i| &transitions[i]), "Step {}: curr", step);
             assert_eq!(iter.is_rev(), *rev, "Step {}: is_rev", step);
         };
 
@@ -353,7 +361,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_once() {
-        test_pattern_iter(Repeat::Once, &[
+        test_pattern_iter(None, Repeat::Once, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -364,7 +372,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_wrap() {
-        test_pattern_iter(Repeat::Wrap, &[
+        test_pattern_iter(None, Repeat::Wrap, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -379,7 +387,7 @@ mod tests {
 
     #[test]
     fn pattern_iter_reflect() {
-        test_pattern_iter(Repeat::Reflect, &[
+        test_pattern_iter(None, Repeat::Reflect, &[
             (None, Some(0), false),
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
@@ -390,6 +398,44 @@ mod tests {
             (Some(0), Some(1), false),
             (Some(1), Some(2), false),
             (Some(2), Some(3), false),
+        ]);
+    }
+
+    #[test]
+    fn pattern_iter_reflect_small_count() {
+        static TRANSITIONS: &[Transition] = &[
+            Transition { color: RGB8::new(1, 1, 1), duration: 1000, interpolation: Interpolation::Linear },
+            Transition { color: RGB8::new(2, 2, 2), duration: 1000, interpolation: Interpolation::Linear },
+            Transition { color: RGB8::new(3, 3, 3), duration: 1000, interpolation: Interpolation::Linear },
+            Transition { color: RGB8::new(4, 4, 4), duration: 1000, interpolation: Interpolation::Linear },
+        ];
+        test_pattern_iter(Some(&TRANSITIONS[..3]), Repeat::Reflect, &[
+            (None, Some(0), false),
+            (Some(0), Some(1), false),
+            (Some(1), Some(2), false),
+            (Some(2), Some(1), true),
+            (Some(1), Some(0), true),
+            (Some(0), Some(1), false),
+            (Some(1), Some(2), false),
+        ]);
+        test_pattern_iter(Some(&TRANSITIONS[..2]), Repeat::Reflect, &[
+            (None, Some(0), false),
+            (Some(0), Some(1), false),
+            (Some(1), Some(0), true),
+            (Some(0), Some(1), false),
+            (Some(1), Some(0), true),
+        ]);
+        test_pattern_iter(Some(&TRANSITIONS[..1]), Repeat::Reflect, &[
+            (None, Some(0), false),
+            (Some(0), Some(0), true),
+            (Some(0), Some(0), false),
+            (Some(0), Some(0), true),
+            (Some(0), Some(0), false),
+        ]);
+        test_pattern_iter(Some(&[]), Repeat::Reflect, &[
+            (None, None, false),
+            (None, None, false),
+            (None, None, false),
         ]);
     }
 
