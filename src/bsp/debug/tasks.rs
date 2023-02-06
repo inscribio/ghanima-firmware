@@ -67,6 +67,74 @@ pub mod trace {
     }
 }
 
+
+// Using lambda + inline(always) because Drop may be invoked too fast, e.g. for `let _ = get();`
+// Using pub struct members because cannot generate defmt log using a macro (it requires that
+// string literal is passed, concat! won't work).
+#[macro_export]
+macro_rules! def_tasks_debug {
+    (struct $name:ident { $( $task:ident => $task_id:literal ),*, $(,)? }) => {
+        ///  Counts tasks execution and traces using GPIO pins for use with logic analyzer
+        #[derive(Default)]
+        pub struct $name {
+            $(
+                pub $task: $crate::bsp::debug::counters::Counter,
+            )*
+            pub idle: $crate::bsp::debug::counters::Counter,
+        }
+
+        // Unused enum for compile-time check that all declared task ids are unique
+        #[repr(u8)]
+        #[allow(non_camel_case_types)]
+        enum _tasks_debug_unique_id_check {
+            $(
+                $task = $task_id,
+            )*
+            debug_report = $name::DEBUG_REPORT_TASK_ID,
+        }
+
+        impl $name {
+            pub const DEBUG_REPORT_TASK_ID: u8 = b'd';
+
+            /// Run debug report task with GPIO tracing, report task does not have a counter,
+            /// user must manually print the counters due to limitations of defmt.
+            #[inline(always)]
+            pub fn debug_report<F, T>(&self, f: F) -> T
+            where
+                F: FnOnce() -> T
+            {
+                $crate::bsp::debug::tasks::task::enter(Self::DEBUG_REPORT_TASK_ID);
+                let result = f();
+                $crate::bsp::debug::tasks::task::exit();
+                result
+            }
+
+            /// Increment idle task counter, idle task does not set GPIO high, only low to
+            /// indicate no pending tasks.
+            #[inline(always)]
+            pub fn idle(&self) {
+                self.idle.inc();
+                $crate::bsp::debug::tasks::task::idle();
+            }
+
+            $(
+                /// Run given task with GPIO tracing and increment counter
+                #[inline(always)]
+                pub fn $task<F, T>(&self, f: F) -> T
+                where
+                    F: FnOnce() -> T
+                {
+                    $crate::bsp::debug::tasks::task::enter($task_id);
+                    self.$task.inc();
+                    let result = f();
+                    $crate::bsp::debug::tasks::task::exit();
+                    result
+                }
+            )*
+        }
+    };
+}
+
 /// Use task-dedicated GPIO pin to trace execution of tasks
 pub mod task {
     use super::*;
