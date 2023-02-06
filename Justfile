@@ -49,11 +49,11 @@ test-config *ARGS:
 
 # Continuously run firmware tests
 watch-test *ARGS:
-    DEFMT_LOG=off cargo watch -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
+    DEFMT_LOG=off cargo watch -c -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
 
 # Continuously run firmware-config tests
 watch-test-config *ARGS:
-    cd config && {{config-test-env}} cargo watch -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
+    cd config && {{config-test-env}} cargo watch -c -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
 
 # Run tests in GDB to debug panics, use `just test` to find TEST_BIN path (target/...)
 test-gdb TEST_BIN TEST_NAME:
