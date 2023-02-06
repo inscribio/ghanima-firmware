@@ -17,7 +17,7 @@ mod app {
     use usb_device::class_prelude::UsbBusAllocator;
 
     use super::lib;
-    use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide};
+    use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide, LedColors};
     use lib::hal_ext::{crc, spi, reboot, uart, watchdog, dma::{DmaSplit, DmaTx}};
     use lib::{keyboard, config, ioqueue::{self, ProducerExt as _}};
 
@@ -85,6 +85,7 @@ mod app {
         keyboard_cnt: debug::TaskCounter,
         joystick_cnt: debug::TaskCounter,
         leds_update_cnt: debug::TaskCounter,
+        leds_force_cnt: debug::TaskCounter,
         leds_tick_cnt: debug::TaskCounter,
         dma_spi_cnt: debug::TaskCounter,
         dma_uart_cnt: debug::TaskCounter,
@@ -331,6 +332,7 @@ mod app {
             keyboard_cnt: Default::default(),
             joystick_cnt: Default::default(),
             leds_update_cnt: Default::default(),
+            leds_force_cnt: Default::default(),
             leds_tick_cnt: Default::default(),
             dma_spi_cnt: Default::default(),
             dma_uart_cnt: Default::default(),
@@ -411,7 +413,7 @@ mod app {
 
     #[task(
         priority = 2, capacity = 1,
-        shared = [serial_tx, serial_tx_queue, serial_rx_queue, crc, usb, keyboard, keyboard_cnt, led_controller, led_output],
+        shared = [serial_tx, serial_tx_queue, serial_rx_queue, crc, usb, keyboard, keyboard_cnt],
         local = [prev_leds_update: Option<keyboard::LedControllerUpdate> = None],
     )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
@@ -423,8 +425,6 @@ mod app {
             mut usb,
             mut keyboard,
             mut keyboard_cnt,
-            mut led_controller,
-            mut led_output,
         } = cx.shared;
 
         debug::tasks::task::enter(Tasks::Keyboard as u8);
@@ -442,12 +442,15 @@ mod app {
         // Send LED patterns update for processing later
         match leds_update {
             keyboard::LedsUpdate::Controller(update) => {
-                led_controller.lock(|ledctl| update.apply(t, ledctl));
-                led_output.lock(|out| out.use_from_controller());
+                if update_leds_state::spawn(t, update).is_err() {
+                    defmt::error!("Spawn failed: update_leds_state");
+                }
             },
             keyboard::LedsUpdate::FromOther(colors) => {
                 if let Some(colors) = colors {
-                    led_output.lock(|out| out.use_from_other_half(&colors));
+                    if force_led_colors::spawn(colors).is_err() {
+                        defmt::error!("Spawn failed: force_led_colors");
+                    }
                 }
             },
         }
@@ -485,30 +488,38 @@ mod app {
         debug::tasks::task::exit();
     }
 
-    // /// Apply state updates from keyboard_tick
-    // ///
-    // /// This has the same priority as update_leds but we use a queue to eventually apply all
-    // /// the updates.
-    // #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
-    // fn update_leds_state(mut cx: update_leds_state::Context, t: u32, update: keyboard::LedControllerUpdate) {
-    //     debug::tasks::task::enter(Tasks::LedsStateUpdate as u8);
-    //     cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());
-    //
-    //     cx.shared.led_controller.lock(|ledctl| update.apply(t, ledctl));
-    //     cx.shared.led_output.lock(|out| out.use_from_controller());
-    //
-    //     debug::tasks::task::exit();
-    // }
-    //
-    // #[task(priority = 1, shared = [led_output])]
-    // fn force_led_colors(mut cx: force_led_colors::Context, colors: LedColors) {
-    //     debug::tasks::task::enter(Tasks::LedColorsForce as u8);
-    //     // TODO: todo!("cx.shared.leds_update_cnt.lock(|cnt| cnt.inc());");
-    //
-    //     cx.shared.led_output.lock(|out| out.use_from_other_half(&colors));
-    //
-    //     debug::tasks::task::exit();
-    // }
+    /// Apply state updates from keyboard_tick
+    ///
+    /// This has the same priority as update_leds but we use a queue to eventually apply all
+    /// the updates.
+    #[task(priority = 1, shared = [led_controller, led_output, leds_update_cnt], capacity = 4)]
+    fn update_leds_state(cx: update_leds_state::Context, t: u32, update: keyboard::LedControllerUpdate) {
+        let update_leds_state::SharedResources {
+            mut led_controller,
+            mut led_output,
+            mut leds_update_cnt
+        } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::LedsStateUpdate as u8);
+        leds_update_cnt.lock(|cnt| cnt.inc());
+
+        led_controller.lock(|ledctl| update.apply(t, ledctl));
+        led_output.lock(|out| out.use_from_controller());
+
+        debug::tasks::task::exit();
+    }
+
+    #[task(priority = 1, shared = [led_output, leds_force_cnt])]
+    fn force_led_colors(cx: force_led_colors::Context, colors: LedColors) {
+        let force_led_colors::SharedResources { mut led_output, mut leds_force_cnt } = cx.shared;
+
+        debug::tasks::task::enter(Tasks::LedColorsForce as u8);
+        leds_force_cnt.lock(|cnt| cnt.inc());
+
+        led_output.lock(|out| out.use_from_other_half(&colors));
+
+        debug::tasks::task::exit();
+    }
 
     #[task(priority = 1, shared = [&board_side, spi_tx, serial_tx_queue, led_controller, led_output, leds_tick_cnt])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
@@ -574,6 +585,7 @@ mod app {
             keyboard_cnt,
             joystick_cnt,
             leds_update_cnt,
+            leds_force_cnt,
             leds_tick_cnt,
             dma_spi_cnt,
             dma_uart_cnt,
@@ -591,6 +603,7 @@ mod app {
             keyboard_cnt,
             joystick_cnt,
             leds_update_cnt,
+            leds_force_cnt,
             leds_tick_cnt,
             dma_spi_cnt,
             dma_uart_cnt,
@@ -610,10 +623,10 @@ mod app {
         }
 
         if cfg!(feature = "task-counters") {
-            (tick_cnt, usb_cnt, keyboard_cnt, joystick_cnt, leds_update_cnt, leds_tick_cnt, dma_spi_cnt, dma_uart_cnt, uart_cnt, idle_cnt)
-                .lock(|tick, usb, keyboard, joystick, leds_update, leds_tick, dma_spi, dma_uart, uart, idle| {
-                    defmt::info!("tick={=u16} usb={=u16} kbd={=u16} joy={=u16} ledsU={=u16} ledsT={=u16} dma_spi={=u16} dma_uart={=u16} uart={=u16} idle={=u16}",
-                        tick.pop(), usb.pop(), keyboard.pop(), joystick.pop(), leds_update.pop(), leds_tick.pop(), dma_spi.pop(), dma_uart.pop(), uart.pop(), idle.pop(),
+            (tick_cnt, usb_cnt, keyboard_cnt, joystick_cnt, leds_update_cnt, leds_force_cnt, leds_tick_cnt, dma_spi_cnt, dma_uart_cnt, uart_cnt, idle_cnt)
+                .lock(|tick, usb, keyboard, joystick, leds_update, leds_force, leds_tick, dma_spi, dma_uart, uart, idle| {
+                    defmt::info!("tick={=u16} usb={=u16} kbd={=u16} joy={=u16} ledsU={=u16} ledsF={=u16} ledsT={=u16} dma_spi={=u16} dma_uart={=u16} uart={=u16} idle={=u16}",
+                        tick.pop(), usb.pop(), keyboard.pop(), joystick.pop(), leds_update.pop(), leds_force.pop(), leds_tick.pop(), dma_spi.pop(), dma_uart.pop(), uart.pop(), idle.pop(),
                     );
                 });
         }
