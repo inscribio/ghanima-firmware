@@ -4,7 +4,7 @@ use core::convert::Infallible;
 
 use serde::{Serialize, Deserialize};
 
-/// Const-evaluation of max(a,b): https://stackoverflow.com/a/53646925
+/// Const-evaluation of max(a,b): <https://stackoverflow.com/a/53646925>
 pub const fn max(a: usize, b: usize) -> usize {
     [a, b][(a < b) as usize]
 }
