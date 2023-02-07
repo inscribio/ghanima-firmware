@@ -56,6 +56,8 @@ fn json_config(out: &Path) -> Result<()>  {
         config.to_file(&out.join("config.rs"))
             // .context(format!("With config:\n{:#?}", config))
             .context("While generating config.rs")?;
+    } else if env::var_os("GHANIMA_JSON_CONFIG").is_some() {
+        println!("cargo:warning=GHANIMA_JSON_CONFIG defined but ignored because feature \"json-config\" is not enabled");
     }
 
     Ok(())
