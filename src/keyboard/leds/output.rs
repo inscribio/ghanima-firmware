@@ -11,6 +11,9 @@ pub struct LedOutput {
     mode: OutputMode,
     time: u32,
     overwrite_until: Option<u32>,
+    last_transmission: Option<u32>,
+    retransmission_min_time: u32,
+    modified: bool,
 }
 
 /// How we actually generate output colors
@@ -22,13 +25,16 @@ enum OutputMode {
 }
 
 impl LedOutput {
-    pub const fn new() -> Self {
+    pub const fn new(retransmission_min_time: u32) -> Self {
         Self {
             this: PerSide { left: Leds::new(), right: Leds::new() },
             other: Leds::new(),
             mode: OutputMode::Controller,
             time: 0,
             overwrite_until: None,
+            last_transmission: None,
+            retransmission_min_time,
+            modified: false,
         }
     }
 
@@ -59,31 +65,44 @@ impl LedOutput {
 
     /// Generate colors for current time
     pub fn tick(&mut self, time: u32, controller: &mut LedController) {
-        // use crate::bsp::debug::tasks::trace::run;
-        //
-        // run(|| {
+        if let Some(until) = self.overwrite_until {
+            // FIXME: if time hits u32 limit (unlikely, ~50 days) then we might skip the overwrite
+            if time > until || until == u32::MAX  {
+                self.overwrite_until = None;
+            }
+        }
 
-            if let Some(until) = self.overwrite_until {
-                // FIXME: if time hits u32 limit (unlikely, ~50 days) then we might skip the overwrite
-                if time > until || until == u32::MAX  {
-                    self.overwrite_until = None;
+        if self.overwrite_until.is_none() {
+            if let OutputMode::Controller = self.mode {
+                let modified = controller.tick(time, &mut self.this);
+                if !(modified.left.is_none() && modified.right.is_none()) {
+                    self.modified = true;
                 }
             }
-
-            if self.overwrite_until.is_none() {
-                if let OutputMode::Controller = self.mode {
-                    // TODO: todo!("Track if colors changed to avoid re-sending data when not needed");
-                    controller.tick(time, &mut self.this);
-                }
-            }
-
-        // })
+        }
     }
 
+    /// Get current color values for given board side, when got colors from other half side is ignored
     pub fn current(&self, side: BoardSide) -> &Leds {
         match self.mode {
             OutputMode::Controller => &self.this[side],
             OutputMode::FromOther => &self.other,
         }
+    }
+
+    /// Get colors for transmission to other board half avoiding sending duplicates when not needed
+    pub fn get_for_transmission(&mut self, time: u32, side: BoardSide) -> Option<&Leds> {
+        if self.modified || self.should_retransmit(time) {
+            self.last_transmission = Some(time);
+            self.modified = false;
+            Some(&self.this[side])
+        } else {
+            None
+        }
+    }
+
+    fn should_retransmit(&self, time: u32) -> bool{
+        self.last_transmission.map_or(true,
+            |last| time.wrapping_sub(last) > self.retransmission_min_time)
     }
 }

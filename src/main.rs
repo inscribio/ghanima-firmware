@@ -41,6 +41,10 @@ mod app {
     const WATCHDOG_WINDOW_START_MS: u32 = 30;
     const WATCHDOG_WINDOW_END_MS: u32 = 60;
 
+    // Small value as this is mostly to avoid sending the same colors 3-4 times in the row when
+    // colors keep changing due to interpolation
+    const LED_RETRANSMISSION_MIN_TIME: u32 = 100;
+
     def_tasks_debug! {
         struct TaskCounters {
             timer => b't',
@@ -231,7 +235,7 @@ mod app {
         };
 
         // LED controller
-        let mut led_output = keyboard::LedOutput::new();
+        let mut led_output = keyboard::LedOutput::new(LED_RETRANSMISSION_MIN_TIME);
         let led_controller = unsafe {
             cx.local.led_controller.as_mut_ptr().write(
                 keyboard::LedController::new(&config::CONFIG.leds)
@@ -502,7 +506,9 @@ mod app {
             // Send colors for other side over UART, drop message if queue is full
             (&mut led_output, serial_tx_queue).lock(|out, tx| {
                 if out.using_from_controller() {
-                    tx.try_push(out.current(board_side.other()));
+                    if let Some(colors) = out.get_for_transmission(t, board_side.other()) {
+                        tx.try_push(colors);
+                    }
                 }
             });
 

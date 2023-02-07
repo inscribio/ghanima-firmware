@@ -5,7 +5,7 @@ use crate::bsp::{NLEDS, sides::BoardSide};
 use crate::keyboard::actions::Inc;
 use crate::utils::CircularIter;
 use super::output::Leds;
-use super::{LedConfig, Pattern, Repeat, Transition, Interpolation, LedConfigurations};
+use super::{LedConfig, Pattern, Repeat, Transition, Interpolation, LedConfigurations, LedsBitset};
 use super::condition::{KeyboardState, RuleKeys};
 
 /// Generates LED colors according to current [`LedConfig`]
@@ -95,19 +95,27 @@ impl<'a> LedController<'a> {
     }
 
     /// Generate colors for current time, returning [`Leds`] ready for serialization
-    pub fn tick(&mut self, time: u32, leds: &mut PerSide<Leds>) {
+    pub fn tick(&mut self, time: u32, leds: &mut PerSide<Leds>) -> PerSide<LedsBitset> {
         let time_delta = self.next_time_delta(time);
+        let mut modified: PerSide<LedsBitset> = Default::default();
+
         for side in BoardSide::EACH {
             debug_assert_eq!(self.patterns[side].len(), leds[side].colors.len());
             let patterns = self.patterns[side].iter_mut();
             let leds = leds[side].colors.iter_mut();
 
-            for (pattern, led) in patterns.zip(leds) {
-                *led = pattern.tick(time_delta)
+            for (i, (pattern, led)) in patterns.zip(leds).enumerate() {
+                let new = pattern.tick(time_delta)
                     .map(|channel| Self::dimmed(channel, self.brightness))
                     .map(Leds::gamma_correction);
+                if new != *led {
+                    modified[side].set(i as u8, true);
+                }
+                *led = new;
             }
         }
+
+        modified
     }
 
     fn dimmed(color: u8, brightness: u8) -> u8 {
