@@ -347,15 +347,15 @@ mod app {
                     }
                 }
 
-                if *t % LEDS_PRESCALER == 1 {
-                    if leds_tick::spawn(*t).is_err() {
-                        defmt::warn!("Spawn failed: leds_tick");
+                if *t % JOY_PRESCALER == 1 {
+                    if read_joystick::spawn().is_err() {
+                        defmt::warn!("Spawn failed: read_joystick");
                     };
                 }
 
-                if *t % JOY_PRESCALER == 2 {
-                    if read_joystick::spawn().is_err() {
-                        defmt::warn!("Spawn failed: read_joystick");
+                if *t % LEDS_PRESCALER == 2 {
+                    if leds_tick::spawn(*t).is_err() {
+                        defmt::warn!("Spawn failed: leds_tick");
                     };
                 }
 
