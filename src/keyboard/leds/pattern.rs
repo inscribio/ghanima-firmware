@@ -734,8 +734,8 @@ mod tests {
             (0, Some(RGB8::new(0, 0, 0))),
             (500, Some(RGB8::new(50, 50, 50))),
             (800, Some(RGB8::new(80, 80, 80))),
-            (995, Some(RGB8::new(99, 99, 99))),
-            (996, Some(RGB8::new(100, 100, 100))),  // due to rounding
+            (996, Some(RGB8::new(99, 99, 99))),
+            (997, Some(RGB8::new(100, 100, 100))),  // due to rounding
             (1000, Some(RGB8::new(100, 100, 100))),
             (1500, Some(RGB8::new(150, 150, 150))),
             (2500, Some(RGB8::new(220, 220, 220))),
