@@ -12,7 +12,7 @@ watch-check *ARGS:
     cargo watch -c -- cargo check --release {{ARGS}}
 
 type-sizes *ARGS:
-    type-sizes --bin ghanima --release --exclude-std {{ARGS}}
+    type-sizes --bin ghanima --release --output-dir ./tmp/type-sizes --exclude-std {{ARGS}}
 
 ### Remote ###
 

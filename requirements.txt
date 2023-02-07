@@ -2,6 +2,7 @@ pandas
 matplotlib
 ipython
 numpy
+pyqt5
 
 # type-sizes
 toml

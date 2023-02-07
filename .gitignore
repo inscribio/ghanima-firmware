@@ -4,13 +4,7 @@
 /venv/
 # Temporary dev files
 /tmp/
-# Temporary third-party repos
-/keyberon/
-/stm32-usbd/
-/type-sizes/
-/usbd-dfu-rt/
-/usbd-hid/
-/usbd-human-interface-device/
+/repos/
 
 # Local config files, tmp files
 .envrc
