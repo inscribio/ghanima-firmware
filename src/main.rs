@@ -79,6 +79,7 @@ mod app {
         crc: crc::Crc,
         led_controller: &'static mut keyboard::LedController<'static>,
         led_output: keyboard::LedOutput,
+        led_forced_colors: Option<LedColors>,  // instead of queue we override last
         keyboard: &'static mut Keyboard,
         tasks: TaskCounters,
     }
@@ -315,6 +316,7 @@ mod app {
             crc,
             led_controller,
             led_output,
+            led_forced_colors: None,
             keyboard,
             tasks: Default::default(),
         };
@@ -384,7 +386,7 @@ mod app {
 
     #[task(
         priority = 2, capacity = 1,
-        shared = [serial_tx, serial_tx_queue, serial_rx_queue, crc, usb, keyboard, &tasks],
+        shared = [serial_tx, serial_tx_queue, serial_rx_queue, crc, usb, keyboard, led_forced_colors, &tasks],
         local = [prev_leds_update: Option<keyboard::LedControllerUpdate> = None],
     )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
@@ -395,6 +397,7 @@ mod app {
             crc,
             mut usb,
             mut keyboard,
+            mut led_forced_colors,
             tasks,
         } = cx.shared;
 
@@ -417,9 +420,8 @@ mod app {
                 },
                 keyboard::LedsUpdate::FromOther(colors) => {
                     if let Some(colors) = colors {
-                        if force_led_colors::spawn(colors).is_err() {
-                            defmt::error!("Spawn failed: force_led_colors");
-                        }
+                        led_forced_colors.lock(|c| c.replace(colors));
+                        force_led_colors::spawn().ok();
                     }
                 },
             }
@@ -456,7 +458,7 @@ mod app {
     ///
     /// This has the same priority as update_leds but we use a queue to eventually apply all
     /// the updates.
-    #[task(priority = 1, shared = [led_controller, led_output, &tasks], capacity = 4)]
+    #[task(priority = 1, shared = [led_controller, led_output, &tasks], capacity = 8)]
     fn update_leds_state(cx: update_leds_state::Context, t: u32, update: keyboard::LedControllerUpdate) {
         let update_leds_state::SharedResources {
             mut led_controller,
@@ -469,11 +471,13 @@ mod app {
         });
     }
 
-    #[task(priority = 1, shared = [led_output, &tasks])]
-    fn force_led_colors(cx: force_led_colors::Context, colors: LedColors) {
-        let force_led_colors::SharedResources { mut led_output, tasks } = cx.shared;
+    #[task(priority = 1, shared = [led_output, led_forced_colors, &tasks])]
+    fn force_led_colors(cx: force_led_colors::Context) {
+        let force_led_colors::SharedResources { mut led_output, mut led_forced_colors, tasks } = cx.shared;
         tasks.led_colors_force(|| {
-            led_output.lock(|out| out.use_from_other_half(&colors));
+            if let Some(colors) = led_forced_colors.lock(|c| c.take()) {
+                led_output.lock(|out| out.use_from_other_half(&colors));
+            }
         });
     }
 
