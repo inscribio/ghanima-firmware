@@ -1,0 +1,38 @@
+:name: Ghanima
+:description: Simluates Ghanima keyboard
+
+using sysbus
+
+mach create "Ghanima"
+:machine LoadPlatformDescription @platforms/cpus/stm32f072.repl
+machine LoadPlatformDescription @renode/my_stm32f072.repl
+
+$bin ?= @target/thumbv6m-none-eabi/release/ghanima
+
+macro reset
+"""
+    sysbus LoadELF $bin
+"""
+
+:showAnalyzer usart1
+
+: Silence unimplemented peripherals: WWDG, USB
+sysbus SilenceRange <0x40002C00 0x400>
+sysbus SilenceRange <0x40005C00 0x400>
+
+: Some ADC warnings? Check them later?
+logLevel 3 adc
+
+sysbus LogPeripheralAccess sysbus.usart1
+sysbus LogPeripheralAccess sysbus.spi2
+:sysbus LogPeripheralAccess sysbus.gpioPortA
+
+: emulation CreateUartPtyTerminal "term" "/tmp/uart"
+: connector Connect sysbus.usart1 term
+:
+: :emulation CreateUartPtyTerminal "leds" "/tmp/spi"
+: emulation CreateServerSocketTerminal 3456 "leds"
+
+logLevel -1 DMA
+
+runMacro $reset
