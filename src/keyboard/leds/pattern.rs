@@ -212,14 +212,21 @@ impl<'a> ColorGenerator<'a> {
 
     /// Interpolate between two colors: c1 happens at t1, c2 at t1+duration
     fn interpolate(time_delta: u16, duration: u16, c1: RGB8, c2: RGB8) -> RGB8 {
-        // Must hold any u16 so +1 bit for sign
-        type Fix = fixed::types::I17F15;
+        // Must hold any u8 +1 bit for sign
+        type Fix16 = fixed::types::U8F8;
+        type Fix32 = fixed::types::U24F8;
 
         // Calculate transition-local time in relation to transition duration
-        let ratio = Fix::from_num(time_delta) / Fix::from_num(duration);
+        let ratio = Fix32::from_num(time_delta) / Fix32::from_num(duration);
+        let ratio = Fix16::from_num(ratio);
 
         let channel = |a: u8, b: u8| {
-            let (a, b) = (Fix::from_num(a), Fix::from_num(b));
+            let (a, b, ratio) = if a < b {
+                (a, b, ratio)
+            } else {
+                (b, a, Fix16::from_num(1) - ratio)
+            };
+            let (a, b) = (Fix16::from_num(a), Fix16::from_num(b));
             let c = a + (b - a) * ratio;
             c.round().to_num::<u8>()
         };
@@ -230,6 +237,31 @@ impl<'a> ColorGenerator<'a> {
             channel(c1.b, c2.b),
         )
     }
+
+    // This is a bit faster than using fixed fixed crate with I9F7 (640 vs 780) but much less readable.
+    // When changed from I9F7 to U8F8 (with if a < b) time increased from 780 us to 875 us (but interpolation error is smaller).
+    // fn interpolate(time_delta: u16, duration: u16, c1: RGB8, c2: RGB8) -> RGB8 {
+    //     // Using Q9.7 signed fixed point numbers (I9F7)
+    //     let ratio = (((time_delta as u32) << 7) / (duration as u32)) as u16;
+    //
+    //     let channel = |a: u8, b: u8| {
+    //         // To U8F8
+    //         let (a, b) = ((a as i16) << 7, (b as i16) << 7);
+    //         let diff = b - a;
+    //         let mul = (diff as i32) * (ratio as i32); // multiplication step 1
+    //         let mul = mul + (1 << 6);  // rounding
+    //         let mul = (mul >> 7) as i16; // back to correct base
+    //         let c = a + mul;
+    //         // To U8
+    //         ((c + (1 << 6)) >> 7) as u8
+    //     };
+    //
+    //     RGB8::new(
+    //         channel(c1.r, c2.r),
+    //         channel(c1.g, c2.g),
+    //         channel(c1.b, c2.b),
+    //     )
+    // }
 
     /// Calculate color at current time
     fn get_color(remaining_time: u16, pattern: &PatternIter<'a>) -> Option<RGB8> {
@@ -253,7 +285,7 @@ impl<'a> ColorGenerator<'a> {
                 } else {
                     (prev, curr, transition.duration - remaining_time)
                 };
-                Self::interpolate(time as u16, transition.duration, prev, curr)
+                Self::interpolate(time, transition.duration, prev, curr)
             },
         };
 
@@ -350,6 +382,7 @@ impl<'a> PatternIter<'a> {
 #[cfg(test)]
 mod tests {
     use crate::keyboard::leds::Phase;
+    use std::vec::Vec;
 
     use super::*;
 
@@ -748,6 +781,82 @@ mod tests {
         // ...and that full brightness doesn't change the color
         for color in 0..255 {
             assert_eq!(LedController::dimmed(color, 255), color);
+        }
+    }
+
+    #[allow(dead_code)]
+    #[derive(Debug, Default)]
+    struct ErrorStats {
+        min: f32,
+        max: f32,
+        avg: f32,
+        std: f32,
+        mse: f32,  // Mean squared error
+    }
+
+    fn get_interpolation_errors(duration: u16, c1: u8, c2: u8, plot: bool) -> ErrorStats {
+        let mut times = Vec::new();
+        let mut errors = Vec::new();
+        let mut values_ref = Vec::new();
+        let mut values_calc = Vec::new();
+
+        let (rgb1, rgb2) = (RGB8::new(c1, c1, c1), RGB8::new(c2, c2, c2));
+        for time in 0..=duration {
+            times.push(time);
+            let c_ref = {
+                let (c1, c2, time, duration) = (c1 as f32, c2 as f32, time as f32, duration as f32);
+                c1 + (time) / (duration) * (c2 - c1)
+            };
+            let rgb = ColorGenerator::interpolate(time, duration, rgb1, rgb2);
+            let c_calc = rgb.r as f32;
+            values_ref.push(c_ref);
+            values_calc.push(c_calc);
+            errors.push(c_calc - c_ref);
+        }
+
+        if plot {
+            use gnuplot::{Figure, AxesCommon, Caption};
+            let mut fig = Figure::new();
+            fig.axes2d()
+                .set_title("Interpolation error", &[])
+                .set_x_label("Time", &[])
+                .set_y_label("Color value", &[])
+                .set_x_grid(true)
+                .set_y_grid(true)
+                .lines(
+                    times.clone(),
+                    values_ref.clone(),
+                    &[Caption("reference")]
+                )
+                .lines(
+                    times.clone(),
+                    values_calc.clone(),
+                    &[Caption("calculated")]
+                );
+            fig.show().unwrap();
+        }
+
+        let n = errors.len() as f32;
+        let mean = errors.iter().sum::<f32>() / n;
+        ErrorStats {
+            min: errors.iter().copied().reduce(|acc, err| acc.min(err)).unwrap(),
+            max: errors.iter().copied().reduce(|acc, err| acc.max(err)).unwrap(),
+            avg: mean,
+            std: (errors.iter().map(|err_i| (err_i - mean).powi(2)).sum::<f32>() / n).sqrt(),
+            mse: values_calc.iter().zip(values_ref.iter())
+                .map(|(c, r)| (c - r).powi(2)).sum::<f32>() / n,
+        }
+    }
+
+    #[test]
+    fn interpolation_error() {
+        for duration in [10, 200, 600, 1000, 3000] {
+        // for duration in [1000] {
+            let e1 = get_interpolation_errors(duration, 0, 255, false);
+            let e2 = get_interpolation_errors(duration, 255, 0, false);
+            println!("dur {duration}:\n  {:?}\n  {:?}", e1, e2);
+            assert!(e1.mse < 1.5);
+            assert!(e2.mse < 1.5);
         }
     }
 }
