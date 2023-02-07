@@ -736,6 +736,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "option-block"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0f2c5d345596a14d7c8b032a68f437955f0059f2eb9a5972371c84f7eef3227"
+
+[[package]]
 name = "packed_struct"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1265,7 +1271,7 @@ dependencies = [
 [[package]]
 name = "usbd-human-interface-device"
 version = "0.3.1"
-source = "git+https://github.com/jedrzejboczar/usbd-human-interface-device?rev=d0acf48#d0acf486cc78069cc8848a4d0370fa713a69c437"
+source = "git+https://github.com/jedrzejboczar/usbd-human-interface-device?rev=f4df861#f4df861909fd22892abf25008f00a198382abe08"
 dependencies = [
  "delegate",
  "frunk",
@@ -1273,6 +1279,7 @@ dependencies = [
  "heapless",
  "log",
  "num_enum",
+ "option-block",
  "packed_struct",
  "usb-device",
 ]
