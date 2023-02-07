@@ -23,3 +23,5 @@
 /*.map
 *.bin
 /renode/*.svd
+__pycache__
+*.pyc
