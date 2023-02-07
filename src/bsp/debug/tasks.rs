@@ -105,7 +105,7 @@ macro_rules! def_tasks_debug {
             {
                 $crate::bsp::debug::tasks::task::enter(Self::DEBUG_REPORT_TASK_ID);
                 let result = f();
-                $crate::bsp::debug::tasks::task::exit();
+                $crate::bsp::debug::tasks::task::exit(Self::DEBUG_REPORT_TASK_ID);
                 result
             }
 
@@ -127,7 +127,7 @@ macro_rules! def_tasks_debug {
                     $crate::bsp::debug::tasks::task::enter($task_id);
                     self.$task.inc();
                     let result = f();
-                    $crate::bsp::debug::tasks::task::exit();
+                    $crate::bsp::debug::tasks::task::exit($task_id);
                     result
                 }
             )*
@@ -159,9 +159,12 @@ pub mod task {
 
     /// To be called on all task exit points
     #[inline(always)]
-    pub fn exit() {
+    pub fn exit(task_id: u8) {
         if cfg!(feature = "debug-tasks") {
             ensure_init();
+            if cfg!(all(feature = "debug-tasks-id", feature = "debug-tasks-id-exit")) {
+                nb::block!(task_id_serial_tx().write(task_id)).ok();
+            }
             // Make sure to have a 1-to-0 transition.
             task_pin().set_high().infallible();
             task_pin().set_low().infallible();
