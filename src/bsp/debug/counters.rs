@@ -31,6 +31,7 @@ impl Counter {
 
 // ARM thumbv6 does not support atomic fetch_add so we need to use short critical sections, see:
 // https://github.com/jamesmunns/bbqueue/blob/f73423c0b1c5fe04723e5b5bd57d1a44ff106473/core/src/bbbuffer.rs#L1098
+#[allow(dead_code)]
 mod atomic {
     use core::sync::atomic::AtomicU16;
     use core::sync::atomic::Ordering::{Acquire, Release};
