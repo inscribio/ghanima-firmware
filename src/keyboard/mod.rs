@@ -35,7 +35,7 @@ use crate::utils::OptionChanges as _;
 use role::Role;
 use actions::{Action, LedAction, Inc};
 use keyberon::layout::CustomEvent;
-use keys::PressedLedKeys;
+use keys::PressedKeys;
 use hid::KeyCodeIterExt as _;
 
 pub use keys::Keys;
@@ -56,7 +56,7 @@ pub struct Keyboard<const L: usize> {
     mouse: mouse::Mouse,
     state: Option<KeyboardState>,
     prev_usb_state: UsbDeviceState,
-    pressed: PerSide<PressedLedKeys>,
+    pressed: PerSide<PressedKeys>,
     keyboard_reports: hid::HidReportQueue<hid::KeyboardReport, 8>,
     consumer_reports: hid::HidReportQueue<hid::ConsumerReport, 1>,
 }
@@ -176,9 +176,8 @@ impl<const L: usize> Keyboard<L> {
                         Event::Release(i, j) => defmt::info!("Got KeyRelease({=u8}, {=u8})", i, j),
                     }
                     // Update pressed keys for the other half
-                    self.pressed[self.keys.side().other()].update(&event.transform(|i, j| {
-                        BoardSide::coords_to_local((i, j))
-                    }));
+                    self.pressed[self.keys.side().other()]
+                        .update_keys_on_event(event.transform(|i, j| BoardSide::coords_to_local((i, j))));
                     // Only master uses key events from the other half
                     if self.fsm.role() == Role::Master {
                         self.layout.event(event);

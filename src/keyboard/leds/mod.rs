@@ -40,6 +40,8 @@
 // * in-memory has to split this because we have Layout for key functions and need some led color
 //   config
 
+/// Boolean bitmask representation of all something for all leds
+mod bitset;
 /// Logic related to rule conditions
 mod condition;
 /// Color storage and output overwrites
@@ -50,6 +52,7 @@ mod pattern;
 pub use output::{LedOutput, Leds};
 pub use pattern::LedController;
 pub use condition::KeyboardState;
+pub use bitset::LedsBitset;
 
 use rgb::RGB8;
 use super::role::Role;

@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 use crate::bsp::{NROWS, NCOLS, NLEDS};
 use crate::bsp::sides::{BoardSide, PerSide};
 use crate::keyboard::hid::KeyboardLeds;
-use crate::keyboard::keys::PressedLedKeys;
+use crate::keyboard::keys::PressedKeys;
 use crate::keyboard::role::Role;
 use super::{Keys, Condition, KeyboardLed};
 
@@ -14,7 +14,7 @@ pub struct KeyboardState {
     pub usb_on: bool,
     pub role: Role,
     pub layer: u8,
-    pub pressed: PerSide<PressedLedKeys>,
+    pub pressed: PerSide<PressedKeys>,
 }
 
 impl Condition {
@@ -24,18 +24,18 @@ impl Condition {
     /// based on keyboard state, but [`Condition::Pressed`] actually filters the keys. Instead of
     /// calling `applies(self, state, side, led)` in a loop it is much faster to call this method
     /// once returning keys (leds) mask and then to use the mask while iterating over keys (leds).
-    pub fn applies_to(&self, state: &KeyboardState, side: &BoardSide) -> PressedLedKeys {
+    pub fn applies_to(&self, state: &KeyboardState, side: &BoardSide) -> PressedKeys {
         match self {
-            Condition::Always => PressedLedKeys::with_all(true),
-            Condition::Led(led) => PressedLedKeys::with_all(match led {
+            Condition::Always => PressedKeys::with_all(true),
+            Condition::Led(led) => PressedKeys::with_all(match led {
                 KeyboardLed::NumLock => state.leds.num_lock(),
                 KeyboardLed::CapsLock => state.leds.caps_lock(),
                 KeyboardLed::ScrollLock => state.leds.scroll_lock(),
                 KeyboardLed::Compose => state.leds.compose(),
                 KeyboardLed::Kana => state.leds.kana(),
             }),
-            Condition::UsbOn => PressedLedKeys::with_all(state.usb_on),
-            Condition::Role(role) => PressedLedKeys::with_all(role == &state.role),
+            Condition::UsbOn => PressedKeys::with_all(state.usb_on),
+            Condition::Role(role) => PressedKeys::with_all(role == &state.role),
             Condition::Pressed => state.pressed[*side],
             Condition::KeyPressed(row, col) => {
                 let checked_side = if side.has_coords((*row, *col)) {
@@ -50,14 +50,14 @@ impl Condition {
                     // nor on keys from other side
                     .map(|led| state.pressed[checked_side].is_pressed(led))
                     .unwrap_or(false);
-                PressedLedKeys::with_all(is_pressed)
+                PressedKeys::with_all(is_pressed)
             },
-            Condition::Layer(layer) => PressedLedKeys::with_all(state.layer == *layer),
+            Condition::Layer(layer) => PressedKeys::with_all(state.layer == *layer),
             Condition::Not(c) => !c.applies_to(state, side),
             Condition::And(conds) => conds.iter()
-                .fold(PressedLedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side)),
+                .fold(PressedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side)),
             Condition::Or(conds) => conds.iter()
-                .fold(PressedLedKeys::with_all(false), |acc, c| acc | c.applies_to(state, side)),
+                .fold(PressedKeys::with_all(false), |acc, c| acc | c.applies_to(state, side)),
         }
     }
 }
@@ -178,6 +178,8 @@ impl<'a> RuleKeys for Option<&'a Keys> {
 
 #[cfg(test)]
 mod tests {
+    use crate::keyboard::leds::LedsBitset;
+
     use super::*;
     use std::collections::HashSet;
 
@@ -265,8 +267,8 @@ mod tests {
             role: Role::Master,
             layer: 0,
             pressed: PerSide {
-                left: PressedLedKeys::from_raw(left),
-                right: PressedLedKeys::from_raw(right)
+                left: LedsBitset(left),
+                right: LedsBitset(right)
             },
         }
     }
@@ -279,7 +281,7 @@ mod tests {
         assert!(!leds.is_pressed(0));
         assert!(leds.is_pressed(1));
         assert!(!leds.is_pressed(2));
-        assert_eq!(leds.get_raw(), 0b10);
+        assert_eq!(leds.0, 0b10);
     }
 
     #[test]
@@ -290,7 +292,7 @@ mod tests {
         assert!(leds.is_pressed(0));
         assert!(!leds.is_pressed(1));
         assert!(leds.is_pressed(2));
-        assert_eq!(leds.get_raw(), 0b1111_11111111_11111111_11111101);
+        assert_eq!(leds.0, 0b1111_11111111_11111111_11111101);
     }
 
     #[test]

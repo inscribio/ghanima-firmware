@@ -1,22 +1,18 @@
 use keyberon::{matrix, debounce, layout};
-use serde::{Deserialize, Serialize};
 
-use crate::bsp::{NCOLS, NROWS, NLEDS, ColPin, RowPin, sides::BoardSide};
+use crate::bsp::{NCOLS, NROWS, ColPin, RowPin, sides::BoardSide};
 use crate::utils::InfallibleResult;
+use super::leds::LedsBitset;
 
-type PressedKeys = [[bool; NCOLS]; NROWS];
+pub type PressedKeys = LedsBitset;
 
 /// Keyboard key matrix scanner
 pub struct Keys {
     matrix: matrix::Matrix<ColPin, RowPin, NCOLS, NROWS>,
-    debouncer: debounce::Debouncer<PressedKeys>,
+    debouncer: debounce::Debouncer<[[bool; NCOLS]; NROWS]>,
     side: BoardSide,
-    pressed: PressedLedKeys,
+    pressed: LedsBitset,
 }
-
-/// Bit-set storing key states as bit-flags in the order of LEDs
-#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-pub struct PressedLedKeys(u32);
 
 impl Keys {
     /// Initialize key matrix scanner with debouncing that requires `debounce_cnt` stable states
@@ -32,7 +28,7 @@ impl Keys {
             matrix: matrix::Matrix::new(cols, rows).infallible(),
             // TODO: could use better debouncing logic
             debouncer: debounce::Debouncer::new(initial(), initial(), debounce_cnt),
-            pressed: PressedLedKeys(0),
+            pressed: Default::default(),
         }
     }
 
@@ -41,7 +37,7 @@ impl Keys {
         let scan = self.matrix.get().infallible();
         self.debouncer.events(scan)
             .map(|e| {
-                self.pressed.update(&e);
+                self.pressed.update_keys_on_event(e.clone());
                 // Matrix produces local coordinates; make them global.
                 e.transform(|i, j| self.side.coords_to_global((i, j)))
             })
@@ -52,85 +48,25 @@ impl Keys {
         &self.side
     }
 
-    pub fn pressed(&self) -> PressedLedKeys {
+    pub fn pressed(&self) -> PressedKeys {
         self.pressed
     }
 }
 
-impl PressedLedKeys {
-    pub const ALL: PressedLedKeys = PressedLedKeys((1 << NLEDS) - 1);
-    pub const NONE: PressedLedKeys = PressedLedKeys(0);
-
-    pub fn with_all(pressed: bool) -> Self {
-        if pressed { PressedLedKeys::ALL } else { PressedLedKeys::NONE }
-    }
-
-    pub fn is_all(&self) -> bool {
-        self == &Self::ALL
-    }
-
-    pub fn is_none(&self) -> bool {
-        self == &Self::NONE
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn from_raw(val: u32) -> Self {
-        Self(val)
-    }
-
-    /// Get pressed state of key above given LED
-    pub fn is_pressed(&self, led: u8) -> bool {
-        debug_assert!(led < NLEDS as u8);
-        (self.0 & (1 << led)) != 0
-    }
-
-    pub fn update(&mut self, event: &layout::Event) {
+impl PressedKeys {
+    /// Update pressed keys from a layout event
+    pub fn update_keys_on_event(&mut self, event: layout::Event) {
         let (row, col, state) = match event {
             layout::Event::Press(i, j) => (i, j, true),
             layout::Event::Release(i, j) => (i, j, false),
         };
         // Ignore joystick key
-        if let Some(led) = BoardSide::led_number((*row, *col)) {
-            let bitmask = 1 << led;
-            if state {
-                self.0 |= bitmask;
-            } else {
-                self.0 &= !bitmask;
-            }
+        if let Some(led) = BoardSide::led_number((row, col)) {
+            self.set(led, state);
         }
     }
 
-    /// Get the raw internal state
-    pub fn get_raw(&self) -> u32 {
-        self.0
-    }
-
-    #[cfg(test)]
-    pub fn new_raw(keys: u32) -> Self {
-        Self(keys)
-    }
-}
-
-impl core::ops::Not for PressedLedKeys {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        Self(!self.0 & Self::ALL.0) // mask to valid leds
-    }
-}
-
-impl core::ops::BitAnd for PressedLedKeys {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Self(self.0 & rhs.0)
-    }
-}
-
-impl core::ops::BitOr for PressedLedKeys {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
+    pub fn is_pressed(&self, led_key: u8) -> bool {
+        self.get(led_key)
     }
 }
