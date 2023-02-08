@@ -15,12 +15,13 @@ mod app {
     use super::hal;
     use hal::prelude::*;
     use usb_device::class_prelude::UsbBusAllocator;
+    use bbqueue::BBBuffer;
 
     use super::lib;
     use lib::def_tasks_debug;
     use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide, LedColors};
     use lib::hal_ext::{crc, spi, reboot, uart, watchdog, dma::{DmaSplit, DmaTx}};
-    use lib::{keyboard, config, ioqueue::{self, ProducerExt as _}};
+    use lib::{keyboard, config, ioqueue};
 
     // MCU clock frequencies
     const SYSCLK_MHZ: u32 = 48;
@@ -60,12 +61,17 @@ mod app {
         }
     }
 
-    type SerialTx = keyboard::Transmitter<uart::Tx, 4>;
-    type SerialRx = keyboard::Receiver<uart::Rx<&'static mut [u8]>, 4, 128>;
-    type SerialTxQueue = <SerialTx as ioqueue::Queue>::Endpoint;
-    type SerialRxQueue = <SerialRx as ioqueue::Queue>::Endpoint;
-    type SerialTxBuf = <SerialTx as ioqueue::Queue>::Buffer;
-    type SerialRxBuf = <SerialRx as ioqueue::Queue>::Buffer;
+    // Approximate serialized message sizes: Leds->91, Role->8, Key->9
+    const TX_QUEUE_SIZE: usize = 400;
+    const RX_QUEUE_SIZE: usize = 600;
+
+    const SERIAL_BAUD_RATE: u32 = 460_800;
+    const RX_DMA_TMP_BUF_SIZE: usize = 128;
+
+    type SerialTx = uart::Tx<TX_QUEUE_SIZE>;
+    type SerialTxQueue = keyboard::Transmitter<TX_QUEUE_SIZE>;
+    type SerialRx = uart::Rx<RX_QUEUE_SIZE, &'static mut [u8; RX_DMA_TMP_BUF_SIZE]>;
+    type SerialRxQueue = keyboard::Receiver<RX_QUEUE_SIZE>;
     type Leds = ws2812b::Leds<{ bsp::NLEDS }>;
     type Keyboard = keyboard::Keyboard<{ config::N_LAYERS }>;
 
@@ -115,10 +121,9 @@ mod app {
         keyboard: MaybeUninit<keyboard::Keyboard<{ config::N_LAYERS }>> = MaybeUninit::uninit(),
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
-        serial_tx_buf: [u8; SerialTx::MAX_PACKET_SIZE] = [0; SerialTx::MAX_PACKET_SIZE],
-        serial_rx_buf: [u8; SerialRx::MAX_PACKET_SIZE * 2] = [0; SerialRx::MAX_PACKET_SIZE * 2], // more for rx accumulation
-        serial_tx_queue: MaybeUninit<SerialTxBuf> = MaybeUninit::uninit(),
-        serial_rx_queue: MaybeUninit<SerialRxBuf> = MaybeUninit::uninit(),
+        serial_tx_bbb: BBBuffer<TX_QUEUE_SIZE> = BBBuffer::new(),
+        serial_rx_bbb: BBBuffer<RX_QUEUE_SIZE> = BBBuffer::new(),
+        serial_rx_buf: [u8; RX_DMA_TMP_BUF_SIZE] = [0; RX_DMA_TMP_BUF_SIZE],
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -164,6 +169,11 @@ mod app {
         let gpiob = dev.GPIOB.split(&mut rcc);
         let gpioc = dev.GPIOC.split(&mut rcc);
 
+        // Debugging
+        let debug_tx = ifree(|cs| gpioa.pa2.into_alternate_af1(cs));
+        let debug_rx = ifree(|cs| gpioa.pa3.into_alternate_af1(cs));
+        debug::tasks::init(dev.USART2, (debug_tx, debug_rx), &mut rcc);
+
         // DMA
         let dma = dev.DMA1.split(&mut rcc);
 
@@ -194,17 +204,14 @@ mod app {
         // UARTs
         let board_tx = ifree(|cs| gpioa.pa9.into_alternate_af1(cs));
         let board_rx = ifree(|cs| gpioa.pa10.into_alternate_af1(cs));
-        let debug_tx = ifree(|cs| gpioa.pa2.into_alternate_af1(cs));
-        let debug_rx = ifree(|cs| gpioa.pa3.into_alternate_af1(cs));
-        let (serial_tx, serial_rx) = uart::Uart::new(
+        let (serial_tx, serial_tx_queue, serial_rx, serial_rx_queue) = uart::Uart::new(
             dev.USART1,
             (board_tx, board_rx),
             (dma.ch2, dma.ch3),
-            (&mut cx.local.serial_tx_buf[..], &mut cx.local.serial_rx_buf[..]),
-            460_800.bps(),
+            (cx.local.serial_tx_bbb, cx.local.serial_rx_bbb, cx.local.serial_rx_buf),
+            SERIAL_BAUD_RATE.bps(),
             &mut rcc,
         ).split();
-        debug::tasks::init(dev.USART2, (debug_tx, debug_rx), &mut rcc);
 
         // ADC
         let joy_x = ifree(|cs| gpioa.pa0.into_analog(cs));
@@ -244,18 +251,8 @@ mod app {
         };
 
         // I/O queue (need to use this trick anyway because the constructors new/default are non-const).
-        let serial_tx_queue = unsafe {
-            cx.local.serial_tx_queue.as_mut_ptr().write(Default::default());
-            &mut *cx.local.serial_tx_queue.as_mut_ptr()
-        };
-        let serial_rx_queue = unsafe {
-            cx.local.serial_rx_queue.as_mut_ptr().write(Default::default());
-            &mut *cx.local.serial_rx_queue.as_mut_ptr()
-        };
-        let (mut serial_tx_queue, tx_cons) = serial_tx_queue.split_ref();
-        let (rx_prod, serial_rx_queue) = serial_rx_queue.split_ref();
-        let mut serial_tx = keyboard::Transmitter::new(serial_tx, tx_cons);
-        let serial_rx = keyboard::Receiver::new(serial_rx, rx_prod);
+        let mut serial_tx_queue = keyboard::Transmitter::new(serial_tx_queue);
+        let serial_rx_queue = keyboard::Receiver::new(serial_rx_queue);
 
         // Keyboard
         let keys = keyboard::Keys::new(board_side, cols, rows, DEBOUNCE_COUNT);
@@ -287,9 +284,7 @@ mod app {
             spi_tx.start().map_err(drop).unwrap();
             // Send colors for other side
             // FIXME: will it work if USB is not ready yet?
-            serial_tx_queue.push(led_output.current(board_side.other()).colors.into())
-                .map_err(drop).unwrap();
-            serial_tx.tick(&mut crc);
+            serial_tx_queue.send(&mut crc, led_output.current(board_side.other()));
         }
 
         if !joy.detect() {
@@ -314,8 +309,8 @@ mod app {
             usb,
             spi_tx,
             serial_tx,
-            serial_rx,
             serial_tx_queue,
+            serial_rx,
             serial_rx_queue,
             crc,
             led_controller,
@@ -395,10 +390,10 @@ mod app {
     )]
     fn keyboard_tick(cx: keyboard_tick::Context, t: u32) {
         let keyboard_tick::SharedResources {
-            serial_tx,
+            mut serial_tx,
             serial_tx_queue,
             serial_rx_queue,
-            crc,
+            mut crc,
             mut usb,
             mut keyboard,
             mut led_forced_colors,
@@ -410,10 +405,10 @@ mod app {
             usb.lock(|usb| usb.dfu.tick(KEYBOARD_PRESCALER.try_into().unwrap()));
 
             // Run main keyboard logic
-            let leds_update = keyboard.lock(|keyboard| keyboard.tick(serial_tx_queue, serial_rx_queue, usb));
+            let leds_update = keyboard.lock(|keyboard| keyboard.tick(&mut crc, serial_tx_queue, serial_rx_queue, usb));
 
             // Transmit any serial messages
-            (serial_tx, crc).lock(|tx, crc| tx.tick(crc));
+            serial_tx.lock(|tx| tx.tick());
 
             // Send LED patterns update for processing later
             match leds_update {
@@ -485,12 +480,13 @@ mod app {
         });
     }
 
-    #[task(priority = 1, shared = [&board_side, spi_tx, serial_tx_queue, led_controller, led_output, &tasks])]
+    #[task(priority = 1, shared = [&board_side, spi_tx, serial_tx_queue, crc, led_controller, led_output, &tasks])]
     fn leds_tick(cx: leds_tick::Context, t: u32) {
         let leds_tick::SharedResources {
             board_side,
             mut spi_tx,
             serial_tx_queue,
+            crc,
             led_controller,
             mut led_output,
             tasks,
@@ -500,14 +496,13 @@ mod app {
             // Generate LED colors
             (&mut led_output, led_controller).lock(|out, ctl| {
                 debug::tasks::trace::run(|| out.tick(t, ctl));
-                // out.tick(t, ctl);
             });
 
             // Send colors for other side over UART, drop message if queue is full
-            (&mut led_output, serial_tx_queue).lock(|out, tx| {
+            led_output.lock(|out| {
                 if out.using_from_controller() {
                     if let Some(colors) = out.get_for_transmission(t, board_side.other()) {
-                        tx.try_push(colors);
+                        (crc, serial_tx_queue).lock(|crc, tx| tx.send(crc, colors));
                     }
                 }
             });
@@ -531,28 +526,25 @@ mod app {
                         spi_tx.start()
                             .map_err(drop)
                             .expect("If we were able to serialize we must be able to start!");
-                        // debug::tasks::trace::start();
+                        debug::tasks::trace::start();
                     }
                 });
             });
         });
     }
 
-
     #[task(
         priority = 1,
-        shared = [serial_rx, &tasks],
+        shared = [serial_rx_queue, &tasks],
         local = [stats: Option<ioqueue::Stats> = None]
     )]
     fn debug_report(cx: debug_report::Context) {
         let debug_report::LocalResources { stats } = cx.local;
-        let debug_report::SharedResources { mut serial_rx, tasks } = cx.shared;
+        let debug_report::SharedResources { mut serial_rx_queue, tasks } = cx.shared;
 
         tasks.debug_report(|| {
             let old = stats.get_or_insert_with(|| Default::default());
-            let new = serial_rx.lock(|rx| {
-                rx.stats().clone()
-            });
+            let new = serial_rx_queue.lock(|rx| rx.stats().clone());
             if &new != old {
                 defmt::warn!("RX stats: {}", new);
                 *old = new;
@@ -579,24 +571,21 @@ mod app {
                 spi_tx.on_interrupt()
                     .as_option()
                     .transpose()
-                    .expect("Unexpected interrupt")
+                    .expect("SPI DMA error")
             );
-            // debug::tasks::trace::end();
+            debug::tasks::trace::end();
         });
     }
 
-    #[task(binds = DMA1_CH2_3, priority = 4, shared = [crc, serial_tx, serial_rx, &tasks])]
+    #[task(binds = DMA1_CH2_3, priority = 4, shared = [serial_tx, serial_rx, &tasks])]
     fn dma_uart_callback(cx: dma_uart_callback::Context) {
-        let dma_uart_callback::SharedResources { crc, serial_tx, serial_rx, tasks } = cx.shared;
+        let dma_uart_callback::SharedResources { serial_tx, serial_rx, tasks } = cx.shared;
         tasks.dma_uart_interrupt(|| {
-            let tx = serial_tx;
-            let rx = serial_rx;
-            let crc = crc;
-            (tx, rx, crc).lock(|tx, rx, mut crc| {
-                let rx_done = rx.on_interrupt(&mut crc)
-                    .as_option().transpose().expect("Unexpected interrupt");
-                let tx_done = tx.on_interrupt()
-                    .as_option().transpose().expect("Unexpected interrupt");
+            (serial_tx, serial_rx).lock(|tx, rx| {
+                let rx_done = rx.on_dma_interrupt()
+                    .as_option().transpose().expect("UART DMA error");
+                let tx_done = tx.on_dma_interrupt()
+                    .as_option().transpose().expect("UART DMA error");
 
                 if rx_done.is_some() {
                     defmt::trace!("UART RX done");
@@ -611,13 +600,13 @@ mod app {
         });
     }
 
-    #[task(binds = USART1, priority = 4, shared = [crc, serial_rx, &tasks])]
+    #[task(binds = USART1, priority = 4, shared = [serial_rx, &tasks])]
     fn uart_interrupt(cx: uart_interrupt::Context) {
-        let uart_interrupt::SharedResources { crc, serial_rx, tasks } = cx.shared;
+        let uart_interrupt::SharedResources { mut serial_rx, tasks } = cx.shared;
         tasks.uart_interrupt(|| {
-            (serial_rx, crc).lock(|rx, mut crc| {
-                rx.on_interrupt(&mut crc)
-                    .as_option().transpose().expect("Unexpected interrupt");
+            serial_rx.lock(|rx| {
+                rx.on_uart_interrupt()
+                    .as_option().transpose().expect("UART error");
             });
         });
     }

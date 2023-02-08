@@ -19,8 +19,7 @@ mod msg;
 /// Role negotiation between keyboard halves
 mod role;
 
-use ringbuf::{StaticRb, StaticConsumer, StaticProducer};
-use rtic::Mutex;
+use rtic::mutex_prelude::*;
 use keyberon::layout::{self, Event};
 use serde::{Serialize, Deserialize};
 
@@ -30,7 +29,7 @@ use usbd_human_interface_device::UsbHidError;
 use crate::bsp::sides::{BoardSide, PerSide};
 use crate::bsp::usb::Usb;
 use crate::bsp::{NCOLS, NROWS, LedColors};
-use crate::ioqueue::{self, ProducerExt as _};
+use crate::ioqueue;
 use crate::utils::OptionChanges as _;
 use role::Role;
 use actions::{Action, LedAction, Inc};
@@ -41,12 +40,12 @@ use hid::KeyCodeIterExt as _;
 pub use keys::Keys;
 pub use leds::{LedController, LedOutput, KeyboardState};
 
-/// I/O ringbuffer for packet tx/rx between keyboard halves
-pub type IoRb<const N: usize> = StaticRb<msg::Message, N>;
-/// Transmitter of packets for communication between keyboard halves
-pub type Transmitter<TX, const N: usize> = ioqueue::Transmitter<msg::Message, TX, &'static IoRb<N>>;
-/// Receiver of packets for communication between keyboard halves
-pub type Receiver<RX, const N: usize, const B: usize> = ioqueue::Receiver<msg::Message, RX,  &'static IoRb<N>, B>;
+const MAX_PACKET_SIZE: usize = ioqueue::max_packet_size::<msg::Message>();
+
+/// Transmitter queue of packets for communication between keyboard halves
+pub type Transmitter<const N: usize> = ioqueue::Transmitter<'static, msg::Message, N, { MAX_PACKET_SIZE }>;
+/// Receiver queue of packets for communication between keyboard halves
+pub type Receiver<const N: usize> = ioqueue::Receiver<msg::Message, N, { MAX_PACKET_SIZE }>;
 
 /// Split keyboard logic
 pub struct Keyboard<const L: usize> {
@@ -64,7 +63,7 @@ pub struct Keyboard<const L: usize> {
 /// Keyboard configuration
 pub struct KeyboardConfig<const L: usize> {
     /// Keyboard layers configuration
-    pub layers: &'static layout::Layers<{ 2 * NCOLS}, NROWS, L, actions::Action>,
+    pub layers: &'static layout::Layers<{ 2 * NCOLS }, NROWS, L, actions::Action>,
     /// Configuration of mouse emulation
     pub mouse: &'static mouse::MouseConfig,
     /// Configuration of RGB LED lightning
@@ -139,10 +138,11 @@ impl<const L: usize> Keyboard<L> {
     /// This should be called in a fixed period to update internal state, handle communication
     /// between keyboard halves and resolve key events depending on keyboard layout. Returns
     /// [`KeyboardState`] to be passed to the LED controller - possibly a lower priority task.
-    pub fn tick<const TXN: usize, const RXN: usize>(
+    pub fn tick<const TX: usize, const RX: usize>(
         &mut self,
-        mut tx: impl Mutex<T = StaticProducer<'static, msg::Message, TXN>>,
-        mut rx: impl Mutex<T = StaticConsumer<'static, msg::Message, RXN>>,
+        mut crc: impl Mutex<T = <msg::Message as ioqueue::Packet>::Checksum>,
+        mut tx: impl Mutex<T = Transmitter<TX>>,
+        mut rx: impl Mutex<T = Receiver<RX>>,
         mut usb: impl Mutex<T = &'static mut Usb>,
     ) -> LedsUpdate
     {
@@ -153,7 +153,7 @@ impl<const L: usize> Keyboard<L> {
 
         // First update USB state in FSM
         if let Some(msg) = self.fsm.usb_state(usb_state == UsbDeviceState::Configured) {
-            tx.lock(|tx| tx.try_push(msg));
+            (&mut crc, &mut tx).lock(|crc, tx| tx.send(crc, msg));
         }
 
         // Store forced LED colors update from master
@@ -161,12 +161,12 @@ impl<const L: usize> Keyboard<L> {
 
         // Process RX data
         let mut was_key_event = false;  // check events as any key should trigger usb wakeup from suspend
-        while let Some(msg) = rx.lock(|rx| rx.pop()) {
+        while let Some(msg) = (&mut crc, &mut rx).lock(|crc, rx| rx.read(crc)) {
             match msg {
                 msg::Message::Role(msg) => {
                     defmt::info!("Got role::Message: {}", msg);
                     if let Some(msg) =  self.fsm.on_rx(msg) {
-                        tx.lock(|tx| tx.try_push(msg));
+                        (&mut crc, &mut tx).lock(|crc, tx| tx.send(crc, msg));
                     }
                 },
                 msg::Message::Key(event) => {
@@ -191,7 +191,7 @@ impl<const L: usize> Keyboard<L> {
 
         // Advance FSM time, process timeouts
         if let Some(msg) = self.fsm.tick() {
-            tx.lock(|tx| tx.try_push(msg));
+            (&mut crc, &mut tx).lock(|crc, tx| tx.send(crc, msg));
         }
 
         // Scan keys and push all events
@@ -204,7 +204,7 @@ impl<const L: usize> Keyboard<L> {
                 Role::Slave => {
                     let (i, j) = event.coord();
                     defmt::info!("Send Key({=u8}, {=u8})", i, j);
-                    tx.lock(|tx| tx.try_push(event));
+                    (&mut crc, &mut tx).lock(|crc, tx| tx.send(crc, event));
                 },
             }
         }

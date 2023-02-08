@@ -239,7 +239,8 @@ impl InterruptStatus {
 
     /// Replace error flag with [`Err`]
     ///
-    /// A DMA error is generated when redaing from or writing to a reserved address space.
+    /// A DMA error is generated when reading from or writing to a reserved address space.
+    #[allow(clippy::result_unit_err)]
     pub fn as_result(self) -> Result<Self, ()> {
         if self.error() {
             Err(())

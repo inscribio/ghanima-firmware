@@ -157,7 +157,6 @@ impl<'a> ColorGenerator<'a> {
     }
 
     /// Update pattern if it is different than the current one
-    // TODO: remove time param, use Option<start_time>, set Some in tick(), optimize LedController update
     pub fn update(&mut self, time_delta: u16, pattern: Option<&'a Pattern>) {
         let keep = match (self.pattern.as_ref(), pattern) {
             (Some(this), Some(other)) => {
@@ -207,7 +206,7 @@ impl<'a> ColorGenerator<'a> {
             }
             if time_delta < *remaining_time {
                 // don't change to next transition, just decrease remaining time for this one
-                *remaining_time = *remaining_time - time_delta;
+                *remaining_time -= time_delta;
                 break;
             } else {
                 // next transition, subtract remaining time for this transition from time delta

@@ -15,11 +15,13 @@ task-counters = []
 stack-usage = []
 json-config = []
 watchdog = []
+thumbv6 = ["bbqueue/thumbv6"]
 
 [[bin]]
 name = "ghanima"
 test = false
 bench = false
+required-features = ["thumbv6"]
 
 [profile.test]
 # running tests on host, so prioritize fast build time
@@ -83,11 +85,11 @@ cobs = { version = "0.2", default-features = false }
 num = { version = "0.4", default-features = false }
 rgb = { version = "0.8", features = ["serde"] }
 smlang = "0.6"
-ringbuf = { version = "0.3", default-features = false }
 either = { version = "1.6", default-features = false }
 pkg-version = "1.0"
 frunk = { version = "0.4", default-features = false }
 packed_struct = { version = "0.10", default-features = false }
+bbqueue = "0.5"
 
 # Do not use print-defmt as it blows up binary size - we can live without panic messages
 panic-probe = "0.3"

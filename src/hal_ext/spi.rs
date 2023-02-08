@@ -86,7 +86,7 @@ impl SpiTx {
                 .pinc().disabled()
                 .msize().bits8()
                 .psize().bits8()
-                .pl().high()  // TODO: decide on priority
+                .pl().high()
                 .htie().disabled()
                 .teie().enabled()
                 .tcie().enabled()

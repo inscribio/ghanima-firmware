@@ -63,7 +63,7 @@ impl From<LedColors> for Message {
 
 impl From<&Leds> for Message {
     fn from(leds: &Leds) -> Self {
-        Message::Leds(leds.colors.clone())
+        Message::Leds(leds.colors)
     }
 }
 

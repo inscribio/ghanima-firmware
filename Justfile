@@ -1,18 +1,19 @@
 ### Build ###
 
 config-test-env := 'CARGO_TARGET_DIR=/tmp/cargo-target-ghanima-config DEFMT_LOG=off'
+cargo-args := '--release --features thumbv6'
 
 # Build firmware and generate .bin file
 build *ARGS:
-    cargo build --release {{ARGS}}
-    cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
+    cargo build {{cargo-args}} {{ARGS}}
+    cargo objcopy {{cargo-args}} --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
 
 # Run cargo check on any file change
 watch-check *ARGS:
-    cargo watch -c -- cargo check --release {{ARGS}}
+    cargo watch -c -- cargo check {{cargo-args}} {{ARGS}}
 
 type-sizes *ARGS:
-    type-sizes --bin ghanima --release --output-dir ./tmp/type-sizes --exclude-std {{ARGS}}
+    type-sizes --bin ghanima {{cargo-args}} --output-dir ./tmp/type-sizes --exclude-std {{ARGS}}
 
 ### Remote ###
 
@@ -26,12 +27,12 @@ openocd-flash FILE:
 
 # Run firmware over debug probe using probe-rs
 run *ARGS:
-    cargo run --release {{ARGS}}
+    cargo run {{cargo-args}} {{ARGS}}
 
 # Start debugging with gdb
 gdb *ARGS:
-    cargo build --release {{ARGS}}
-    cargo objcopy --release --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
+    cargo build {{cargo-args}} {{ARGS}}
+    cargo objcopy {{cargo-args}} --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
     cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit
 
 gdb-postmortem *ARGS:

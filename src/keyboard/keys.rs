@@ -37,7 +37,7 @@ impl Keys {
         let scan = self.matrix.get().infallible();
         self.debouncer.events(scan)
             .map(|e| {
-                self.pressed.update_keys_on_event(e.clone());
+                self.pressed.update_keys_on_event(e);
                 // Matrix produces local coordinates; make them global.
                 e.transform(|i, j| self.side.coords_to_global((i, j)))
             })

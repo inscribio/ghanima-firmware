@@ -64,6 +64,7 @@ where
         (slice1, slice2, overwritten)
     }
 
+    #[allow(dead_code)]
     pub fn capacity_remaining(&mut self, tail: u16) -> usize {
         let buf = unsafe { self.buf() };
         let (s1, s2, _) = Self::get_data(buf, self.wrap_count, self.head, tail);

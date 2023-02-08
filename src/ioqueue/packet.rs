@@ -10,7 +10,7 @@ use crate::hal_ext::{ChecksumGen, ChecksumEncoder};
 /// While this trait does not provide anything it is used to automatically
 /// implement [`PacketSer`] and [`PacketDeser`] for given type if it implements
 /// proper serde traits.
-pub trait Packet {
+pub trait Packet: MaxSize {
     /// Checksum generator used to add checksum to the data packets
     type Checksum: ChecksumGen;
 }
@@ -434,7 +434,7 @@ pub mod tests {
         assert_eq!(msgs, vec![Message { a: 0x000a55bb, b: 0x1234, c: 0xff }; 1]);
     }
 
-    #[derive(Serialize)]
+    #[derive(Serialize, MaxSize)]
     struct MessageWithRef<'a> {
         id: u16,
         other: &'a Message,
@@ -471,6 +471,10 @@ pub mod tests {
 
     impl<'a> Packet for MessageWithSimpleRef<'a> {
         type Checksum = Crc32;
+    }
+
+    impl<'a> MaxSize for MessageWithSimpleRef<'a> {
+        const POSTCARD_MAX_SIZE: usize = 32;  // some random upper bound
     }
 
     #[test]

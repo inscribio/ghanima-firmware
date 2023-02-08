@@ -18,33 +18,17 @@ pub use packet::Packet;
 pub use receiver::{Receiver, Stats};
 pub use transmitter::Transmitter;
 
-use ringbuf::{Producer, ring_buffer::{RbRef, RbWrite}};
-
 type PacketId = u16;
 
-/// Helper trait to simplify specifying ring buffer types for [`Transmitter`]/[`Receiver`]
-pub trait Queue {
-    /// Type of backing buffer
-    type Buffer;
-    /// Type of user endpoint (opposite to the internal endpoint inside [`Transmitter`]/[`Receiver`])
-    type Endpoint;
-}
-
-/// Extension trait for [`ringbuf::Producer`]
-pub trait ProducerExt {
-    type Elem;
-
-    /// Push element if there is space available
-    fn try_push(&mut self, msg: impl Into<Self::Elem>) -> bool;
-}
-
-impl<T, R: RbRef> ProducerExt for Producer<T, R>
-where
-    R::Rb: RbWrite<T>,
-{
-    type Elem = T;
-
-    fn try_push(&mut self, msg: impl Into<Self::Elem>) -> bool {
-        self.push(msg.into()).is_ok()
-    }
+/// Get maximum size of packets for given message
+///
+/// This is different than size of serialized `P` as ioqueue adds additional data.
+/// Use this value to set the sizes of the "temporary" buffers in [`Transmitter`]
+/// and [`Receiver`].
+pub const fn max_packet_size<P: Packet>() -> usize {
+    // FIXME: how to assert these are the same? just create a test?
+    // const RX: usize = receiver::max_packet_size::<P>();
+    // const TX: usize = transmitter::max_packet_size::<P>();
+    // static_assertions::const_assert_eq!(rx, tx);
+    receiver::max_packet_size::<P>()
 }

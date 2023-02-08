@@ -345,7 +345,7 @@ impl<'a> Joystick<'a> {
     }
 
     pub fn active(&self) -> bool {
-        self.x.abs() as u16 >= self.config.min || self.y.abs() as u16 >= self.config.min
+        self.x.unsigned_abs() >= self.config.min || self.y.unsigned_abs() >= self.config.min
     }
 
     pub fn set(&mut self, x: i16, y: i16) {
@@ -365,7 +365,7 @@ impl<'a> Joystick<'a> {
             return
         }
         let clamped = |val: i16| {
-            (val.signum() * ((val.abs() as u16).min(self.config.max)) as i16) as i32
+            (val.signum() * (val.unsigned_abs().min(self.config.max)) as i16) as i32
         };
         self.x_acc.accumulate(clamped(self.x));
         self.y_acc.accumulate(clamped(self.y));
