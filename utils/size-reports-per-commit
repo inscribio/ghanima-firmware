@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+RED="\033[0;31m"
+BOLD="\033[1m"
+CLEAR="\033[0m"
+
+if (( $# < 3 )); then
+    echo "Usage: $(basename $0) [ generate | compare ] COMMIT_RANGE OUT_DIR"
+    echo
+    echo "Generate binary size reports for commits range, e.g."
+    echo "  $(basename $0) v0.4.1~1..HEAD"
+    echo "which means from v0.4.1 to HEAD inclusive."
+    exit 1
+fi
+
+info() {
+    echo -e "${BOLD}""$*""${CLEAR}"
+}
+
+die() {
+    echo -e "${RED}""$*""${CLEAR}"
+    exit 1
+}
+
+commits_for_range() {
+    git log --format=tformat:%h "$1"
+}
+
+commit_hash() {
+    git show --no-patch --format="format:%h" "$1"
+}
+
+commit_message() {
+    git show --no-patch --format="format:%h %s" "$1"
+}
+
+no_ascii_color_codes() {
+    sed -e 's/\x1b\[[0-9;]*m//g'
+}
+
+HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+action="$1"
+commits_range="$2"
+out_dir="$3"
+
+if [[ "$action" = "generate" ]]; then
+    original=$(commit_hash HEAD)
+
+    # reverse order to go from oldest to newest
+    for commit in $(commits_for_range "$commits_range" | tac); do
+        info "$(commit_message "$commit")"
+        git restore Cargo.lock
+        git checkout "$commit" > /dev/null
+        if just build &> /dev/null; then
+            { elf-size-analyze -t arm-none-eabi- -w 120 -aHFR "$HERE/../target/thumbv6m-none-eabi/release/ghanima" || true; } \
+                > "$out_dir/$commit"
+                            info " OK"
+                        else
+                            info " ERROR: build failed "
+        fi
+    done
+
+    info "\nRestoring commit ${original}"
+    git checkout "$original"
+elif [[ "$action" = "compare" ]]; then
+    for commit in $(commits_for_range "$commits_range"); do
+        if [ -f "$out_dir/$commit" ]; then
+            output="$(cat "$out_dir/$commit" | no_ascii_color_codes | grep "Symbols total"| tr -s '[:space:]')"
+            flash="$(head -n 1 <<< "$output" | sed 's/Symbols total\s*//' | sed 's/\s*$//')"
+            ram="$(tail -n 1 <<< "$output" | sed 's/Symbols total\s*//' | sed 's/\s*$//')"
+            printf "%8s / %7s   %s\n" "$flash" "$ram" "$(commit_message "$commit")"
+        else
+            printf "%-18s   %s\n" "MISSING OUTPUT" "$(commit_message "$commit")"
+        fi
+    done
+else
+    die "Unsupported action"
+fi
