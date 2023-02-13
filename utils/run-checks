@@ -28,7 +28,7 @@ case "$1" in
 		;;
 	*)
 		(cd config && cargo check --target $host && cargo test --target $host) && \
-		cargo check && \
+		cargo check --features thumbv6 && \
 			cargo test --target $host "$@"
 		;;
 esac

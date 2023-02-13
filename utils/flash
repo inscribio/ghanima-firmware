@@ -64,7 +64,7 @@ keyboard_id='16c0:27db'
 stlink_id='0483:3748'
 
 target_bin="target/$target_name.bin"
-cargo_flags="--release $*"
+cargo_flags="--release --features thumbv6 $*"
 dfu_modifiers="leave"
 
 # on first flashing we may ned to unprotect the flash

@@ -15,7 +15,7 @@ task-counters = []
 stack-usage = []
 json-config = []
 watchdog = []
-thumbv6 = ["bbqueue/thumbv6"]
+thumbv6 = ["bbqueue/thumbv6"] # needed to enable thumbv6 for bin but not for tests on host
 
 [[bin]]
 name = "ghanima"
