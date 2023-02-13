@@ -142,8 +142,8 @@ mod tests {
         reports.push(KbReport::new([A, B]));
         reports.push(KbReport::new([A, B, C]));
 
-        let mut sent = Cell::new(None);
-        let mut send_ok_handler = |r: &KbReport| {
+        let sent = Cell::new(None);
+        let send_ok_handler = |r: &KbReport| {
             sent.set(Some(r.clone()));
             Ok(1)
         };
@@ -167,8 +167,8 @@ mod tests {
         reports.push(KbReport::new([A, B]));
         reports.push(KbReport::new([A, B, C]));
 
-        let mut sent = Cell::new(None);
-        let mut send_ok_handler = |r: &KbReport| {
+        let sent = Cell::new(None);
+        let send_ok_handler = |r: &KbReport| {
             sent.set(Some(r.clone()));
             Ok(1)
         };
@@ -203,8 +203,8 @@ mod tests {
             KbReport::new([A]),
         ]);
 
-        let mut sent = Cell::new(None);
-        let mut send_ok_handler = |r: &KbReport| {
+        let sent = Cell::new(None);
+        let send_ok_handler = |r: &KbReport| {
             sent.set(Some(r.clone()));
             Ok(1)
         };

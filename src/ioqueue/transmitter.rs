@@ -88,14 +88,8 @@ mod tests {
     use bbqueue::BBBuffer;
 
     use super::*;
-    use std::vec::Vec;
-    use std::cell::Cell;
-    use crate::hal_ext::dma::mock::DmaTxMock;
     use crate::hal_ext::checksum_mock::Crc32;
     use crate::ioqueue::packet::tests::bytes;
-
-    // Explicit type because using just [] yields "multiple `impl`s of PartialEq" because of the crate `fixed`
-    const EMPTY: [u8; 0] = [];
 
     #[derive(Serialize, MaxSize, Debug)]
     struct Message(u16, u8);
