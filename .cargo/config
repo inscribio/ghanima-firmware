@@ -9,7 +9,7 @@ rustflags = [
   # Produce a memory map file
   "-C", "link-arg=-Map=memory.map"
 ]
-runner = "probe-run --chip STM32F072C8Tx"
+runner = "probe-run --chip STM32F072C8Tx --measure-stack"
 
 [build]
 target = "thumbv6m-none-eabi"    # Cortex-M0 and Cortex-M0+
