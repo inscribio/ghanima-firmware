@@ -12,6 +12,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aligned"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a785a543aea40f5e4e2e93bb2655d31bc21bb391fff65697150973e383f16bb"
+dependencies = [
+ "as-slice",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -22,6 +31,18 @@ name = "arraydeque"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0ffd3d69bd89910509a5d31d1f1353f38ccffdd116dd0099bbd6627f7bd8ad8"
+
+[[package]]
+name = "as-slice"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45403b49e3954a4b8428a0ac21a4b7afadccf92bfd96273f1a58cd4812496ae0"
+dependencies = [
+ "generic-array 0.12.4",
+ "generic-array 0.13.3",
+ "generic-array 0.14.6",
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "assert_float_eq"
@@ -64,6 +85,15 @@ name = "bare-metal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
+
+[[package]]
+name = "bbqueue"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3baa8859d1a4c7411039a75c0599a4640ef1c9a8fc811e4325b00e6cfe0a55"
+dependencies = [
+ "cortex-m 0.6.7",
+]
 
 [[package]]
 name = "bit_field"
@@ -167,6 +197,19 @@ dependencies = [
 
 [[package]]
 name = "cortex-m"
+version = "0.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9075300b07c6a56263b9b582c214d0ff037b00d45ec9fde1cc711490c56f1bb9"
+dependencies = [
+ "aligned",
+ "bare-metal 0.2.5",
+ "bitfield 0.13.2",
+ "cortex-m 0.7.6",
+ "volatile-register",
+]
+
+[[package]]
+name = "cortex-m"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70858629a458fdfd39f9675c4dc309411f2a3f83bede76988d81bf1a0ecee9e0"
@@ -204,7 +247,7 @@ version = "1.0.0"
 source = "git+https://github.com/rtic-rs/cortex-m-rtic.git?rev=c6231d81#c6231d81d843815169492daaa947066234d4a9bf"
 dependencies = [
  "bare-metal 1.0.0",
- "cortex-m",
+ "cortex-m 0.7.6",
  "cortex-m-rtic-macros",
  "heapless",
  "rtic-core",
@@ -247,7 +290,7 @@ checksum = "95da181745b56d4bd339530ec393508910c909c784e8962d15d722bacf0bcbcd"
 dependencies = [
  "bare-metal 1.0.0",
  "cfg-if",
- "cortex-m",
+ "cortex-m 0.7.6",
  "riscv",
 ]
 
@@ -256,15 +299,6 @@ name = "critical-section"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6548a0ad5d2549e111e1f6a11a6c2e2d00ce6a3dafe22948d67c2b443f775e52"
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb766fa798726286dbbb842f174001dab8abc7b627a1dd86e0b7222a95d929f"
-dependencies = [
- "cfg-if",
-]
 
 [[package]]
 name = "crunchy"
@@ -430,6 +464,24 @@ dependencies = [
 
 [[package]]
 name = "generic-array"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffdf9f34f1447443d37393cc6c2b8313aebddcd96906caf34e54c68d8e57d7bd"
+dependencies = [
+ "typenum",
+]
+
+[[package]]
+name = "generic-array"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f797e67af32588215eaaab8327027ee8e71b9dd0b2b26996aedf20c030fce309"
+dependencies = [
+ "typenum",
+]
+
+[[package]]
+name = "generic-array"
 version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bff49e947297f3312447abdca79f45f4738097cc82b06e72054d2223f601f1b9"
@@ -455,9 +507,10 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_float_eq",
+ "bbqueue",
  "bitfield 0.14.0",
  "cobs",
- "cortex-m",
+ "cortex-m 0.7.6",
  "cortex-m-rt",
  "cortex-m-rtic",
  "crc",
@@ -468,7 +521,7 @@ dependencies = [
  "embedded-hal",
  "fixed",
  "frunk",
- "generic-array",
+ "generic-array 0.14.6",
  "ghanima-config",
  "gnuplot",
  "heapless",
@@ -482,7 +535,6 @@ dependencies = [
  "postcard",
  "rand",
  "rgb",
- "ringbuf",
  "serde",
  "serde-big-array",
  "smlang",
@@ -768,7 +820,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ab1f00eac22bd18f8e5cae9555f2820b3a0c166b5b556ee3e203746ea6dcf3a"
 dependencies = [
- "cortex-m",
+ "cortex-m 0.7.6",
 ]
 
 [[package]]
@@ -945,15 +997,6 @@ checksum = "3603b7d71ca82644f79b5a06d1220e9a58ede60bd32255f698cb1af8838b8db3"
 dependencies = [
  "bytemuck",
  "serde",
-]
-
-[[package]]
-name = "ringbuf"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ca10b9c9e53ac855a2d6953bce34cef6edbac32c4b13047a4d59d67299420a"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -1173,7 +1216,7 @@ name = "stm32-usbd"
 version = "0.6.0"
 source = "git+https://github.com/jedrzejboczar/stm32-usbd?rev=c6f7d12#c6f7d12c524fff31c9f0de0baea0bcdeffcfbddc"
 dependencies = [
- "cortex-m",
+ "cortex-m 0.7.6",
  "usb-device",
  "vcell",
 ]
@@ -1185,7 +1228,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad6efffc472f66098c4ec84d5907b4d001c550db86a7dfa607adf1ba94adbf82"
 dependencies = [
  "bare-metal 1.0.0",
- "cortex-m",
+ "cortex-m 0.7.6",
  "cortex-m-rt",
  "vcell",
 ]
@@ -1199,7 +1242,7 @@ dependencies = [
  "bare-metal 1.0.0",
  "bxcan",
  "cast",
- "cortex-m",
+ "cortex-m 0.7.6",
  "embedded-hal",
  "nb 1.0.0",
  "stm32-usbd",
@@ -1224,7 +1267,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57e71d8e4587d8f434b88b9aef901987f46164df813a3a1d6bdf3a58debf67f0"
 dependencies = [
- "cortex-m",
+ "cortex-m 0.7.6",
  "fugit",
  "rtic-monotonic",
 ]
