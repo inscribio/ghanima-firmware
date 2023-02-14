@@ -150,7 +150,8 @@ impl Mouse {
                 MouseMovement::PanLeft => self.movement.set_pan_left(pressed),
                 MouseMovement::PanRight => self.movement.set_pan_right(pressed),
             },
-            MouseAction::Sensitivity(_) => todo!(),
+            // TODO: sensitivity; no need for runtime if we have so much options in config?
+            MouseAction::Sensitivity(_) => defmt::warn!("Mouse sensitivity not supported"),
         }
     }
 
