@@ -495,7 +495,7 @@ mod app {
         tasks.led_spi_output(|| {
             // Generate LED colors
             (&mut led_output, led_controller).lock(|out, ctl| {
-                debug::tasks::trace::run(|| out.tick(t, ctl));
+                out.tick(t, ctl);
             });
 
             // Send colors for other side over UART, drop message if queue is full
@@ -515,10 +515,8 @@ mod app {
                 // `leds` must be kept locked because we're serializing from reference.
                 spi_tx.lock(|spi_tx| {
                     // Fails on first call because we start an immediate transfer in init()
-                    let ok = debug::tasks::trace::run(|| {
-                        // TODO: try to use .serialize()
-                        spi_tx.push(|buf| colors.serialize_to_slice(buf)).is_ok()
-                    });
+                    // TODO: try to use .serialize()
+                    let ok = spi_tx.push(|buf| colors.serialize_to_slice(buf)).is_ok();
 
                     if !ok {
                         defmt::warn!("Trying to serialize new data but DMA transfer is not finished");
@@ -526,7 +524,6 @@ mod app {
                         spi_tx.start()
                             .map_err(drop)
                             .expect("If we were able to serialize we must be able to start!");
-                        debug::tasks::trace::start();
                     }
                 });
             });
@@ -573,7 +570,6 @@ mod app {
                     .transpose()
                     .expect("SPI DMA error")
             );
-            debug::tasks::trace::end();
         });
     }
 
@@ -595,7 +591,13 @@ mod app {
                     defmt::trace!("UART TX done");
                 }
 
-                rx_done.or(tx_done).expect("No interrupt handled!");
+                if rx_done.or(tx_done).is_none() {
+                    // This happens sometimes, not sure why but it seems that TX half-transfer
+                    // interrupt triggers this handler even though it is disabled.
+                    let dma = unsafe { &*hal::pac::DMA1::ptr() };
+                    defmt::warn!("No UART DMA handled: ISR={0=28..32:04b}_{0=24..28:04b}__{0=20..24:04b}_{0=16..20:04b}__{0=12..16:04b}_{0=8..12:04b}__{0=4..8:04b}_{0=0..4:04b}",
+                        dma.isr.read().bits());
+                }
             });
         });
     }
