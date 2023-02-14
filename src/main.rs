@@ -119,7 +119,6 @@ mod app {
         usb: MaybeUninit<Usb> = MaybeUninit::uninit(),
         led_controller: MaybeUninit<keyboard::LedController<'static>> = MaybeUninit::uninit(),
         keyboard: MaybeUninit<keyboard::Keyboard<{ config::N_LAYERS }>> = MaybeUninit::uninit(),
-        key_action_cache: MaybeUninit<[keyboard::KeyActionCache; config::N_LAYERS]> = MaybeUninit::uninit(),
         usb_bus: Option<UsbBusAllocator<hal::usb::UsbBusType>> = None,
         led_buf: [u8; Leds::BUFFER_SIZE] = [0; Leds::BUFFER_SIZE],
         serial_tx_bbb: BBBuffer<TX_QUEUE_SIZE> = BBBuffer::new(),
@@ -242,17 +241,15 @@ mod app {
             &mut *cx.local.usb.as_mut_ptr()
         };
 
+        // Use const version to decrease binary size by ~700 B
+        const KEY_ACTION_CACHE: [keyboard::KeyActionCache; config::N_LAYERS] =
+            keyboard::KeyActionCache::const_for_layers(&config::LAYERS);
+
         // LED controller
         let mut led_output = keyboard::LedOutput::new(LED_RETRANSMISSION_MIN_TIME);
-        let key_action_cache = unsafe {
-            cx.local.key_action_cache.as_mut_ptr().write(
-                keyboard::KeyActionCache::for_layers(config::CONFIG.layers)
-            );
-            &mut *cx.local.key_action_cache.as_mut_ptr()
-        };
         let led_controller = unsafe {
             cx.local.led_controller.as_mut_ptr().write(
-                keyboard::LedController::new(&config::CONFIG.leds, key_action_cache)
+                keyboard::LedController::new(&config::CONFIG.leds, &KEY_ACTION_CACHE)
             );
             &mut *cx.local.led_controller.as_mut_ptr()
         };

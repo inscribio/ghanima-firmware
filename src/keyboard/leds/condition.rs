@@ -103,6 +103,7 @@ impl KeyActionCache {
         custom: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
     };
 
+    /// Create cache for actions on given layer
     pub fn new<const C: usize, const R: usize, T>(layer_actions: &[[Action<T>; C]; R]) -> Self {
         let mut cache = Self::EMPTY;
         for (row, row_actions) in layer_actions.iter().enumerate() {
@@ -128,11 +129,64 @@ impl KeyActionCache {
         cache
     }
 
+    /// Create cache array for full layout
     pub fn for_layers<const C: usize, const R: usize, const L: usize, T>(layers: &Layers<C, R, L, T>) -> [Self; L] {
         let mut caches = [Self::EMPTY; L];
         debug_assert_eq!(layers.len(), caches.len());
         for (cache, row) in caches.iter_mut().zip(layers.iter()) {
             *cache = Self::new(row);
+        }
+        caches
+    }
+
+    // Const generatics do not allow mutation by &mut so this returns new value
+    const fn const_set_action(side: BoardSide, led: u8, mut keys: PerSide<PressedKeys>) -> PerSide<PressedKeys> {
+        match side {
+            BoardSide::Left => keys.left.0 |= 1 << led,
+            BoardSide::Right => keys.right.0 |= 1 << led,
+        }
+        keys
+    }
+
+    /// Const version of [`KeyActionCache::new`]
+    pub const fn const_new<const C: usize, const R: usize, T>(layer_actions: &[[Action<T>; C]; R]) -> Self {
+        // Cannot use &mut, for loops, iterators, etc.
+        let mut cache = Self::EMPTY;
+        let mut row = 0;
+        while row < R {
+            let mut col = 0;
+            while col < C {
+                let side = BoardSide::from_coords((row as u8, col as u8));
+                let local = BoardSide::coords_to_local((row as u8, col as u8));
+                if let Some(led) = BoardSide::led_number(local) {
+                    let act = &layer_actions[row][col];
+                    match act {
+                        Action::NoOp => cache.no_op = Self::const_set_action(side, led, cache.no_op),
+                        Action::Trans => cache.trans = Self::const_set_action(side, led, cache.trans),
+                        Action::KeyCode(_) => cache.key_code = Self::const_set_action(side, led, cache.key_code),
+                        Action::MultipleKeyCodes(_) => cache.multiple_key_codes = Self::const_set_action(side, led, cache.multiple_key_codes),
+                        Action::MultipleActions(_) => cache.multiple_actions = Self::const_set_action(side, led, cache.multiple_actions),
+                        Action::Layer(_) => cache.layer = Self::const_set_action(side, led, cache.layer),
+                        Action::DefaultLayer(_) => cache.default_layer = Self::const_set_action(side, led, cache.default_layer),
+                        Action::HoldTap(_) => cache.hold_tap = Self::const_set_action(side, led, cache.hold_tap),
+                        Action::Custom(_) => cache.custom = Self::const_set_action(side, led, cache.custom),
+                        _ => {},
+                    };
+                }
+                col += 1
+            }
+            row += 1
+        }
+        cache
+    }
+
+    /// Const version of [`KeyActionCache::for_layers`]
+    pub const fn const_for_layers<const C: usize, const R: usize, const L: usize, T>(layers: &Layers<C, R, L, T>) -> [Self; L] {
+        let mut caches = [Self::EMPTY; L];
+        let mut i = 0;
+        while i < layers.len() {
+            caches[i] = Self::const_new(&layers[i]);
+            i += 1;
         }
         caches
     }

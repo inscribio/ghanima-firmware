@@ -4,7 +4,7 @@
 pub use generated::{CONFIG, N_LAYERS};
 
 #[cfg(not(feature = "json-config"))]
-pub use code::{CONFIG, N_LAYERS};
+pub use code::{CONFIG, N_LAYERS, LAYERS};
 
 #[cfg(feature = "json-config")]
 mod generated {
@@ -27,7 +27,7 @@ mod code {
     use crate::keyboard::leds::*;
     use crate::bsp::{NCOLS, NROWS};
 
-    type Layers = layout::Layers<{ 2 * NCOLS}, NROWS, N_LAYERS, CustomAction>;
+    type Layers = layout::Layers<{ 2 * NCOLS }, NROWS, N_LAYERS, CustomAction>;
     type Action = action::Action<CustomAction>;
 
     pub static CONFIG: KeyboardConfig<N_LAYERS> = KeyboardConfig {
@@ -111,7 +111,7 @@ mod code {
     const L_DOWN: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Down)));
 
     pub const N_LAYERS: usize = 5;
-    const LAYERS: Layers = layout! {
+    pub const LAYERS: Layers = layout! {
         { // Default
             [ '`'           1 2 3 4 5   6 7 8 9 0   '\\'          ]
             [ Tab           Q W E R T   Y U I O P   BSpace        ]
