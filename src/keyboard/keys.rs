@@ -1,6 +1,6 @@
 use keyberon::{matrix, debounce, layout};
 
-use crate::bsp::{NCOLS, NROWS, ColPin, RowPin, sides::BoardSide};
+use crate::bsp::{NCOLS, NROWS, ColPin, RowPin, sides::BoardSide, delay_us};
 use crate::utils::InfallibleResult;
 use super::leds::LedsBitset;
 
@@ -34,7 +34,10 @@ impl Keys {
 
     /// Scan for key events; caller decides what to do with the events
     pub fn scan(&mut self) -> impl Iterator<Item = layout::Event> + '_ {
-        let scan = self.matrix.get().infallible();
+        // No-delay scan takes ~39 us and there seem to be no problems with signal stability,
+        // but to be sure that row signal is fully stable add some delay before each row scan.
+        let scan = self.matrix.get_with_delay(|| delay_us(4)).infallible();
+
         self.debouncer.events(scan)
             .map(|e| {
                 self.pressed.update_keys_on_event(e);

@@ -36,3 +36,18 @@ pub type LedColors = [rgb::RGB8; NLEDS];
 pub type ColPin = gpio::Pin<gpio::Input<gpio::PullUp>>;
 /// Type of GPIOs connected to key matrix rows
 pub type RowPin = gpio::Pin<gpio::Output<gpio::PushPull>>;
+
+/// Perform blocking microsecond delay assuming 48 MHz CPU frequency
+///
+/// From measurements with logic analyzer:
+/// * `cortex_m::asm::delay(1000)` takes 42 us
+/// * `cortex_m::asm::delay(0)` takes 0.25 us
+/// The above results have the overhead of `tasks::trace::run` (1.125 us) already
+/// subtracted from the measured duration.
+///
+/// The theoretical time for 1000 cycle delay is 20.83 us.
+#[inline(always)]
+pub fn delay_us(us: u32) {
+    const RATIO: u32 = 1000 / 42 + 1;
+    cortex_m::asm::delay(us * RATIO);
+}
