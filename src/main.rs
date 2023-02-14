@@ -243,7 +243,7 @@ mod app {
 
         // Use const version to decrease binary size by ~700 B
         const KEY_ACTION_CACHE: [keyboard::KeyActionCache; config::N_LAYERS] =
-            keyboard::KeyActionCache::const_for_layers(&config::LAYERS);
+            keyboard::KeyActionCache::const_for_layers(&config::CONFIG.layers);
 
         // LED controller
         let mut led_output = keyboard::LedOutput::new(LED_RETRANSMISSION_MIN_TIME);

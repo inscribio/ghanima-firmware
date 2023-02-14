@@ -4,7 +4,7 @@
 pub use generated::{CONFIG, N_LAYERS};
 
 #[cfg(not(feature = "json-config"))]
-pub use code::{CONFIG, N_LAYERS, LAYERS};
+pub use code::{CONFIG, N_LAYERS};
 
 #[cfg(feature = "json-config")]
 mod generated {
@@ -30,7 +30,7 @@ mod code {
     type Layers = layout::Layers<{ 2 * NCOLS }, NROWS, N_LAYERS, CustomAction>;
     type Action = action::Action<CustomAction>;
 
-    pub static CONFIG: KeyboardConfig<N_LAYERS> = KeyboardConfig {
+    pub const CONFIG: KeyboardConfig<N_LAYERS> = KeyboardConfig {
         layers: &LAYERS,
         mouse: &MOUSE,
         leds: LEDS,
@@ -111,7 +111,7 @@ mod code {
     const L_DOWN: Action = Action::Custom(CustomAction::Led(LedAction::Brightness(Inc::Down)));
 
     pub const N_LAYERS: usize = 5;
-    pub const LAYERS: Layers = layout! {
+    const LAYERS: Layers = layout! {
         { // Default
             [ '`'           1 2 3 4 5   6 7 8 9 0   '\\'          ]
             [ Tab           Q W E R T   Y U I O P   BSpace        ]
@@ -202,7 +202,7 @@ mod code {
         };
     }
 
-    static LEDS: LedConfigurations = &[
+    const LEDS: LedConfigurations = &[
         &[
             LedRule {
                 keys: None, // all
@@ -252,7 +252,7 @@ mod code {
         ],
     ];
 
-    static MOUSE: MouseConfig = MouseConfig {
+    const MOUSE: MouseConfig = MouseConfig {
         x: AxisConfig {
             invert: false,
             profile: &MOUSE_PROFILE,
