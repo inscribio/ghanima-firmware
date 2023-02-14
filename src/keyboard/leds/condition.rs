@@ -25,6 +25,8 @@ pub struct KeyboardState {
 /// during runtime to speed up [`Condition`] evaluation when filtering keys.
 ///
 /// This structure stores values for a single layer. An array of these should be created.
+#[derive(PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct KeyActionCache {
     pub no_op: PerSide<PressedKeys>,
     pub trans: PerSide<PressedKeys>,
@@ -334,6 +336,7 @@ mod tests {
 
     use super::*;
     use std::collections::HashSet;
+    use keyberon::layout::{Layers, layout};
 
     #[test]
     fn col_in_row_ok() {
@@ -425,11 +428,36 @@ mod tests {
         }
     }
 
+    const LAYERS: Layers<12, 5, 2> = layout! {
+        {
+            [ '`'        1 2 3 4 5   6 7 8 9 0     '\\'   ]
+            [ Tab        Q W E R T   Y U I O P     BSpace ]
+            [ Escape     A S D F G   H J K L ;     Quote  ]
+            [ LShift     Z X C V B   N M , . /     RShift ]
+            [ LGui LAlt Space n n n n n n Enter RAlt LGui ]
+        }
+        {
+            [ F12   F1      F2   F3   F4    F5       F6 F7  F8     F9         F10   F11    ]
+            [ t     t       Home Up   End   PgUp     t  '(' ')'    '_'        +     Delete ]
+            [ t     t       Left Down Right PgDown   t  '[' ']'    -          =     t      ]
+            [ t     t       t    t    t     t        t  '{' '}'    t          t     t      ]
+            [ t     t       t    t    t     t        t  t   Delete t          LAlt  t      ]
+        }
+    };
+
+    const CACHE: [KeyActionCache; 2] = KeyActionCache::const_for_layers(&LAYERS);
+
+    #[test]
+    fn key_action_cache_constructors() {
+        let cache = KeyActionCache::for_layers(&LAYERS);
+        assert_eq!(cache, CACHE);
+    }
+
     #[test]
     fn condition_pressed() {
         let cond = Condition::Pressed;
         let state = simple_keyboard_state(0b0000_0010, 0);
-        let leds = cond.applies_to(&state, &BoardSide::Left);
+        let leds = cond.applies_to(&state, &BoardSide::Left, &CACHE);
         assert!(!leds.is_pressed(0));
         assert!(leds.is_pressed(1));
         assert!(!leds.is_pressed(2));
@@ -437,10 +465,23 @@ mod tests {
     }
 
     #[test]
+    fn condition_key_action() {
+        let cond = Condition::KeyAction(KeyAction::Trans);
+        let mut state = simple_keyboard_state(0b0000_0010, 0);
+        state.layer = 1;
+        let leds = cond.applies_to(&state, &BoardSide::Left, &CACHE);
+        // LEDs left: 6 7  16 17  18 19 20 21 22 23  24 25 26 27
+        assert_eq!(leds.0, 0b_00001111_11111111_00000000_11000000);
+        let leds = cond.applies_to(&state, &BoardSide::Right, &CACHE);
+        // LEDs right: 11  12 17  18 19 20 23  25 27
+        assert_eq!(leds.0, 0b_00001010_10011110_00011000_00000000);
+    }
+
+    #[test]
     fn condition_not() {
         let cond = Condition::Not(&Condition::Pressed);
         let state = simple_keyboard_state(0b0000_0010, 0);
-        let leds = cond.applies_to(&state, &BoardSide::Left);
+        let leds = cond.applies_to(&state, &BoardSide::Left, &CACHE);
         assert!(leds.is_pressed(0));
         assert!(!leds.is_pressed(1));
         assert!(leds.is_pressed(2));
@@ -462,7 +503,7 @@ mod tests {
         // Same for all leds (so leds is ALL or NONE)
         for led in 0..28 {
             for (pressed, expect) in expected {
-                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left, &CACHE);
                 assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
             }
         }
@@ -482,7 +523,7 @@ mod tests {
         ];
         for led in 0..28 {
             for (pressed, expect) in expected {
-                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left, &CACHE);
                 assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
             }
         }
@@ -502,7 +543,7 @@ mod tests {
         ];
         for led in 0..28 {
             for (pressed, expect) in expected {
-                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left);
+                let leds = cond.applies_to(&simple_keyboard_state(pressed, 0), &BoardSide::Left, &CACHE);
                 assert_eq!(leds.is_pressed(led), expect, "At led={led}, pressed={pressed:08b}");
             }
         }

@@ -5,6 +5,7 @@ use crate::bsp::NLEDS;
 
 /// Bit-set storing led states as bit-flags (in the order of LEDs on PCB)
 #[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct LedsBitset(pub u32);
 
 sa::const_assert!(NLEDS <= 32);
