@@ -30,11 +30,25 @@ pub enum Condition {
     UsbOn,
     Role(Role),
     Pressed,
+    KeyAction(KeyAction),
     KeyPressed(u8, u8),
     Layer(u8),
     Not(Box<Condition>),
     And(Vec<Condition>),
     Or(Vec<Condition>),
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
+pub enum KeyAction {
+    NoOp,
+    Trans,
+    KeyCode,
+    MultipleKeyCodes,
+    MultipleActions,
+    Layer,
+    DefaultLayer,
+    HoldTap,
+    Custom,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -95,6 +109,7 @@ pub fn to_tokens(configs: &LedConfigurations) -> TokenStream {
 }
 
 impl_enum_to_tokens! {
+    enum KeyAction: crate::keyboard::leds::KeyAction,
     enum KeyboardLed: crate::keyboard::leds::KeyboardLed,
     enum Repeat: crate::keyboard::leds::Repeat,
     enum Interpolation: crate::keyboard::leds::Interpolation,
@@ -131,6 +146,7 @@ impl ToTokens for Condition {
             Condition::UsbOn => quote! { #leds::Condition::UsbOn },
             Condition::Role(role) => quote! { #leds::Condition::Role(#role) },
             Condition::Pressed => quote! { #leds::Condition::Pressed },
+            Condition::KeyAction(act) => quote! { #leds::Condition::KeyAction(#act) },
             Condition::KeyPressed(row, col) => quote! { #leds::Condition::KeyPressed(#row, #col) },
             Condition::Layer(layer) => quote! { #leds::Condition::Layer(#layer) },
             Condition::Not(cond) => quote! { #leds::Condition::Not(&#cond) },
@@ -193,6 +209,7 @@ pub mod tests {
                                 "Pressed",
                                 { "Not": { "Layer": 0 } },
                                 { "KeyPressed": [2, 3] },
+                                { "KeyAction": "HoldTap" },
                             ]
                         },
                         "pattern": {
@@ -249,6 +266,7 @@ pub mod tests {
                         Condition::Pressed,
                         Condition::Not(Box::new(Condition::Layer(0))),
                         Condition::KeyPressed(2, 3),
+                        Condition::KeyAction(KeyAction::HoldTap),
                     ]),
                     pattern: Pattern {
                         repeat: Repeat::Once,
@@ -303,6 +321,9 @@ pub mod tests {
                                 &crate::keyboard::leds::Condition::Layer(0u8),
                             ),
                             crate::keyboard::leds::Condition::KeyPressed(2u8, 3u8),
+                            crate::keyboard::leds::Condition::KeyAction(
+                                crate::keyboard::leds::KeyAction::HoldTap
+                            ),
                         ]),
                         pattern: crate::keyboard::leds::Pattern {
                             repeat: crate::keyboard::leds::Repeat::Once,
