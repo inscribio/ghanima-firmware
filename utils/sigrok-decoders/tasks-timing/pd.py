@@ -42,15 +42,22 @@ class Decoder(srd.Decoder):
         ('time', 'Time'),
         ('average', 'Average'),
         ('count', 'Count'),
+        ('min', 'Min'),
+        ('max', 'Max'),
+        ('stdev', 'StDev'),
     )
     annotation_rows = (
         ('time', 'Time', (0,)),
         ('average', 'Average', (1,)),
         ('count', 'Count', (2,)),
+        ('min', 'Min', (3,)),
+        ('max', 'Max', (4,)),
+        ('stdev', 'StDev', (5,)),
     )
     options = (
         {'id': 'avg_period', 'desc': 'Averaging period', 'default': 100},
         {'id': 'show_count', 'desc': 'Show count', 'default': 'no', 'values': ('yes', 'no')},
+        {'id': 'show_other', 'desc': 'Show other stats', 'default': 'no', 'values': ('yes', 'no')},
     )
 
     def __init__(self):
@@ -80,16 +87,30 @@ class Decoder(srd.Decoder):
             sample0 = self.samplenum
 
             if self.last_sample0 is not None and self.last_t is not None:
+                mean = None
                 self.put(self.last_sample0, sample0, self.out_ann,
                          [0, [normalize_time(self.last_t)]])
 
-                if self.options['avg_period'] > 0:
+                if self.options['avg_period'] > 0 and len(self.last_n) > 0:
+                    mean = sum(self.last_n) / len(self.last_n)
                     self.put(self.last_sample0, sample0, self.out_ann,
-                             [1, [normalize_time(sum(self.last_n) / len(self.last_n))]])
+                             [1, [normalize_time(mean)]])
 
                 if self.options['show_count'] == 'yes':
                     self.put(self.last_sample0, sample0, self.out_ann,
                              [2, [str(self.count)]])
+
+                if self.options['show_other'] == 'yes':
+                    self.put(self.last_sample0, sample0, self.out_ann,
+                             [3, [normalize_time(min(self.last_n))]])
+
+                    self.put(self.last_sample0, sample0, self.out_ann,
+                             [4, [normalize_time(max(self.last_n))]])
+
+                    if mean is not None and len(self.last_n) > 1:
+                        std = 1 / (len(self.last_n) - 1) * sum((t - mean)**2 for t in self.last_n)
+                        self.put(self.last_sample0, sample0, self.out_ann,
+                                 [5, [normalize_time(std)]])
 
             self.wait({0: 'f'})
             sample1 = self.samplenum
