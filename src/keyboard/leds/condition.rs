@@ -108,20 +108,22 @@ impl KeyActionCache {
         let mut cache = Self::EMPTY;
         for (row, row_actions) in layer_actions.iter().enumerate() {
             for (col, act) in row_actions.iter().enumerate() {
-                let side = BoardSide::from_coords((row as u8, col as u8));
-                let local = BoardSide::coords_to_local((row as u8, col as u8));
-                if let Some(led) = BoardSide::led_number(local) {
-                    match act {
-                        Action::NoOp => cache.no_op[side].set(led, true),
-                        Action::Trans => cache.trans[side].set(led, true),
-                        Action::KeyCode(_) => cache.key_code[side].set(led, true),
-                        Action::MultipleKeyCodes(_) => cache.multiple_key_codes[side].set(led, true),
-                        Action::MultipleActions(_) => cache.multiple_actions[side].set(led, true),
-                        Action::Layer(_) => cache.layer[side].set(led, true),
-                        Action::DefaultLayer(_) => cache.default_layer[side].set(led, true),
-                        Action::HoldTap(_) => cache.hold_tap[side].set(led, true),
-                        Action::Custom(_) => cache.custom[side].set(led, true),
-                        _ => defmt::warn!("Unknown action type"),
+                if BoardSide::global_coords_valid(row as u8, col as u8) {
+                    let side = BoardSide::from_coords((row as u8, col as u8));
+                    let local = BoardSide::coords_to_local((row as u8, col as u8));
+                    if let Some(led) = BoardSide::led_number(local) {
+                        match act {
+                            Action::NoOp => cache.no_op[side].set(led, true),
+                            Action::Trans => cache.trans[side].set(led, true),
+                            Action::KeyCode(_) => cache.key_code[side].set(led, true),
+                            Action::MultipleKeyCodes(_) => cache.multiple_key_codes[side].set(led, true),
+                            Action::MultipleActions(_) => cache.multiple_actions[side].set(led, true),
+                            Action::Layer(_) => cache.layer[side].set(led, true),
+                            Action::DefaultLayer(_) => cache.default_layer[side].set(led, true),
+                            Action::HoldTap(_) => cache.hold_tap[side].set(led, true),
+                            Action::Custom(_) => cache.custom[side].set(led, true),
+                            _ => defmt::warn!("Unknown action type"),
+                        }
                     }
                 }
             }
@@ -156,22 +158,24 @@ impl KeyActionCache {
         while row < R {
             let mut col = 0;
             while col < C {
-                let side = BoardSide::from_coords((row as u8, col as u8));
-                let local = BoardSide::coords_to_local((row as u8, col as u8));
-                if let Some(led) = BoardSide::led_number(local) {
-                    let act = &layer_actions[row][col];
-                    match act {
-                        Action::NoOp => cache.no_op = Self::const_set_action(side, led, cache.no_op),
-                        Action::Trans => cache.trans = Self::const_set_action(side, led, cache.trans),
-                        Action::KeyCode(_) => cache.key_code = Self::const_set_action(side, led, cache.key_code),
-                        Action::MultipleKeyCodes(_) => cache.multiple_key_codes = Self::const_set_action(side, led, cache.multiple_key_codes),
-                        Action::MultipleActions(_) => cache.multiple_actions = Self::const_set_action(side, led, cache.multiple_actions),
-                        Action::Layer(_) => cache.layer = Self::const_set_action(side, led, cache.layer),
-                        Action::DefaultLayer(_) => cache.default_layer = Self::const_set_action(side, led, cache.default_layer),
-                        Action::HoldTap(_) => cache.hold_tap = Self::const_set_action(side, led, cache.hold_tap),
-                        Action::Custom(_) => cache.custom = Self::const_set_action(side, led, cache.custom),
-                        _ => {},
-                    };
+                if BoardSide::global_coords_valid(row as u8, col as u8) {
+                    let side = BoardSide::from_coords((row as u8, col as u8));
+                    let local = BoardSide::coords_to_local((row as u8, col as u8));
+                    if let Some(led) = BoardSide::led_number(local) {
+                        let act = &layer_actions[row][col];
+                        match act {
+                            Action::NoOp => cache.no_op = Self::const_set_action(side, led, cache.no_op),
+                            Action::Trans => cache.trans = Self::const_set_action(side, led, cache.trans),
+                            Action::KeyCode(_) => cache.key_code = Self::const_set_action(side, led, cache.key_code),
+                            Action::MultipleKeyCodes(_) => cache.multiple_key_codes = Self::const_set_action(side, led, cache.multiple_key_codes),
+                            Action::MultipleActions(_) => cache.multiple_actions = Self::const_set_action(side, led, cache.multiple_actions),
+                            Action::Layer(_) => cache.layer = Self::const_set_action(side, led, cache.layer),
+                            Action::DefaultLayer(_) => cache.default_layer = Self::const_set_action(side, led, cache.default_layer),
+                            Action::HoldTap(_) => cache.hold_tap = Self::const_set_action(side, led, cache.hold_tap),
+                            Action::Custom(_) => cache.custom = Self::const_set_action(side, led, cache.custom),
+                            _ => {},
+                        };
+                    }
                 }
                 col += 1
             }
@@ -184,7 +188,7 @@ impl KeyActionCache {
     pub const fn const_for_layers<const C: usize, const R: usize, const L: usize, T>(layers: &Layers<C, R, L, T>) -> [Self; L] {
         let mut caches = [Self::EMPTY; L];
         let mut i = 0;
-        while i < layers.len() {
+        while i < L {
             caches[i] = Self::const_new(&layers[i]);
             i += 1;
         }

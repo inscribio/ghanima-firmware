@@ -78,6 +78,7 @@ impl BoardSide {
         (row, col)
     }
 
+    /// Check that valid global coordinates are on given side
     pub const fn has_coords(&self, (_row, col): (u8, u8)) -> bool {
         match self {
             BoardSide::Left => col < NCOLS as u8,
@@ -85,8 +86,14 @@ impl BoardSide {
         }
     }
 
+    /// Check if (maybe invalid) coordinates are on the keyboard
+    pub const fn global_coords_valid(row: u8, col: u8) -> bool {
+        BoardSide::Left.coordinates_valid(row, col) || BoardSide::Right.coordinates_valid(row, col)
+    }
+
+    /// Get keyboard side from valid global coordinates
     pub const fn from_coords((row, col): (u8, u8)) -> Self {
-        debug_assert!(BoardSide::Left.coordinates_valid(row, col) || BoardSide::Right.coordinates_valid(row, col));
+        debug_assert!(Self::global_coords_valid(row, col));
         if BoardSide::Left.has_coords((row, col)) {
             BoardSide::Left
         } else {
@@ -204,7 +211,6 @@ impl BoardSide {
         };
         (row, col)
     }
-
 }
 
 impl<T> PerSide<T> {
