@@ -51,7 +51,7 @@ mod pattern;
 
 pub use output::{LedOutput, Leds};
 pub use pattern::LedController;
-pub use condition::KeyboardState;
+pub use condition::{KeyboardState, KeyActionCache};
 pub use bitset::LedsBitset;
 
 use rgb::RGB8;
@@ -104,6 +104,8 @@ pub enum Condition {
     Role(Role),
     /// Apply to current key when this key is pressed
     Pressed,
+    /// Apply to current key when it has given type of action
+    KeyAction(KeyAction),
     /// Apply to current key when the given key is pressed
     KeyPressed(u8, u8),
     /// Apply when on a given layer
@@ -124,6 +126,20 @@ pub enum KeyboardLed {
     ScrollLock,
     Compose,
     Kana,
+}
+
+/// Type of action for a given key matching [`keyberon::action::Action`]
+#[derive(Clone, Copy)]
+pub enum KeyAction {
+    NoOp,
+    Trans,
+    KeyCode,
+    MultipleKeyCodes,
+    MultipleActions,
+    Layer,
+    DefaultLayer,
+    HoldTap,
+    Custom,
 }
 
 /// Defines lightning pattern

@@ -1,11 +1,12 @@
 use serde::{Serialize, Deserialize};
+use keyberon::{action::Action, layout::Layers};
 
 use crate::bsp::{NROWS, NCOLS, NLEDS};
 use crate::bsp::sides::{BoardSide, PerSide};
 use crate::keyboard::hid::KeyboardLeds;
 use crate::keyboard::keys::PressedKeys;
 use crate::keyboard::role::Role;
-use super::{Keys, Condition, KeyboardLed};
+use super::{Keys, Condition, KeyboardLed, KeyAction};
 
 /// Collection of keyboard state variables that can be used as conditions
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -17,6 +18,25 @@ pub struct KeyboardState {
     pub pressed: PerSide<PressedKeys>,
 }
 
+/// Per-layer bitmask cache of action types ([`super::KeyAction`]) on layout
+///
+/// Just as with currently pressed keys we store bitmasks of keys on each layer that
+/// have given type (but compared to pressed keys, this cache is constant). It is used
+/// during runtime to speed up [`Condition`] evaluation when filtering keys.
+///
+/// This structure stores values for a single layer. An array of these should be created.
+pub struct KeyActionCache {
+    pub no_op: PerSide<PressedKeys>,
+    pub trans: PerSide<PressedKeys>,
+    pub key_code: PerSide<PressedKeys>,
+    pub multiple_key_codes: PerSide<PressedKeys>,
+    pub multiple_actions: PerSide<PressedKeys>,
+    pub layer: PerSide<PressedKeys>,
+    pub default_layer: PerSide<PressedKeys>,
+    pub hold_tap: PerSide<PressedKeys>,
+    pub custom: PerSide<PressedKeys>,
+}
+
 impl Condition {
     /// Determine leds mask to which the condition applies
     ///
@@ -24,7 +44,7 @@ impl Condition {
     /// based on keyboard state, but [`Condition::Pressed`] actually filters the keys. Instead of
     /// calling `applies(self, state, side, led)` in a loop it is much faster to call this method
     /// once returning keys (leds) mask and then to use the mask while iterating over keys (leds).
-    pub fn applies_to(&self, state: &KeyboardState, side: &BoardSide) -> PressedKeys {
+    pub fn applies_to(&self, state: &KeyboardState, side: &BoardSide, layer_actions: &[KeyActionCache]) -> PressedKeys {
         match self {
             Condition::Always => PressedKeys::with_all(true),
             Condition::Led(led) => PressedKeys::with_all(match led {
@@ -37,6 +57,14 @@ impl Condition {
             Condition::UsbOn => PressedKeys::with_all(state.usb_on),
             Condition::Role(role) => PressedKeys::with_all(role == &state.role),
             Condition::Pressed => state.pressed[*side],
+            Condition::KeyAction(act) => {
+                if let Some(actions) = layer_actions.get(state.layer as usize) {
+                    actions[*act][*side]
+                } else {
+                    defmt::warn!("Invalid layer - does not exist in cache");
+                    PressedKeys::with_all(false)
+                }
+            },
             Condition::KeyPressed(row, col) => {
                 let checked_side = if side.has_coords((*row, *col)) {
                     *side
@@ -53,11 +81,77 @@ impl Condition {
                 PressedKeys::with_all(is_pressed)
             },
             Condition::Layer(layer) => PressedKeys::with_all(state.layer == *layer),
-            Condition::Not(c) => !c.applies_to(state, side),
+            Condition::Not(c) => !c.applies_to(state, side, layer_actions),
             Condition::And(conds) => conds.iter()
-                .fold(PressedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side)),
+                .fold(PressedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side, layer_actions)),
             Condition::Or(conds) => conds.iter()
-                .fold(PressedKeys::with_all(false), |acc, c| acc | c.applies_to(state, side)),
+                .fold(PressedKeys::with_all(false), |acc, c| acc | c.applies_to(state, side, layer_actions)),
+        }
+    }
+}
+
+impl KeyActionCache {
+    const EMPTY: Self = KeyActionCache {
+        no_op: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        trans: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        key_code: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        multiple_key_codes: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        multiple_actions: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        layer: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        default_layer: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        hold_tap: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+        custom: PerSide { left: PressedKeys::NONE, right: PressedKeys::NONE },
+    };
+
+    pub fn new<const C: usize, const R: usize, T>(layer_actions: &[[Action<T>; C]; R]) -> Self {
+        let mut cache = Self::EMPTY;
+        for (row, row_actions) in layer_actions.iter().enumerate() {
+            for (col, act) in row_actions.iter().enumerate() {
+                let side = BoardSide::from_coords((row as u8, col as u8));
+                let local = BoardSide::coords_to_local((row as u8, col as u8));
+                if let Some(led) = BoardSide::led_number(local) {
+                    match act {
+                        Action::NoOp => cache.no_op[side].set(led, true),
+                        Action::Trans => cache.trans[side].set(led, true),
+                        Action::KeyCode(_) => cache.key_code[side].set(led, true),
+                        Action::MultipleKeyCodes(_) => cache.multiple_key_codes[side].set(led, true),
+                        Action::MultipleActions(_) => cache.multiple_actions[side].set(led, true),
+                        Action::Layer(_) => cache.layer[side].set(led, true),
+                        Action::DefaultLayer(_) => cache.default_layer[side].set(led, true),
+                        Action::HoldTap(_) => cache.hold_tap[side].set(led, true),
+                        Action::Custom(_) => cache.custom[side].set(led, true),
+                        _ => defmt::warn!("Unknown action type"),
+                    }
+                }
+            }
+        }
+        cache
+    }
+
+    pub fn for_layers<const C: usize, const R: usize, const L: usize, T>(layers: &Layers<C, R, L, T>) -> [Self; L] {
+        let mut caches = [Self::EMPTY; L];
+        debug_assert_eq!(layers.len(), caches.len());
+        for (cache, row) in caches.iter_mut().zip(layers.iter()) {
+            *cache = Self::new(row);
+        }
+        caches
+    }
+}
+
+impl core::ops::Index<KeyAction> for KeyActionCache {
+    type Output = PerSide<PressedKeys>;
+
+    fn index(&self, index: KeyAction) -> &Self::Output {
+        match index {
+            KeyAction::NoOp => &self.no_op,
+            KeyAction::Trans => &self.trans,
+            KeyAction::KeyCode => &self.key_code,
+            KeyAction::MultipleKeyCodes => &self.multiple_key_codes,
+            KeyAction::MultipleActions => &self.multiple_actions,
+            KeyAction::Layer => &self.layer,
+            KeyAction::DefaultLayer => &self.default_layer,
+            KeyAction::HoldTap => &self.hold_tap,
+            KeyAction::Custom => &self.custom,
         }
     }
 }

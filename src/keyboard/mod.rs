@@ -38,7 +38,7 @@ use keys::PressedKeys;
 use hid::KeyCodeIterExt as _;
 
 pub use keys::Keys;
-pub use leds::{LedController, LedOutput, KeyboardState};
+pub use leds::{LedController, LedOutput, KeyboardState, KeyActionCache};
 
 const MAX_PACKET_SIZE: usize = ioqueue::max_packet_size::<msg::Message>();
 
