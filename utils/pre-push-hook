@@ -31,12 +31,16 @@ unstash() {
     git stash pop --quiet
 }
 
+fail() {
+    echo -e "\n${RED}${BOLD}Checks failed. Aborting!${CLEAR}" 1>&2
+    exit 1
+}
+
 stash
 
 echo -e "${BOLD}Running git push checks ...${CLEAR}\n"
-if ! ./utils/run-checks; then
-    echo -e "\n${RED}${BOLD}Checks failed. Aborting!${CLEAR}" 1>&2
-    exit 1
-fi
+
+./utils/check-pkg-version || fail
+./utils/run-checks || fail
 
 exit 0

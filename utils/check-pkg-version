@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+# Find latest version tag on this branch
+pattern='v*' # vX.Y.Z
+# list tag-descriptions for commits using tags that match pattern, don't append commit hash
+tag=$(git log --format="tformat:%(describe:match=$pattern,abbrev=0)" | head -n 1)
+
+# Find package version in Cargo.toml
+pkg_ver=$(grep '^version' Cargo.toml | head -n 1 | sed 's|version\s*=\s*"\([^"]*\)"|\1|g')
+
+if [[ "v$pkg_ver" != "$tag" ]]; then
+	echo "Crate package version does not match git tag: v$pkg_ver (pkg) vs $tag (git)" 1>&2
+	exit 1
+fi
