@@ -158,6 +158,13 @@ impl<'a> ColorGenerator<'a> {
             .unwrap_or(0)
     }
 
+    fn keep_repeat_once(pattern: &PatternIter<'a>) -> bool {
+        // Keep if not finished with the exception of Repeat::Once with duration=0 which
+        // must be dropped or it will stay forever even though condition has fired.
+        !pattern.finished() && !pattern.curr().map_or(false,
+            |trans|  matches!(pattern.pattern.repeat, Repeat::Once) && trans.duration == 0)
+    }
+
     /// Update pattern if it is different than the current one
     pub fn update(&mut self, time_delta: u16, pattern: Option<&'a Pattern>) {
         let keep = match (self.pattern.as_ref(), pattern) {
@@ -175,7 +182,7 @@ impl<'a> ColorGenerator<'a> {
                     // If only current is Once than keep it until it has finished.
                     (false, Repeat::Once, _) => {
                         self.once_should_reset = true;
-                        !this.finished()
+                        Self::keep_repeat_once(this)
                     },
                     // Otherwise use the new one
                     (false, _, _) => false,
@@ -185,7 +192,7 @@ impl<'a> ColorGenerator<'a> {
                 // Keep current pattern until finished
                 Repeat::Once => {
                     self.once_should_reset = true;
-                    !this.finished()
+                    Self::keep_repeat_once(this)
                 },
                 _ => false,
             }
@@ -528,6 +535,20 @@ mod tests {
                 Transition { color: RGB8::new(0, 0, 250), duration: 1000, interpolation: Interpolation::Linear },
             ],
         },
+        Pattern {
+            repeat: Repeat::Wrap,
+            phase: Phase { x: 0.0, y: 0.0 },
+            transitions: &[
+                Transition { color: RGB8::new(0, 0, 100), duration: 0, interpolation: Interpolation::Linear },
+            ],
+        },
+        Pattern {
+            repeat: Repeat::Once,
+            phase: Phase { x: 0.0, y: 0.0 },
+            transitions: &[
+                Transition { color: RGB8::new(0, 0, 100), duration: 0, interpolation: Interpolation::Piecewise },
+            ],
+        },
     ];
 
     enum UpdateStep {
@@ -584,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn pattern_executor_keep_until_finished() {
+    fn pattern_executor_keep_until_finished_if_finite() {
         // New pattern should not be set if the current one is Repeat::Once.
         assert!(matches!(PATTERNS[0].repeat, Repeat::Once));
         use UpdateStep::*;
@@ -596,6 +617,32 @@ mod tests {
             Update(3100, Some(1)), Tick(3101), Expect(   0, Some(0)),
             // Now the new pattern will be set as pattern 0 has finished.
             Update(3200, Some(1)), Expect(1000, Some(1)),
+        ]);
+    }
+
+    #[test]
+    fn pattern_executor_not_keep_until_finished_if_infinite() {
+        // New pattern shall not be set if the current one is !Repeat::Once with duration=0.
+        // !Repeat::Once patterns behave correctly by design.
+        assert!(matches!(PATTERNS[3].repeat, Repeat::Wrap));
+        assert!(matches!(PATTERNS[3].transitions[0].duration, 0));
+        use UpdateStep::*;
+        test_pattern_update(&[
+            Update(   0, Some(3)), Tick(   1), Expect(  0, Some(3)), // infinite transition
+            Update( 100, Some(1)), Tick( 200), Expect(900, Some(1)), // pattern changes immediately on update
+        ]);
+    }
+
+    #[test]
+    fn pattern_executor_not_keep_until_finished_if_infinite_once() {
+        // New pattern shall not be set if the current one is Repeat::Once with duration=0.
+        // Repeat::Once patterns require special case due to more complicated keeping logic.
+        assert!(matches!(PATTERNS[4].repeat, Repeat::Once));
+        assert!(matches!(PATTERNS[4].transitions[0].duration, 0));
+        use UpdateStep::*;
+        test_pattern_update(&[
+            Update(   0, Some(4)), Tick(   1), Expect(  0, Some(4)), // infinite transition
+            Update( 100, Some(1)), Tick( 200), Expect(900, Some(1)), // pattern changes immediately on update
         ]);
     }
 
