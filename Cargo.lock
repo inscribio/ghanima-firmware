@@ -349,9 +349,9 @@ dependencies = [
 
 [[package]]
 name = "delegate"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "082a24a9967533dc5d743c602157637116fc1b52806d694a5a45e6f32567fcdd"
+checksum = "d358e0ec5c59a5e1603b933def447096886121660fc680dc1e64a0753981fe3c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "ghanima"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "assert_float_eq",
@@ -628,7 +628,7 @@ checksum = "4217ad341ebadf8d8e724e264f13e593e0648f5b3e94b3896a5df283be015ecc"
 [[package]]
 name = "keyberon"
 version = "0.2.0"
-source = "git+https://github.com/TeXitoi/keyberon?rev=1fe47e8#1fe47e8382e1240323593845f7d7ca552751657f"
+source = "git+https://github.com/TeXitoi/keyberon?rev=ce4861e#ce4861e8f1aede42429f125db96120b0b796f7ff"
 dependencies = [
  "arraydeque",
  "either",
@@ -641,7 +641,7 @@ dependencies = [
 [[package]]
 name = "keyberon-macros"
 version = "0.1.0"
-source = "git+https://github.com/TeXitoi/keyberon?rev=1fe47e8#1fe47e8382e1240323593845f7d7ca552751657f"
+source = "git+https://github.com/TeXitoi/keyberon?rev=ce4861e#ce4861e8f1aede42429f125db96120b0b796f7ff"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -1132,9 +1132,9 @@ dependencies = [
 
 [[package]]
 name = "serde-big-array"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3323f09a748af288c3dc2474ea6803ee81f118321775bffa3ac8f7e65c5e90e7"
+checksum = "f1bb66e1af4481c21cbc943cabb68b98aabb4d7f935e47d1b4de722ca09da0b4"
 dependencies = [
  "serde",
 ]
@@ -1315,8 +1315,8 @@ dependencies = [
 
 [[package]]
 name = "usbd-human-interface-device"
-version = "0.3.1"
-source = "git+https://github.com/jedrzejboczar/usbd-human-interface-device?rev=f4df861#f4df861909fd22892abf25008f00a198382abe08"
+version = "0.3.2"
+source = "git+https://github.com/jedrzejboczar/usbd-human-interface-device?rev=223e582#223e58255193955c401490b5237b27371843b100"
 dependencies = [
  "delegate",
  "frunk",
