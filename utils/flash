@@ -169,8 +169,7 @@ flash_firmware_dfu() {
             --alt 0 \
             --dfuse-address "0x08000000:$dfu_modifiers" \
             --download "$firmware" \
-            --reset \
-            # || die "Flashing via DFU failed"
+            || die "Flashing via DFU failed"
     fi
 }
 
