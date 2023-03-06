@@ -46,7 +46,7 @@ test *ARGS:
 
 # Run firmware-config tests
 test-config *ARGS:
-    cd config && {{config-test-env}} cargo test --target x86_64-unknown-linux-gnu {{ARGS}}
+    {{config-test-env}} cargo test -p ghanima-config --target x86_64-unknown-linux-gnu {{ARGS}}
 
 # Continuously run firmware tests
 watch-test *ARGS:
@@ -54,7 +54,7 @@ watch-test *ARGS:
 
 # Continuously run firmware-config tests
 watch-test-config *ARGS:
-    cd config && {{config-test-env}} cargo watch -c -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
+    {{config-test-env}} cargo watch -p ghanima-config -c -x 'test --target x86_64-unknown-linux-gnu {{ARGS}}'
 
 # Run tests in GDB to debug panics, use `just test` to find TEST_BIN path (target/...)
 test-gdb TEST_BIN TEST_NAME:
