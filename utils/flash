@@ -32,7 +32,15 @@ die() {
 while (( $# > 0 )); do
     case "$1" in
         -h|--help)
-            echo "Usage: $(basename $0) [--dry-run] [--first-flash] [--no-detach] [--prebuilt] [-- [CARGO_FLAGS...]]"
+            cat <<EOF
+Usage: $(basename $0) [--dry-run] [--first-flash] [--no-detach] [--prebuilt FIRMWARE] [-- [CARGO_FLAGS...]]
+
+Options:
+  --dry-run       Run but do not perform actions
+  --first-flash   Unlock flash in a new MCU by using force:unprotect
+  --no-detach     Only flash if keyboard in bootloader mode exists
+  --prebuilt      Use existing firmware binary
+EOF
             exit 0 ;;
         --first-flash)
             first=yes ;;
