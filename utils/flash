@@ -27,6 +27,13 @@ die() {
     echo -e "${RED}""==================================================""${CLEAR}"
 }
 
+select_from() {
+    select item in "$@"; do
+        [[ "$item" != '' ]] && echo "$item" || die "Invalid selection"
+        break
+    done
+}
+
 ###
 
 while (( $# > 0 )); do
@@ -130,7 +137,21 @@ find_bootloader() {
 # run dfu-util with output to stdout but also capture output
 exec 5>&1
 dfu_util_detach() {
-    dfu-util --detach --device $keyboard_id 2>&1 | tee >(cat - >&5)
+    dfu-util --detach --devnum "$1" 2>&1 | tee >(cat - >&5)
+}
+
+select_keyboard_device() {
+    # Read lines into an array: https://github.com/koalaman/shellcheck/wiki/Sc2046
+    readarray -t candidates < <(dfu-util --list | grep "$keyboard_id")
+    n="${#candidates[@]}"
+    if [[ $n = 0 ]]; then
+        die "No keyboards found"
+    elif [[ $n = 1 ]] ; then
+        selected="${candidates[0]}"
+    else
+        selected=$(select_from "${candidates[@]}")
+    fi
+    grep -o 'devnum=[0-9]\+' <<< "$selected" | cut -f 2 -d =
 }
 
 detach_keyboard() {
@@ -147,9 +168,11 @@ detach_keyboard() {
     # detach to bootloader
     info "Detaching keyboard $keyboard_id to bootloader ..."
     if [[ ${dry_run:-no} != 'yes' ]]; then
-        dfu_util_detach | \
+        dev=$(select_keyboard_device)
+        dfu_util_detach "$dev" | \
             ( ! grep -q 'dfu-util: error detaching' ) \
             || die "Detaching to bootloader failed\nMaybe you forgot to press the AllowBootloader button on keyboard?"
+
     else
         die "DRY RUN: keyboard won't be detached so stopping here"
     fi
