@@ -88,5 +88,6 @@ impl DfuRuntimeOps for DfuBootloader {
         }
     }
 
-    const WILL_DETACH: bool = false;
+    // On Windows USB reset does not work so we must do it manually
+    const WILL_DETACH: bool = true;
 }
