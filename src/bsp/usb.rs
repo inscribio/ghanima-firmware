@@ -4,6 +4,7 @@ use usb_device::UsbError;
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::{UsbDevice, UsbVidPid, UsbDeviceBuilder};
 use usbd_dfu_rt::DfuRuntimeClass;
+use usbd_microsoft_os::MsOsUsbClass;
 
 use crate::hal::usb;
 use crate::hal_ext::reboot;
@@ -20,6 +21,7 @@ pub struct Usb {
     pub hid: hid::HidClass<'static, Bus>,
     // this does not need to be share but it should be cleaner to have it here
     pub dfu: DfuRuntimeClass<reboot::DfuBootloader>,
+    ms_os: MsOsUsbClass,
     wake_up_counter: u16,
     keyboard_leds: hid::KeyboardLeds,
 }
@@ -32,6 +34,8 @@ impl Usb {
         // does not like having DFU interface with number 0 and will report invalid configuration
         // descriptor.
         let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader::new(!bootload_strict));
+
+        let ms_os = ms_os::class();
 
         // Device
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
@@ -54,7 +58,7 @@ impl Usb {
             .device_release(Self::bcd_device())
             .build();
 
-        Self { dev, hid, dfu, wake_up_counter: 0, keyboard_leds: Default::default() }
+        Self { dev, hid, dfu, ms_os, wake_up_counter: 0, keyboard_leds: Default::default() }
     }
 
     /// Periodic USB poll
@@ -62,6 +66,7 @@ impl Usb {
         let mut got_data = self.dev.poll(&mut [
             &mut self.hid,
             &mut self.dfu,
+            &mut self.ms_os,
         ]);
 
         if got_data {
@@ -100,5 +105,55 @@ impl Usb {
         let major: u16 = (pkg_version_major!() & 0xff) << 8;
         let minor: u16 = pkg_version_minor!() & 0xff;
         major | minor
+    }
+}
+
+mod ms_os {
+    use usbd_microsoft_os::{os_20, MsOsUsbClass, WindowsVersion, utf16_lit, utf16_null_le_bytes};
+
+    const DESCRIPTOR_SET: os_20::DescriptorSet = os_20::DescriptorSet {
+        version: WindowsVersion::MINIMAL,
+        features: &[],
+        configurations: &[
+            os_20::ConfigurationSubset {
+                configuration: 0,
+                features: &[],
+                functions: &[
+                    os_20::FunctionSubset {
+                        first_interface: 3,
+                        features: &[
+                            os_20::FeatureDescriptor::CompatibleId {
+                                id: b"WINUSB\0\0",
+                                sub_id: b"\0\0\0\0\0\0\0\0",
+                            },
+                            os_20::FeatureDescriptor::RegistryProperty {
+                                data_type: os_20::PropertyDataType::RegMutliSz,
+                                name: &utf16_lit::utf16_null!("DeviceInterfaceGUIDs"),
+                                data: &utf16_null_le_bytes!("{897d7b90-5aae-43e5-9c36-aa0f2fdbafc9}\0"),
+                            },
+                        ]
+                    }
+                ]
+            }
+        ],
+    };
+
+    const CAPABILITIES: os_20::Capabilities = os_20::Capabilities {
+        infos: &[
+            os_20::CapabilityInfo {
+                descriptors: &DESCRIPTOR_SET,
+                alt_enum_cmd: os_20::ALT_ENUM_CODE_NOT_SUPPORTED,
+            }
+        ],
+    };
+
+    const DESCRIPTOR_SET_BYTES: [u8; DESCRIPTOR_SET.size()] = DESCRIPTOR_SET.descriptor();
+    const CAPABILITIES_BYTES: [u8; CAPABILITIES.data_len()] = CAPABILITIES.descriptor_data();
+
+    pub const fn class() -> MsOsUsbClass {
+        MsOsUsbClass {
+            os_20_capabilities_data: &CAPABILITIES_BYTES,
+            os_20_descriptor_sets: &[&DESCRIPTOR_SET_BYTES],
+        }
     }
 }
