@@ -1,6 +1,6 @@
 [package]
 name = "ghanima"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Jędrzej Boczar <jedrzej.boczar@gmail.com>"]
 edition = "2021"
 
