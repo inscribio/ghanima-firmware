@@ -33,6 +33,7 @@ pub enum Condition {
     KeyAction(KeyAction),
     KeyPressed(u8, u8),
     Layer(u8),
+    BootloaderAllowed,
     Not(Box<Condition>),
     And(Vec<Condition>),
     Or(Vec<Condition>),
@@ -149,6 +150,7 @@ impl ToTokens for Condition {
             Condition::KeyAction(act) => quote! { #leds::Condition::KeyAction(#act) },
             Condition::KeyPressed(row, col) => quote! { #leds::Condition::KeyPressed(#row, #col) },
             Condition::Layer(layer) => quote! { #leds::Condition::Layer(#layer) },
+            Condition::BootloaderAllowed => quote! { #leds::Condition::BootloaderAllowed },
             Condition::Not(cond) => quote! { #leds::Condition::Not(&#cond) },
             Condition::And(conds) => quote! { #leds::Condition::And(&[ #(#conds),* ]) },
             Condition::Or(conds) => quote! { #leds::Condition::Or(&[ #(#conds),* ]) },
@@ -210,6 +212,7 @@ pub mod tests {
                                 { "Not": { "Layer": 0 } },
                                 { "KeyPressed": [2, 3] },
                                 { "KeyAction": "HoldTap" },
+                                "BootloaderAllowed",
                             ]
                         },
                         "pattern": {
@@ -267,6 +270,7 @@ pub mod tests {
                         Condition::Not(Box::new(Condition::Layer(0))),
                         Condition::KeyPressed(2, 3),
                         Condition::KeyAction(KeyAction::HoldTap),
+                        Condition::BootloaderAllowed,
                     ]),
                     pattern: Pattern {
                         repeat: Repeat::Once,
@@ -324,6 +328,7 @@ pub mod tests {
                             crate::keyboard::leds::Condition::KeyAction(
                                 crate::keyboard::leds::KeyAction::HoldTap
                             ),
+                            crate::keyboard::leds::Condition::BootloaderAllowed,
                         ]),
                         pattern: crate::keyboard::leds::Pattern {
                             repeat: crate::keyboard::leds::Repeat::Once,

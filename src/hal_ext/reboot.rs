@@ -68,6 +68,10 @@ impl DfuBootloader {
         self.allow = allowed;
     }
 
+    pub fn is_allowed(&self) -> bool {
+        self.allow
+    }
+
     pub fn reboot(&mut self, bootloader: bool, usb_bus: Option<&usb::UsbBusType>) {
         reboot(bootloader, usb_bus)
     }

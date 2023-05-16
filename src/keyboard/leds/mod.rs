@@ -110,6 +110,8 @@ pub enum Condition {
     KeyPressed(u8, u8),
     /// Apply when on a given layer
     Layer(u8),
+    /// Applies if the keyboard would allow to detach to DFU bootloader
+    BootloaderAllowed,
     /// Applies when the internal condition does not
     Not(&'static Condition),
     /// Applies when all internal conditions apply

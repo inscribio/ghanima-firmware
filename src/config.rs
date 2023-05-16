@@ -249,6 +249,11 @@ mod code {
                 condition: Condition::Led(KeyboardLed::CapsLock),
                 pattern: constant!(GREEN),
             },
+            LedRule {
+                keys: Some(&Keys::Rows(&[0])),
+                condition: Condition::BootloaderAllowed,
+                pattern: constant!(WHITE),
+            },
         ],
     ];
 

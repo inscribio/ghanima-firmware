@@ -147,7 +147,11 @@ impl<const L: usize> Keyboard<L> {
     ) -> LedsUpdate
     {
         // Retrieve USB state
-        let (usb_state, keyboard_leds) = usb.lock(|usb| (usb.dev.state(), usb.keyboard_leds()));
+        let (usb_state, keyboard_leds, allow_bootloader) = usb.lock(|usb| (
+            usb.dev.state(),
+            usb.keyboard_leds(),
+            usb.dfu.ops().is_allowed()
+        ));
         let prev_usb_state = self.prev_usb_state;
         self.prev_usb_state = usb_state;
 
@@ -230,6 +234,7 @@ impl<const L: usize> Keyboard<L> {
                     self.layout.current_layer() as u8
                 },
                 pressed: self.pressed.clone(),
+                allow_bootloader,
             };
 
             // Collect state

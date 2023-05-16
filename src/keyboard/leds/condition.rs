@@ -16,6 +16,7 @@ pub struct KeyboardState {
     pub role: Role,
     pub layer: u8,
     pub pressed: PerSide<PressedKeys>,
+    pub allow_bootloader: bool,
 }
 
 /// Per-layer bitmask cache of action types ([`super::KeyAction`]) on layout
@@ -83,6 +84,7 @@ impl Condition {
                 PressedKeys::with_all(is_pressed)
             },
             Condition::Layer(layer) => PressedKeys::with_all(state.layer == *layer),
+            Condition::BootloaderAllowed => PressedKeys::with_all(state.allow_bootloader),
             Condition::Not(c) => !c.applies_to(state, side, layer_actions),
             Condition::And(conds) => conds.iter()
                 .fold(PressedKeys::with_all(true), |acc, c| acc & c.applies_to(state, side, layer_actions)),
@@ -425,6 +427,7 @@ mod tests {
                 left: LedsBitset(left),
                 right: LedsBitset(right)
             },
+            allow_bootloader: false,
         }
     }
 
