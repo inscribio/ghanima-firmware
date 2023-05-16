@@ -14,5 +14,5 @@ pub fn format_expr(tokens: TokenStream) -> syn::Result<String> {
 pub fn assert_tokens_eq(left: TokenStream, right: TokenStream) {
     let left = format_expr(left).unwrap();
     let right = format_expr(right).unwrap();
-    similar_asserts::assert_str_eq!(left, right);
+    similar_asserts::assert_eq!(left, right);
 }
