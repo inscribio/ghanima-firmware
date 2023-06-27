@@ -60,6 +60,7 @@ pub enum FirmwareAction {
     AllowBootloader,
     JumpToBootloader,
     Reboot,
+    InfiniteLoop,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq, Clone)]
@@ -463,6 +464,7 @@ pub mod tests {
             { "Mouse": { "Move": "PanLeft" } },
             { "Consumer": "VolumeIncrement" },
             { "Firmware": "AllowBootloader" },
+            { "Firmware": "InfiniteLoop" },
         ])
     }
 
@@ -472,6 +474,7 @@ pub mod tests {
             Action::Mouse(MouseAction::Move(MouseMovement::PanLeft)),
             Action::Consumer(ConsumerKey::VolumeIncrement),
             Action::Firmware(FirmwareAction::AllowBootloader),
+            Action::Firmware(FirmwareAction::InfiniteLoop),
         ]
     }
 
@@ -493,6 +496,9 @@ pub mod tests {
                 ),
                 crate::keyboard::actions::Action::Firmware(
                     crate::keyboard::actions::FirmwareAction::AllowBootloader
+                ),
+                crate::keyboard::actions::Action::Firmware(
+                    crate::keyboard::actions::FirmwareAction::InfiniteLoop
                 ),
             ]
         }

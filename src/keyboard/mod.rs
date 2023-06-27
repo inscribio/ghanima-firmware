@@ -272,6 +272,7 @@ impl<const L: usize> Keyboard<L> {
                                 actions::FirmwareAction::AllowBootloader => dfu_boot.set_allowed(true),
                                 actions::FirmwareAction::JumpToBootloader => dfu_boot.reboot(true, Some(bus)),
                                 actions::FirmwareAction::Reboot => dfu_boot.reboot(false, Some(bus)),
+                                actions::FirmwareAction::InfiniteLoop => loop {},
                             }
                         });
                     }

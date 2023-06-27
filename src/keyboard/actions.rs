@@ -66,4 +66,7 @@ pub enum FirmwareAction {
     JumpToBootloader,
     /// Reset processor without jumping to bootloader
     Reboot,
+    /// Start infinite loop, used to test if keyboard can correctly recover
+    /// from an error due to watchdog overflow
+    InfiniteLoop,
 }
