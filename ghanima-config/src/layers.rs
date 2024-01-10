@@ -281,7 +281,6 @@ impl<T: ToTokens> ToTokens for Act<T> {
 impl ToTokens for HoldTapConfig {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let c = quote! { keyberon::action::HoldTapConfig };
-        println!("tokens: {:#?}", quote! { #c::Default });
         let t = match self {
             HoldTapConfig::Default => quote! { #c::Default },
             HoldTapConfig::HoldOnOtherKeyPress => quote! { #c::HoldOnOtherKeyPress },
