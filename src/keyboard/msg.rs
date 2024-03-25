@@ -25,6 +25,7 @@ pub enum Message {
 // Work around Event not implementing Serialize: https://serde.rs/remote-derive.html
 #[derive(Serialize, Deserialize, MaxSize)]
 #[serde(remote = "Event")]
+#[allow(dead_code)]
 enum EventDef {
     Press(u8, u8),
     Release(u8, u8),

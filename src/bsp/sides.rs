@@ -20,8 +20,6 @@ pub struct PerSide<T> {
     pub right: T,
 }
 
-pub struct PerSideIter(u8);
-
 impl BoardSide {
     pub const EACH: [Self; 2] = [Self::Left, Self::Right];
 

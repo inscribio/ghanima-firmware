@@ -93,7 +93,7 @@ pub mod symbols {
                 #[inline(always)]
                 pub fn $getter() -> *mut u32 {
                     extern "C" { static mut $sym: u32; }
-                    unsafe { &mut $sym }
+                    unsafe { core::ptr::addr_of_mut!($sym) }
                 }
             )+
         };
