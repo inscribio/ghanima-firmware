@@ -1,0 +1,123 @@
+#!/usr/bin/env python
+
+import struct
+import argparse
+import dataclasses
+
+
+def bit(n: int):
+	return 1 << n
+
+
+@dataclasses.dataclass
+class User:
+	wdg_sw: bool
+	nrst_stop: bool
+	nrst_stdby: bool
+	nboot0: bool
+	nboot1: bool
+	vdda_monitor: bool
+	ram_parity_check: bool
+	boot_sel: bool
+
+	@classmethod
+	def default(cls) -> 'User':
+		return cls(
+			wdg_sw=True,
+			nrst_stop=True,
+			nrst_stdby=True,
+			nboot0=True,
+			nboot1=True,
+			vdda_monitor=True,
+			ram_parity_check=True,
+			boot_sel=True,
+		)
+
+	def pack(self) -> bytes:
+		value = 0
+		for i, field in enumerate(dataclasses.fields(self)):
+			f = getattr(self, field.name)
+			assert type(f) == bool
+			if f:
+				value |= bit(i)
+		return struct.pack('B', value)
+
+
+class Byte:
+	def __init__(self, value: int):
+		assert 0x00 <= value <= 0xff, f'{self.__class__.__name__} value out of range: {self.value}'
+		self.value = value
+
+	def pack(self) -> bytes:
+		return struct.pack('B', self.value)
+
+
+class ReadProtection(Byte):
+	LEVEL0 = 0xaa
+	LEVEL1 = 0xbb # anything except level0/level2
+	LEVEL2 = 0xcc
+
+
+@dataclasses.dataclass
+class OptionBytes:
+	rdp: ReadProtection = ReadProtection.LEVEL0
+	user: User = dataclasses.field(default_factory=User.default)
+	data0: Byte = 0xff
+	data1: Byte = 0xff
+	wrp0: Byte = 0xff
+	wrp1: Byte = 0xff
+	wrp2: Byte = 0xff
+	wrp3: Byte = 0xff
+
+	BASE_ADDRESS = 0x1ffff800
+
+	def __post_init__(self):
+		def wrap(field, typ):
+			v = getattr(self, field)
+			if not isinstance(v, typ):
+				setattr(self, field, typ(v))
+		wrap('rdp', ReadProtection)
+		wrap('user', User)
+		wrap('data0', Byte)
+		wrap('data1', Byte)
+		wrap('wrp0', Byte)
+		wrap('wrp1', Byte)
+		wrap('wrp2', Byte)
+		wrap('wrp3', Byte)
+
+	def pack(self) -> bytes:
+		field_bytes = []
+		for f in dataclasses.fields(self):
+			field_bytes += getattr(self, f.name).pack()
+		all_bytes = []
+		for b in field_bytes:
+			all_bytes.append(b)
+			all_bytes.append(0xff - b)
+		return struct.pack('B' * (2 * 8), *all_bytes)
+
+
+def main():
+	parser = argparse.ArgumentParser(description='Generate Option Bytes FLASH region')
+	parser.add_argument('-o', '--output', help='Path to output file')
+	parser.add_argument('--user-data', default='0xffff', type=str, help='Set user data as 16-bit value')
+	args = parser.parse_args()
+
+	user_data = int(args.user_data, 0)
+	assert 0 <= user_data <= 0xffff, f'User data does not fit in 16 bits: {user_data}'
+
+	data0 = (user_data >> 0) & 0xff
+	data1 = (user_data >> 8) & 0xff
+
+	opt_bytes = OptionBytes(data0=data0, data1=data1)
+	data = opt_bytes.pack()
+	s = data.hex(' ', 1)
+	print(f'=> Option Bytes:\n0x{opt_bytes.BASE_ADDRESS:08x}: {s}')
+
+	if args.output:
+		with open(args.output, 'wb') as f:
+			f.write(data)
+		print(f'Saved to file: {args.output}')
+
+
+if __name__ == "__main__":
+	main()

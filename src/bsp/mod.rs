@@ -14,7 +14,7 @@ pub mod usb;
 /// Driver for WS2812B RGB LEDs via SPI
 pub mod ws2812b;
 
-use crate::hal::gpio;
+use crate::hal::{self, gpio};
 
 /// Number of columns keyboard half
 pub const NCOLS: usize = 6;
@@ -50,4 +50,15 @@ pub type RowPin = gpio::Pin<gpio::Output<gpio::PushPull>>;
 pub fn delay_us(us: u32) {
     const RATIO: u32 = 1000 / 42 + 1;
     cortex_m::asm::delay(us * RATIO);
+}
+
+/// Get device ID value from Option Bytes (if OPTERR is not set).
+pub fn get_device_id(flash: &mut hal::stm32::FLASH) -> Option<u16> {
+    const ERASED: u16 = 0xffff;
+    let obr = flash.obr.read();
+    let user_data = u16::from_be_bytes([obr.data1().bits(), obr.data0().bits()]);
+    if obr.opterr().bit_is_set() || user_data == ERASED {
+        return None;
+    }
+    Some(user_data)
 }

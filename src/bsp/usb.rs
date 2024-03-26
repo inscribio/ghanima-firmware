@@ -1,3 +1,4 @@
+use ufmt::uwrite;
 use pkg_version::{pkg_version_major, pkg_version_minor};
 use static_assertions::const_assert;
 use usb_device::UsbError;
@@ -26,14 +27,25 @@ pub struct Usb {
     keyboard_leds: hid::KeyboardLeds,
 }
 
+pub struct UsbConfig<const N: usize> {
+    pub bus: &'static UsbBusAllocator<Bus>,
+    pub side: BoardSide,
+    pub bootload_strict: bool,
+    pub serial_num: &'static mut heapless::String<N>,
+    pub device_id: Option<u16>,
+}
+
+/// Storage for serial number string, e.g. `1.10.100:65535`
+pub const SERIAL_NUM_MAX_LEN: usize = 20;
+
 impl Usb {
-    pub fn new(bus: &'static UsbBusAllocator<Bus>, side: &BoardSide, bootload_strict: bool) -> Self {
+    pub fn new<const N: usize>(cfg: UsbConfig<N>) -> Self {
         // Classes
-        let hid = hid::new_hid_class(bus);
+        let hid = hid::new_hid_class(cfg.bus);
         // NOTE: Create it last or else the device won't enumerate on Windows. It seems that Windows
         // does not like having DFU interface with number 0 and will report invalid configuration
         // descriptor.
-        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(bus, reboot::DfuBootloader::new(!bootload_strict));
+        let dfu = usbd_dfu_rt::DfuRuntimeClass::new(cfg.bus, reboot::DfuBootloader::new(!cfg.bootload_strict));
 
         let ms_os = ms_os::class();
 
@@ -41,7 +53,8 @@ impl Usb {
         // TODO: follow guidelines from https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
         // VID:PID recognised as Van Ooijen Technische Informatica:Keyboard
         let generic_keyboard = UsbVidPid(0x16c0, 0x27db);
-        let dev = UsbDeviceBuilder::new(bus, generic_keyboard)
+        let serial_number = Self::format_serial_num(cfg.serial_num, cfg.device_id).unwrap();
+        let dev = UsbDeviceBuilder::new(cfg.bus, generic_keyboard)
             .composite_with_iads()
             // From my measurements, with all LEDs set to constant white, the keyboard (both halves)
             // can draw up to 2 Amps, which is totally out of spec, but seems to work anyway.
@@ -50,11 +63,11 @@ impl Usb {
             .supports_remote_wakeup(true)
             // Device info
             .manufacturer("inscrib.io")
-            .product(match side {
+            .product(match cfg.side {
                 BoardSide::Left => "ghanima keyboard (L)",
                 BoardSide::Right => "ghanima keyboard (R)"
             })
-            .serial_number(env!("CARGO_PKG_VERSION"))
+            .serial_number(serial_number)
             .device_release(Self::bcd_device())
             .build();
 
@@ -106,6 +119,15 @@ impl Usb {
         let minor: u16 = pkg_version_minor!() & 0xff;
         major | minor
     }
+
+    fn format_serial_num<const N: usize>(s: &mut heapless::String<N>, device_id: Option<u16>) -> Result<&str, ()> {
+        if let Some(id) = device_id {
+            uwrite!(s, "{}:{}", env!("CARGO_PKG_VERSION"), id)?;
+        } else {
+            uwrite!(s, "{}:?", env!("CARGO_PKG_VERSION"))?;
+        };
+        Ok(s.as_str())
+    }
 }
 
 mod ms_os {
@@ -155,5 +177,40 @@ mod ms_os {
             os_20_capabilities_data: &CAPABILITIES_BYTES,
             os_20_descriptor_sets: &[&DESCRIPTOR_SET_BYTES],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PKG_VER: &str = env!("CARGO_PKG_VERSION");
+
+    #[test]
+    fn format_serial_num_none() {
+        let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
+        Usb::format_serial_num(&mut s, None).unwrap();
+        assert_eq!(s.as_str(), format!("{PKG_VER}:?"));
+    }
+
+    #[test]
+    fn format_serial_num_small() {
+        let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
+        Usb::format_serial_num(&mut s, Some(42)).unwrap();
+        assert_eq!(s.as_str(), format!("{PKG_VER}:42"));
+    }
+
+    #[test]
+    fn format_serial_num_huge() {
+        let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
+        Usb::format_serial_num(&mut s, Some(0xfffa)).unwrap();
+        assert_eq!(s.as_str(), format!("{PKG_VER}:65530"));
+    }
+
+    #[test]
+    fn format_serial_num_huge_pkgver() {
+        // Check that SERIAL_NUM_MAX_LEN is enough
+        let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
+        uwrite!(s, "999.999.999:65535").unwrap();
     }
 }

@@ -23,13 +23,17 @@ info() {
 
 die() {
     echo
-    echo -e "${RED}""$*""${CLEAR}" 1>&2; exit 1
-    echo -e "${RED}""==================================================""${CLEAR}"
+    echo -e "${RED}""$*""${CLEAR}" 1>&2
+    exit 1
 }
 
 select_from() {
     select item in "$@"; do
-        [[ "$item" != '' ]] && echo "$item" || die "Invalid selection"
+        if [[ "$item" != '' ]]; then
+            echo "$item"
+        else
+            die "Invalid selection"
+        fi
         break
     done
 }
@@ -40,7 +44,7 @@ while (( $# > 0 )); do
     case "$1" in
         -h|--help)
             cat <<EOF
-Usage: $(basename $0) [--dry-run] [--first-flash] [--no-detach] [--prebuilt FIRMWARE] [-- [CARGO_FLAGS...]]
+Usage: $(basename "$0") [--dry-run] [--first-flash] [--no-detach] [--prebuilt FIRMWARE] [-- [CARGO_FLAGS...]]
 
 Options:
   --dry-run       Run but do not perform actions

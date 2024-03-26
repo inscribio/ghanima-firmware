@@ -19,7 +19,7 @@ mod app {
 
     use super::lib;
     use lib::def_tasks_debug;
-    use lib::bsp::{self, debug, joystick, ws2812b, usb::Usb, sides::BoardSide, LedColors};
+    use lib::bsp::{self, debug, joystick, ws2812b, usb, usb::Usb, sides::BoardSide, LedColors};
     use lib::hal_ext::{crc, spi, reboot, uart, watchdog, dma::{DmaSplit, DmaTx}};
     use lib::{keyboard, config, ioqueue};
 
@@ -124,6 +124,7 @@ mod app {
         serial_tx_bbb: BBBuffer<TX_QUEUE_SIZE> = BBBuffer::new(),
         serial_rx_bbb: BBBuffer<RX_QUEUE_SIZE> = BBBuffer::new(),
         serial_rx_buf: [u8; RX_DMA_TMP_BUF_SIZE] = [0; RX_DMA_TMP_BUF_SIZE],
+        usb_string: heapless::String<{usb::SERIAL_NUM_MAX_LEN}> = heapless::String::new(),
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut core = cx.core;
@@ -237,7 +238,14 @@ mod app {
         let usb_bus = cx.local.usb_bus.as_ref().unwrap();
 
         let usb = unsafe {
-            cx.local.usb.as_mut_ptr().write(Usb::new(usb_bus, &board_side, config::CONFIG.bootload_strict));
+            let cfg = usb::UsbConfig {
+                bus: usb_bus,
+                side: board_side,
+                bootload_strict: config::CONFIG.bootload_strict,
+                serial_num: cx.local.usb_string,
+                device_id: bsp::get_device_id(&mut dev.FLASH),
+            };
+            cx.local.usb.as_mut_ptr().write(Usb::new(cfg));
             &mut *cx.local.usb.as_mut_ptr()
         };
 

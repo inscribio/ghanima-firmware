@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+# exit on any error
+set -euo pipefail
+
+# only output colors if our output is to terminal
+use_ansi() { test -t 1; }
+if use_ansi ; then
+    RED="\033[0;31m"
+    BOLD="\033[1m"
+    CLEAR="\033[0m"
+else
+    RED=""
+    BOLD=""
+    CLEAR=""
+fi
+
+info() {
+    echo
+    echo -e "${BOLD}""$*""${CLEAR}"
+    echo -e "${BOLD}""==================================================""${CLEAR}"
+}
+
+die() {
+    echo
+    echo -e "${RED}""$*""${CLEAR}" 1>&2
+    exit 1
+}
+
+###
+
+if (( $# < 1 )); then
+    echo "Usage: $(basename "$0") DEV_ID"
+    echo "Prepare a fresh keyboard using given DEV_ID"
+    exit 1
+fi
+
+HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+stm32dfu_id='0483:df11'
+
+dev_id="$1"
+
+find_bootloader() {
+    lsusb -d "$stm32dfu_id" > /dev/null
+}
+
+file_size() {
+    stat -c '%s' "$1"
+}
+
+generate_option_bytes() {
+    out="$(mktemp option-bytes_XXXXXX.bin)"
+    "$HERE/option-bytes" --user-data "$dev_id" --output "$out" > /dev/null \
+        || die "Could not generate Option Bytes"
+    echo "$out"
+}
+
+flash_option_bytes() {
+    opt_bytes="$1"
+    opt_bytes_size=$(file_size "$opt_bytes")
+    [ "$opt_bytes_size" = 16 ] \
+        || die "Invalid size of Option Bytes area: $opt_bytes_size vs 16"
+    dfu-util \
+        --device "$stm32dfu_id" \
+        --alt 1 \
+        --dfuse-address "0x1ffff800:16:will-reset" \
+        --download "$opt_bytes" \
+        || die "Flashing Option Bytes via DFU failed"
+}
+
+###
+
+find_bootloader || die "No STM32 DFU Bootloader found"
+opt_bytes_file="$(generate_option_bytes)"
+flash_option_bytes "$opt_bytes_file"
