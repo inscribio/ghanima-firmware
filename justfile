@@ -15,6 +15,11 @@ watch-check *ARGS:
 type-sizes *ARGS:
     type-sizes --bin ghanima {{cargo-args}} --output-dir ./tmp/type-sizes --exclude-std {{ARGS}}
 
+doc *ARGS:
+    cargo doc {{cargo-args}} --document-private-items --open {{ARGS}}
+
+doc-bin: (doc "--bin" "ghanima")
+
 ### Remote ###
 
 # Flash firmware using helper script (with auto detach)
