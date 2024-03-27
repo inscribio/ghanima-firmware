@@ -85,7 +85,8 @@ pub trait ChecksumGen {
 }
 
 /// Checksum error
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Error {
     ChecksumInvalid,
     BufTooShort,

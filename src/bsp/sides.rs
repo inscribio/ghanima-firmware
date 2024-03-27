@@ -14,7 +14,8 @@ pub enum BoardSide {
 }
 
 /// Storage of data for both sides of keyboard with [`BoardSide`] indexing
-#[derive(PartialEq, Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct PerSide<T> {
     pub left: T,
     pub right: T,

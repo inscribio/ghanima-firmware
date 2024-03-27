@@ -51,7 +51,7 @@ pub struct Dma {
 }
 
 /// DMA transfer ongoing error
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub struct TransferOngoing;
 
 /// Trait representing buffered DMA transmitter

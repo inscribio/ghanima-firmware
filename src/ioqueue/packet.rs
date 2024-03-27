@@ -117,7 +117,7 @@ pub trait PacketDeserRef<'de>: Packet + Deserialize<'de> {
 }
 
 /// Type of error when deserializing a packet
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub enum DeserError {
     /// No sentinel found and data too long to fit in internal buffer
     OverFull,
