@@ -1,3 +1,7 @@
+# Show this help
+default:
+    @just --list
+
 ### Build ###
 
 config-test-env := 'CARGO_TARGET_DIR=/tmp/cargo-target-ghanima-config DEFMT_LOG=off'
@@ -12,13 +16,24 @@ build *ARGS:
 watch-check *ARGS:
     cargo watch -c -- cargo check {{cargo-args}} {{ARGS}}
 
+# Generate Rust type sizes tree as HTML
 type-sizes *ARGS:
     type-sizes --bin ghanima {{cargo-args}} --output-dir ./tmp/type-sizes --exclude-std {{ARGS}}
 
+# Generate and open docs
 doc *ARGS:
     cargo doc {{cargo-args}} --document-private-items --open {{ARGS}}
 
+# Generate and open docs for the binary crate (replaces lib docs)
 doc-bin: (doc "--bin" "ghanima")
+
+# Calculate binary size
+size *ARGS:
+    cargo size {{cargo-args}} --bin ghanima {{ARGS}}
+
+# Output binary disassembly to stdout (redirect to desired file)
+disassemble *ARGS:
+    arm-none-eabi-objdump -D target/thumbv6m-none-eabi/release/ghanima | arm-none-eabi-c++filt
 
 ### Remote ###
 
@@ -40,6 +55,7 @@ gdb *ARGS:
     cargo objcopy {{cargo-args}} --bin ghanima {{ARGS}} -- -O binary target/ghanima.bin
     cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit
 
+# Start post-mortem debugging with gdb
 gdb-postmortem *ARGS:
     cd remote && arm-none-eabi-gdb ../target/thumbv6m-none-eabi/release/ghanima -x ./gdbinit-postmortem
 
