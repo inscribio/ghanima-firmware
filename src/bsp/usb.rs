@@ -7,6 +7,7 @@ use usb_device::device::{UsbDevice, UsbVidPid, UsbDeviceBuilder};
 use usbd_dfu_rt::DfuRuntimeClass;
 use usbd_microsoft_os::MsOsUsbClass;
 
+use crate::build_info;
 use crate::hal::usb;
 use crate::hal_ext::reboot;
 use crate::keyboard::hid;
@@ -35,8 +36,8 @@ pub struct UsbConfig<const N: usize> {
     pub device_id: Option<u16>,
 }
 
-/// Storage for serial number string, e.g. `1.10.100:65535`
-pub const SERIAL_NUM_MAX_LEN: usize = 20;
+/// Storage for serial number string, e.g. `v1.10.100:65535`
+pub const SERIAL_NUM_MAX_LEN: usize = 32;
 
 impl Usb {
     pub fn new<const N: usize>(cfg: UsbConfig<N>) -> Self {
@@ -121,10 +122,11 @@ impl Usb {
     }
 
     fn format_serial_num<const N: usize>(s: &mut heapless::String<N>, device_id: Option<u16>) -> Result<&str, ()> {
+        let version = build_info::GIT_VERSION.unwrap_or(build_info::PKG_VERSION);
         if let Some(id) = device_id {
-            uwrite!(s, "{}:{}", env!("CARGO_PKG_VERSION"), id)?;
+            uwrite!(s, "{}:{}", version, id)?;
         } else {
-            uwrite!(s, "{}:?", env!("CARGO_PKG_VERSION"))?;
+            uwrite!(s, "{}:?", version)?;
         };
         Ok(s.as_str())
     }
@@ -185,32 +187,36 @@ mod tests {
     use super::*;
 
     const PKG_VER: &str = env!("CARGO_PKG_VERSION");
+    const GIT_VER: Option<&str> = build_info::GIT_VERSION;
 
     #[test]
     fn format_serial_num_none() {
+        let git_ver = GIT_VER.unwrap();
         let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
         Usb::format_serial_num(&mut s, None).unwrap();
-        assert_eq!(s.as_str(), format!("{PKG_VER}:?"));
+        assert_eq!(s.as_str(), format!("{git_ver}:?"));
     }
 
     #[test]
     fn format_serial_num_small() {
+        let git_ver = GIT_VER.unwrap();
         let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
         Usb::format_serial_num(&mut s, Some(42)).unwrap();
-        assert_eq!(s.as_str(), format!("{PKG_VER}:42"));
+        assert_eq!(s.as_str(), format!("{git_ver}:42"));
     }
 
     #[test]
     fn format_serial_num_huge() {
+        let git_ver = GIT_VER.unwrap();
         let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
         Usb::format_serial_num(&mut s, Some(0xfffa)).unwrap();
-        assert_eq!(s.as_str(), format!("{PKG_VER}:65530"));
+        assert_eq!(s.as_str(), format!("{git_ver}:65530"));
     }
 
     #[test]
     fn format_serial_num_huge_pkgver() {
         // Check that SERIAL_NUM_MAX_LEN is enough
         let mut s = heapless::String::<SERIAL_NUM_MAX_LEN>::new();
-        uwrite!(s, "999.999.999:65535").unwrap();
+        uwrite!(s, "v999.999.999-999-g99887766:65535").unwrap();
     }
 }

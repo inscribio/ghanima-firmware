@@ -110,6 +110,7 @@ rand = "0.8"
 [build-dependencies]
 ghanima-config = { path = "./ghanima-config" }
 anyhow = "1.0"
+built = { version = "0.7", features = ["git2"] }
 
 [workspace]
 members = ['ghanima-config']

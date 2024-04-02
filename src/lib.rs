@@ -26,3 +26,8 @@ pub mod hal_ext;
 pub mod ioqueue;
 pub mod keyboard;
 pub mod utils;
+
+/// Build metadata generated using "built" package
+pub mod build_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}

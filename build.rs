@@ -7,6 +7,12 @@ use anyhow::{Context, Result};
 
 use ghanima_config::KeyboardConfig;
 
+/// Generate build metadata file that is then included in code
+fn build_metadata() -> Result<()> {
+    built::write_built_file()?;
+    Ok(())
+}
+
 // Copies the `memory.x` file from the crate root into a directory where
 // the linker can always find it at build time.
 fn memory(out: &Path) -> Result<()> {
@@ -64,6 +70,7 @@ fn json_config(out: &Path) -> Result<()>  {
 }
 
 fn main() -> Result<()>  {
+    build_metadata()?;
     let out = &PathBuf::from(env::var_os("OUT_DIR").context("Could not get OUT_DIR")?);
     memory(out)?;
     json_config(out)?;
