@@ -49,7 +49,7 @@ file_size() {
 }
 
 generate_option_bytes() {
-    out="$(mktemp option-bytes_XXXXXX.bin)"
+    out="$(mktemp --tmpdir option-bytes_XXXXXX.bin)"
     "$HERE/option-bytes" --user-data "$dev_id" --output "$out" > /dev/null \
         || die "Could not generate Option Bytes"
     echo "$out"
