@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+kb_vid_pid=16c0:27db
+boot_vid_pid=0483:df11
+filter='^\s*(Bus|iManufacturer|iProduct|iSerial)'
+
+lsusb -d $kb_vid_pid -v | grep -E "$filter"
+lsusb -d $boot_vid_pid -v | grep -E "$filter"
