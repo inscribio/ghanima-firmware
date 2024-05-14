@@ -19,3 +19,6 @@
 /renode/*.svd
 __pycache__
 *.pyc
+
+# smlang
+statemachine*.svg

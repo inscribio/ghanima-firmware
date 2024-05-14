@@ -22,7 +22,7 @@ type-sizes *ARGS:
 
 # Generate and open docs
 doc *ARGS:
-    cargo doc {{cargo-args}} --document-private-items --open {{ARGS}}
+    cargo doc {{cargo-args}} --document-private-items --features smlang/graphviz --open {{ARGS}}
 
 # Generate and open docs for the binary crate (replaces lib docs)
 doc-bin: (doc "--bin" "ghanima")
