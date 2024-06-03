@@ -257,7 +257,7 @@ mod app {
         let mut led_output = keyboard::LedOutput::new(LED_RETRANSMISSION_MIN_TIME);
         let led_controller = unsafe {
             cx.local.led_controller.as_mut_ptr().write(
-                keyboard::LedController::new(&config::CONFIG.leds, &KEY_ACTION_CACHE)
+                keyboard::LedController::new(board_side, &config::CONFIG.leds, &KEY_ACTION_CACHE)
             );
             &mut *cx.local.led_controller.as_mut_ptr()
         };

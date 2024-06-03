@@ -10,6 +10,7 @@ use super::condition::{KeyboardState, RuleKeys, KeyActionCache};
 
 /// Generates LED colors according to current [`LedConfig`]
 pub struct LedController<'a> {
+    side: BoardSide,
     config: CircularIter<'a, LedConfig>,
     actions: &'a [KeyActionCache],
     patterns: PerSide<[ColorGenerator<'a>; NLEDS]>,
@@ -37,8 +38,9 @@ struct PatternIter<'a> {
 impl<'a> LedController<'a> {
     pub const INITIAL_BRIGHTNESS: u8 = (u8::MAX as u16 * 2 / 3) as u8;
 
-    pub fn new(configurations: &'a LedConfigurations, actions: &'a [KeyActionCache]) -> Self {
+    pub fn new(side: BoardSide, configurations: &'a LedConfigurations, actions: &'a [KeyActionCache]) -> Self {
         Self {
+            side,
             config: CircularIter::new(configurations),
             actions,
             patterns: Default::default(),
@@ -69,7 +71,7 @@ impl<'a> LedController<'a> {
             // Scan the rules that we might consider, rules on end of list overwrite previous ones.
             for rule in self.config.current().iter() {
                 for side in BoardSide::EACH {
-                    let leds = rule.condition.applies_to(&state, &side, self.actions);
+                    let leds = rule.condition.applies_to(self.side, &state, side, self.actions);
                     // Optimization: avoid iteration over keys when not needed
                     if leds.is_none() {
                         // Not applicable to any led - skip

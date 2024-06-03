@@ -53,9 +53,9 @@ pub use output::{LedOutput, Leds};
 pub use pattern::LedController;
 pub use condition::{KeyboardState, KeyActionCache};
 pub use bitset::LedsBitset;
+pub use super::role::Role;
 
 use rgb::RGB8;
-use super::role::Role;
 
 /// List of keyboard LED lightning configurations
 ///

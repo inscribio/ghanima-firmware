@@ -114,7 +114,7 @@ impl_enum_to_tokens! {
     enum KeyboardLed: crate::keyboard::leds::KeyboardLed,
     enum Repeat: crate::keyboard::leds::Repeat,
     enum Interpolation: crate::keyboard::leds::Interpolation,
-    enum Role: crate::keyboard::role::Role,
+    enum Role: crate::keyboard::leds::Role,
 }
 
 impl_struct_to_tokens! {
