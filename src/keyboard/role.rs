@@ -74,30 +74,33 @@ impl Context {
 }
 
 impl StateMachineContext for Context {
-    fn send_ack(&mut self) {
+    fn send_ack(&mut self) -> Result<(), ()> {
         defmt::info!("Send Ack");
         self.send(Message::Ack);
+        Ok(())
     }
 
-    fn send_establish_master(&mut self) {
+    fn send_establish_master(&mut self) -> Result<(), ()> {
         defmt::info!("Send EstablishMaster");
         self.start_timeout();
         self.send(Message::EstablishMaster);
+        Ok(())
     }
 
-    fn send_release_master(&mut self) {
+    fn send_release_master(&mut self) -> Result<(), ()> {
         defmt::info!("Send ReleaseMaster");
         self.send(Message::ReleaseMaster);
+        Ok(())
     }
 
-    fn no_usb<'a>(&mut self) -> Result<(), ()>  {
-        if !self.usb_on { Ok(()) } else { Err(()) }
+    fn no_usb<'a>(&self) -> Result<bool, ()>  {
+        if !self.usb_on { Ok(true) } else { Err(()) }
     }
 
-    fn resign(&mut self) -> Result<(), ()>  {
+    fn resign(&self) -> Result<bool, ()>  {
         match self.side {
             BoardSide::Left => Err(()),
-            BoardSide::Right => Ok(()),
+            BoardSide::Right => Ok(true),
         }
     }
 

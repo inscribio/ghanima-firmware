@@ -26,12 +26,8 @@ impl<P: Packet + Serialize> PacketSer for P {}
 impl<P: Packet + for<'de> Deserialize<'de>> PacketDeser for P {}
 impl<'de, P: Packet + Deserialize<'de>> PacketDeserRef<'de> for P {}
 
-const fn cobs_max_encoding_length(source_len: usize) -> usize {
-    source_len + (source_len / 254) + if source_len % 254 > 0 { 1 } else { 0 }
-}
-
 impl<P: Packet + MaxSize> PacketMaxSize for P {
-    const PACKET_MAX_SIZE: usize = cobs_max_encoding_length(
+    const PACKET_MAX_SIZE: usize = cobs::max_encoding_length(
         P::POSTCARD_MAX_SIZE + // packet data encoded with postcard
         core::mem::size_of::<<<P as Packet>::Checksum as ChecksumGen>::Output>() // appended checksum
     ) + 1; // final 0x00 byte used as COBS delimiter
