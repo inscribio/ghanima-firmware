@@ -223,6 +223,7 @@ impl core::ops::Index<KeyAction> for KeyActionCache {
 }
 
 pub trait RuleKeys {
+    #[allow(unused)]
     /// Internal iterator over key coordinates
     fn for_each<F: FnMut(u8, u8)>(&self, f: F);
 

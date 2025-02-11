@@ -21,6 +21,7 @@ pub fn reboot(bootloader: bool, usb_bus: Option<&usb::UsbBusType>) -> ! {
     if bootloader {
         // SAFETY: we're writing to memory that is reserved for that purpose
         unsafe {
+            #[allow(static_mut_refs)]
             MAGIC.as_mut_ptr().write(MAGIC_JUMP_BOOTLOADER);
         }
     }
@@ -48,6 +49,7 @@ pub unsafe fn maybe_jump_bootloader() {
 
     if software_reset && MAGIC.assume_init() == MAGIC_JUMP_BOOTLOADER {
         // reset the magic value not to jump again
+        #[allow(static_mut_refs)]
         MAGIC.as_mut_ptr().write(0);
         // jump to bootloader located in System Memory
         bootload(SYSTEM_MEMORY_BASE as *const u32);
