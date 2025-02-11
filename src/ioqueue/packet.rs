@@ -371,11 +371,11 @@ pub mod tests {
         let mut crc = Crc32::new();
         let mut acc = Accumulator::<31>::new();
         let mut data = Vec::<u8>::new();
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..100 {
             data.clear();
             for _ in 0..10000 {
-                data.push(rng.gen());
+                data.push(rng.random());
             }
 
             let mut buf = data.as_slice();
